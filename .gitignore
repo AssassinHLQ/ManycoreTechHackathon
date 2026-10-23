@@ -1,0 +1,8 @@
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 临时/缓存
+*.tmp
+*.log
