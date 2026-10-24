@@ -1,7 +1,7 @@
 # THIRD_PARTY_NOTICES / 第三方组件与内容声明
 
 > 本文件用于履行第三方组件的署名、许可声明义务，并说明仓库内的非原创内容来源。
-> 最后更新：2026-10-23
+> 最后更新：2026-10-24
 
 ## 0. 版权与许可状态
 
@@ -55,7 +55,7 @@ GitHub 平台上允许的查看与 fork 行为遵循 GitHub 服务条款，不�
 
 ### 3.1 Three.js
 
-仓库内三个 HTML 为**单文件交付物**，各自内嵌了 Three.js 运行时代码（含 `GLTFLoader`、
+仓库内六个 HTML 为**单文件交付物**，各自内嵌了 Three.js 运行时代码（含 `GLTFLoader`、
 `OrbitControls` 等 examples 模块，与主库同为 MIT 许可）：
 
 | 文件 | 内嵌 Three.js 版本 |
@@ -63,6 +63,9 @@ GitHub 平台上允许的查看与 fork 行为遵循 GitHub 服务条款，不�
 | `前期讨论/parallel-world-home.html` | r186（ES Module 构建） |
 | `前期讨论/世界种子-Demo04.html` | r147（UMD 构建） |
 | `前期讨论/文物修复师-Demo03.html` | r147（UMD 构建） |
+| `前期讨论/MH.html` | r180（ES Module 构建） |
+| `前期讨论/世界的夹层.html` | r170 |
+| `前期讨论/造物主-Demo07.html` | r147（UMD 构建） |
 
 Three.js 以 MIT 许可证发布，许可全文如下：
 
@@ -92,9 +95,10 @@ SOFTWARE.
 
 项目地址：https://github.com/mrdoob/three.js
 
-> 说明：三个 HTML 是单独分发即可运行的成品。为满足 MIT 条款中“随副本附带版权与许可声明”的要求，
-> 已在每个文件 `<!DOCTYPE html>` / `<!doctype html>` **之后**（避免触发 quirks 模式）插入指向本文件的
-> HTML 注释，因此单独下载任一 HTML 也能看到许可归属。
+> 说明：六个 HTML 是单独分发即可运行的成品。为满足 MIT 条款中“随副本附带版权与许可声明”的要求，
+> 已在每个文件 `<!DOCTYPE html>` / `<!doctype html>` **之后**（避免触发 quirks 模式）插入许可声明注释，
+> 因此单独下载任一 HTML 也能看到许可归属。其中 `世界的夹层.html` 直接内联完整 MIT 全文，
+> 其余文件为指向本文件的摘要注释。
 
 ### 3.2 3D 模型资产（GLB）
 

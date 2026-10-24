@@ -6,3 +6,8 @@ desktop.ini
 # 临时/缓存
 *.tmp
 *.log
+
+# 构建产物 / 安装包（体积过大，不进版本库，改由 Release 附件分发）
+*.apk
+*.aab
+apk-release/
