@@ -22,9 +22,9 @@ python -m http.server 8060
 | 场景 | 按键 |
 |---|---|
 | 徒步 | WASD 移动 · 鼠标观察 · Space 跳跃 · Shift 喷气 · Ctrl 奔跑 |
-| 徒步 | F 扫描 · 右键信号镜 · L 头灯 · R 地形脱困 · E 登船 / 烤棉花糖 |
-| 飞船 | 鼠标转向 · 滚轮长焦 · W/S 前后 · A/D 横向 · Space/Ctrl（或 C）垂直 · Shift 加力 · X 制动 |
-| 飞船 | Tab 切换目的地 · T 自动航行 / 着陆 · E 着陆 / 离船 |
+| 徒步 | F 扫描 · 右键信号镜（滚轮 2.1×–16.9×） · L 头灯 · R 地形脱困 · E 登船 / 烤棉花糖 |
+| 飞船 | 鼠标转向 · 滚轮长焦（1×–16×） · W/S 前后 · A/D 横向 · Space/Ctrl（或 C）垂直 · Shift 加力 · X 制动（耗推进剂） |
+| 飞船 | Tab 切换目的地 · T 自动航行 / 着陆（按实际 Δv 耗推进剂） · E 着陆 / 离船 |
 | 界面 | M 星图 · J 航海日志 · Esc 暂停与设置 |
 
 篝火边按 E 取出棉花糖，火候条走到金黄时再按 E 取下，可补满氧气与燃料。
@@ -41,7 +41,7 @@ python -m http.server 8060
 ## 技术
 
 - Godot 4.7.1（Compatibility / WebGL2，单线程导出，无需 COOP/COEP 头）
-- `index.wasm` 原始约 38 MB，gzip 后实际传输约 10.2 MB；`index.pck` 约 479 KB
+- `index.wasm` 原始约 38 MB，gzip 后实际传输约 10.2 MB；`index.pck` 约 481 KB
 - 已启用 Service Worker：首次加载后 wasm 会缓存到本地，第二次进入不再下载 wasm，只更新约 0.8 MB 的脚本与 pck
 - 校园网限速时首次建议用流量/热点，或部署到 Cloudflare Pages / 国内对象存储
 - 星球、地形、建筑、洞穴、量子规则、程序音频均为项目内程序化生成
