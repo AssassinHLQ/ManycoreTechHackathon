@@ -1,7 +1,7 @@
 # THIRD_PARTY_NOTICES / 第三方组件与内容声明
 
 > 本文件用于履行第三方组件的署名、许可声明义务，并说明仓库内的非原创内容来源。
-> 最后更新：2026-10-24
+> 最后更新：2026-11-02
 
 ## 0. 版权与许可状态
 
@@ -109,6 +109,34 @@ SOFTWARE.
 - 这些资产的权属与使用范围，受 **Aholo Lux3D 平台服务条款** 及 **本次黑客松参赛协议** 约束，
   不由本仓库的版权声明决定。
 - 若用于参赛之外的产品化、批量分发或商业发行，需自行向平台确认授权范围。
+
+### 3.3 Godot Engine（`demo/` 网页版）
+
+`demo/` 下的《余晖回声 / StarwardWilds》网页版由 **Godot Engine 4.7.1** 导出，
+其中 `index.wasm`、`index.js` 与运行时逻辑包含 Godot Engine 代码。
+
+Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 Juan Linietsky、Ariel Manzur 所有。
+许可全文已随副本附于 [`demo/licenses/godot-MIT.txt`](demo/licenses/godot-MIT.txt)。
+
+项目地址：https://godotengine.org
+
+### 3.4 Noto Sans SC / Noto Sans Symbols 2（字体）
+
+`demo/index.pck` 内嵌了按项目用字裁剪的 **Noto Sans SC** 与 **Noto Sans Symbols 2** 字体子集，
+用于网页版的中文与符号显示。
+
+- 字体版权归 The Noto Project Authors 所有。
+- 以 **SIL Open Font License 1.1** 发布，许可全文已随副本附于
+  [`demo/licenses/noto-OFL.txt`](demo/licenses/noto-OFL.txt)。
+- 字体仅作为界面文本渲染使用，未单独售卖。
+
+项目地址：https://github.com/notofonts/noto-cjk
+
+### 3.5 《余晖回声 / StarwardWilds》原创内容
+
+`demo/` 中除上述引擎与字体外的星球、地形、建筑、洞穴、模型、材质、着色器、界面、
+文本与程序音频均为本项目原创生成。作品灵感来自《Outer Wilds》，但与原作及其发行商无关联，
+不含原作的素材、代码、音频或文本。
 
 ---
 
