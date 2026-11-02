@@ -41,7 +41,9 @@ python -m http.server 8060
 ## 技术
 
 - Godot 4.7.1（Compatibility / WebGL2，单线程导出，无需 COOP/COEP 头）
-- `index.wasm` 约 38 MB，`index.pck` 约 479 KB；首次加载后由浏览器缓存
+- `index.wasm` 原始约 38 MB，gzip 后实际传输约 10.2 MB；`index.pck` 约 479 KB
+- 已启用 Service Worker：首次加载后 wasm 会缓存到本地，第二次进入不再下载 wasm，只更新约 0.8 MB 的脚本与 pck
+- 校园网限速时首次建议用流量/热点，或部署到 Cloudflare Pages / 国内对象存储
 - 星球、地形、建筑、洞穴、量子规则、程序音频均为项目内程序化生成
 - 网页版由浏览器控制分辨率与垂直同步；音频需首次点击后播放
 - 设置菜单支持画质预设、分辨率、帧率上限（30–240）、MSAA、阴影、视距、草地、主音量与鼠标灵敏度

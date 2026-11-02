@@ -1,3 +1,11 @@
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
+      .then(function (registration) { registration.update().catch(function () {}); })
+      .catch(function (error) { console.warn('[cache] service worker failed', error); });
+  });
+}
+
 (function () {
   const touchCapable = (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window;
   if (!touchCapable) return;
