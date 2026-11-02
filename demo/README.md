@@ -6,7 +6,7 @@
 
 ## 在线游玩
 
-- GitHub Pages：<https://assassinhlq.github.io/ManycoreTechHackathon/>
+- GitHub Pages：<https://assassinhlq.github.io/ManycoreTechHackathon/demo/>
 - 网页版必须通过 **http(s)** 访问；不要直接双击 `index.html`（浏览器会拦截 wasm / 音频）。
 
 本地预览：
