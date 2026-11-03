@@ -112,7 +112,7 @@ SOFTWARE.
 
 ### 3.3 Godot Engine（`demo/` 网页版）
 
-`demo/` 下的《余晖回声 / StarwardWilds》网页版由 **Godot Engine 4.7.1** 导出，
+`demo/` 下的《余晖回声》网页版由 **Godot Engine 4.7.1** 导出，
 其中 `index.wasm`、`index.js` 与运行时逻辑包含 Godot Engine 代码。
 
 Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 Juan Linietsky、Ariel Manzur 所有。
@@ -132,11 +132,12 @@ Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 J
 
 项目地址：https://github.com/notofonts/noto-cjk
 
-### 3.5 《余晖回声 / StarwardWilds》原创内容
+### 3.5 《余晖回声》原创内容
 
 `demo/` 中除上述引擎与字体外的星球、地形、归航站、建筑、洞穴、模型、材质、着色器、界面、
-文本与程序音频均为本项目原创生成。类型层面受到包括 **Outer Wilds** 在内的探索类作品启发，
-烤棉花糖是唯一保留的具体玩法致敬；未使用其名称、角色、剧情、地点、界面、模型、文本或音频。
+文本与程序音频均为本项目原创生成。类型与体验层面受到包括 **Outer Wilds** 在内的探索类作品启发
+（限时轮回、恒星爆发、量化观测、篝火烤棉花糖等玩法母题）；未使用其名称、角色、剧情、地点、界面、模型、文本或音频。
+五颗天体名（青岚星 / 赭崖星 / 沧波星 / 悬晶星 / 玄渊星）、舱室名与全部标牌均为本项目原创。
 归航站的环形/六廊外观在类型视觉上参考了《星际穿越》与 Arknights 的环状/移动舰船空间组织，
 但未使用其名称、标志、角色、模型、贴图、房间名或镜头；站体几何、A–F 扇区、舱室名与全部标牌均为原创。
 
