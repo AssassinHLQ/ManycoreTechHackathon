@@ -159,3 +159,21 @@ Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 J
 - 本文件按“现状”提供，不构成法律意见；涉及商用、对外发行或专利申请时，请咨询专业法务。
 - 如权利人认为本仓库存在未标注或标注不当的第三方内容，请通过仓库 Issue 联系，
   我们将核实后补充署名或移除相关内容。
+
+---
+
+## 4. 本项目自身的许可证
+
+`demo/` 下的构建产物与《借一扇晴天》的原创内容（程序化星球、归航站、地形、着色器、界面、文本、
+程序音频）以 **GNU Affero General Public License v3.0** 发布，全文见仓库根目录 `LICENSE`。
+
+与之共存的第三方组件各自保留原许可证，彼此不冲突：
+
+| 组件 | 许可证 | 说明 |
+|---|---|---|
+| Godot Engine 4.7.1 运行时（`index.wasm` / `index.js`） | MIT | 与 AGPL 兼容，可再分发 |
+| Noto Sans SC 子集（`assets/ui_font.ttf`） | SIL OFL 1.1 | 字体本身仍为 OFL，许可全文随包分发 |
+| Noto 符号字体（`assets/ui_symbols.ttf`） | SIL OFL 1.1 | 同上 |
+
+> AGPL 第 13 条要求：通过网络向用户提供服务时，必须让使用者能够获得对应源代码。
+> 因此公开本网页版时，源码必须一并可获取。

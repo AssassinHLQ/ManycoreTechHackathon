@@ -71,3 +71,17 @@ python -m http.server 8060
 - 其余模型、材质、着色器、文本与程序音频由本项目原创生成
 
 完整声明见仓库根目录的 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。
+
+## 许可证
+
+本项目（含 `demo/` 网页版、程序化美术与音频、全部文本）以 **GNU Affero General Public License v3.0**
+（AGPL-3.0）发布，全文见仓库根目录 `LICENSE`。
+
+- 你可以自由使用、修改、再分发，但**衍生作品必须以同一许可证开源**；
+- AGPL 第 13 条：**通过网络提供服务时，必须向使用者提供对应源代码**——所以本项目的源码与这份
+  构建产物一同公开；
+- 第三方组件保留各自许可证：**Godot Engine 4.7.1（MIT）**、**Noto Sans SC 子集（SIL OFL 1.1）**，
+  详见 `THIRD_PARTY_NOTICES.md` 与 `demo/licenses/`。
+
+> 说明：AGPL 是"防倒钩"的法律手段（禁止他人拿走做成闭源产品），但它不阻止别人**照样开源地**
+> 复制与再分发；技术上无法阻止复制，只能保证复制必须公开源码。
