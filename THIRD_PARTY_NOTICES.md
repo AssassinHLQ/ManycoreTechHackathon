@@ -122,22 +122,30 @@ Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 J
 
 ### 3.4 Noto Sans SC / Noto Sans Symbols 2（字体）
 
-`demo/index.pck` 内嵌了按项目用字裁剪的 **Noto Sans SC** 与 **Noto Sans Symbols 2** 字体子集，
-用于网页版的中文与符号显示。
+`demo/index.pck` 内嵌了两份**修改版**（子集）字体，用于网页版的中文与符号显示：
 
-- 字体版权归 The Noto Project Authors 所有。
-- 以 **SIL Open Font License 1.1** 发布，许可全文已随副本附于
-  [`demo/licenses/noto-OFL.txt`](demo/licenses/noto-OFL.txt)。
-- 字体仅作为界面文本渲染使用，未单独售卖。
+| 文件 | 上游字体 | 版权归属 | 许可 | 本项目所做修改 |
+|---|---|---|---|---|
+| `assets/ui_font.ttf` | Noto Sans SC 2.04 | Copyright © 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | SIL OFL 1.1 | ① 由可变字体实例化（variable font → wght=400 静态字重）；② 裁剪为子集，保留 4,370 个码点（项目全部用字 + GB2312 一级 3,755 常用字 + ASCII / 西文标点 / 箭头 / 几何符号） |
+| `assets/ui_symbols.ttf` | Noto Sans Symbols 2 2.008 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols) | SIL OFL 1.1 | 裁剪为子集，仅保留界面用到的 3 个码点（▬ ◈ ✦） |
 
-项目地址：https://github.com/notofonts/noto-cjk
+- 许可全文随副本分发：[`demo/licenses/OFL-NotoSansSC.txt`](demo/licenses/OFL-NotoSansSC.txt)、
+  [`demo/licenses/OFL-NotoSansSymbols2.txt`](demo/licenses/OFL-NotoSansSymbols2.txt)。
+- SIL OFL 1.1 允许使用、研究、修改、嵌入与随软件分发（含商业发行），但**不得单独售卖字体本身**；
+  修改版必须继续以 OFL 发布，且**不得使用原字体声明的保留字体名**。
+- 本项目的保留字体名合规说明：Noto Sans SC 声明的保留字体名为 `Source`，本项目修改版沿用
+  `Noto Sans SC` 家族名、**未使用 `Source` 字样**，也未使用 Adobe / Google / The Noto Project Authors
+  的名称或商标进行宣传、推广或背书；`Noto` 为 Google 的商标，此处仅用于客观描述字体来源。
+- 字体仅作为界面文本渲染使用，未单独售卖，也未修改字形设计本身（仅做字重实例化与子集裁剪）。
+- 上游项目：<https://github.com/notofonts/noto-cjk>（Noto Sans SC）、
+  <https://github.com/notofonts/symbols>（Noto Sans Symbols 2）。
 
 ### 3.5 《借一扇晴天》原创内容
 
 `demo/` 中除上述引擎与字体外的星球、地形、归航站、建筑、洞穴、模型、材质、着色器、界面、
 文本与程序音频均为本项目原创生成。类型与体验层面受到包括 **Outer Wilds** 在内的探索类作品启发
 （限时轮回、恒星爆发、量化观测、篝火烤棉花糖等玩法母题）；未使用其名称、角色、剧情、地点、界面、模型、文本或音频。
-五颗天体名（青岚星 / 赭崖星 / 沧波星 / 悬晶星 / 玄渊星）、舱室名与全部标牌均为本项目原创。
+十颗天体名（青岚星 / 赭崖星 / 沧波星 / 悬晶星 / 玄渊星 / 白曜星 / 磐砂星 / 苔垣星 / 硫坞星 / 缄默星）、舱室名与全部标牌均为本项目原创。
 归航站的环形/六廊外观在类型视觉上参考了《星际穿越》与 Arknights 的环状/移动舰船空间组织，
 但未使用其名称、标志、角色、模型、贴图、房间名或镜头；站体几何、A–F 扇区、舱室名与全部标牌均为原创。
 
@@ -172,8 +180,8 @@ Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 J
 | 组件 | 许可证 | 说明 |
 |---|---|---|
 | Godot Engine 4.7.1 运行时（`index.wasm` / `index.js`） | MIT | 与 AGPL 兼容，可再分发 |
-| Noto Sans SC 子集（`assets/ui_font.ttf`） | SIL OFL 1.1 | 字体本身仍为 OFL，许可全文随包分发 |
-| Noto 符号字体（`assets/ui_symbols.ttf`） | SIL OFL 1.1 | 同上 |
+| Noto Sans SC 子集（`assets/ui_font.ttf`） | SIL OFL 1.1 | 修改版（实例化为 wght=400 + 子集裁剪），字体本身仍为 OFL，许可全文随包分发 |
+| Noto Sans Symbols 2 子集（`assets/ui_symbols.ttf`） | SIL OFL 1.1 | 同上 |
 
 > AGPL 第 13 条要求：通过网络向用户提供服务时，必须让使用者能够获得对应源代码。
 > 因此公开本网页版时，源码必须一并可获取。
