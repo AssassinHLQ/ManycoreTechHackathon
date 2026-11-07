@@ -1,0 +1,227 @@
+{
+  "generated_by": "_合规审查_20261104/build_license_manifest.py",
+  "source_table": "ASSET_LICENSE_TABLE.html",
+  "policy": "只收 CC BY 4.0（可商用、需署名）；CC BY-NC* 与授权不明一律不入表",
+  "assets": [
+    {
+      "slug": "24-dizzying-space-travel-inktober2019",
+      "original_file": "24-dizzying-space-travel-inktober2019.zip",
+      "title": "#24 Dizzying space travel - \"Inktober2019\"",
+      "author": "Canary Games",
+      "license": "CC BY 4.0",
+      "attribution": "“#24 Dizzying space travel - \"Inktober2019\"” by Canary Games, CC BY 4.0",
+      "source_url": "https://sketchfab.com/CanaryGames",
+      "imported": false
+    },
+    {
+      "slug": "a_windy_day",
+      "original_file": "a_windy_day.glb",
+      "title": "A Windy Day",
+      "author": "Loïc Norgeot",
+      "license": "CC BY 4.0",
+      "attribution": "“A Windy Day” by Loïc Norgeot, CC BY 4.0",
+      "source_url": "https://sketchfab.com/norgeotloic",
+      "imported": false
+    },
+    {
+      "slug": "backrooms-vr",
+      "original_file": "backrooms-vr.zip",
+      "title": "Backrooms VR",
+      "author": "VTX",
+      "license": "CC BY 4.0",
+      "attribution": "“Backrooms VR” by VTX, CC BY 4.0",
+      "source_url": "https://sketchfab.com/VTX_car",
+      "imported": false
+    },
+    {
+      "slug": "black-hole",
+      "original_file": "black-hole.zip",
+      "title": "Black Hole",
+      "author": "Nestaeric",
+      "license": "CC BY 4.0",
+      "attribution": "“Black Hole” by Nestaeric, CC BY 4.0",
+      "source_url": "https://sketchfab.com/Nestaeric",
+      "imported": true
+    },
+    {
+      "slug": "crystals",
+      "original_file": "crystals.glb",
+      "title": "Crystals",
+      "author": "GenEugene",
+      "license": "CC BY 4.0",
+      "attribution": "“Crystals” by GenEugene, CC BY 4.0",
+      "source_url": "https://sketchfab.com/geneugene",
+      "imported": false
+    },
+    {
+      "slug": "cyberpunk-laptop",
+      "original_file": "cyberpunk-laptop.zip",
+      "title": "CyberPunk Laptop",
+      "author": "Vivien Deroche",
+      "license": "CC BY 4.0",
+      "attribution": "“CyberPunk Laptop” by Vivien Deroche, CC BY 4.0",
+      "source_url": "https://sketchfab.com/blue-odym",
+      "imported": false
+    },
+    {
+      "slug": "deca_m1_low_poly",
+      "original_file": "deca_m1_low_poly.glb",
+      "title": "#DECA M1 (low poly)",
+      "author": "Götz von Berlichingen",
+      "license": "CC BY 4.0",
+      "attribution": "“#DECA M1 (low poly)” by Götz von Berlichingen, CC BY 4.0",
+      "source_url": "https://sketchfab.com/vonBerlichingen",
+      "imported": false
+    },
+    {
+      "slug": "giant-round-spacestation-by-jungle-jim",
+      "original_file": "giant-round-spacestation-by-jungle-jim.zip",
+      "title": "Giant Round Spacestation by Jungle Jim",
+      "author": "Jungle Jim",
+      "license": "CC BY 4.0",
+      "attribution": "“Giant Round Spacestation by Jungle Jim” by Jungle Jim, CC BY 4.0",
+      "source_url": "https://sketchfab.com/jungle_jim",
+      "imported": false
+    },
+    {
+      "slug": "iron-man-mark-44-hulkbuster",
+      "original_file": "iron-man-mark-44-hulkbuster.zip",
+      "title": "Iron Man Mark 44 Hulkbuster",
+      "author": "Ahad4940",
+      "license": "CC BY 4.0",
+      "attribution": "“Iron Man Mark 44 Hulkbuster” by Ahad4940, CC BY 4.0",
+      "source_url": "https://sketchfab.com/Ahad4940",
+      "imported": false
+    },
+    {
+      "slug": "level-37-flooded-tiled-complex",
+      "original_file": "level-37-flooded-tiled-complex.zip",
+      "title": "Level 37: Flooded Tiled Complex",
+      "author": "Blenderust",
+      "license": "CC BY 4.0",
+      "attribution": "“Level 37: Flooded Tiled Complex” by Blenderust, CC BY 4.0",
+      "source_url": "https://sketchfab.com/narighillya",
+      "imported": false
+    },
+    {
+      "slug": "need_some_space",
+      "original_file": "need_some_space.glb",
+      "title": "Need some space?",
+      "author": "Loïc Norgeot",
+      "license": "CC BY 4.0",
+      "attribution": "“Need some space?” by Loïc Norgeot, CC BY 4.0",
+      "source_url": "https://sketchfab.com/norgeotloic",
+      "imported": false
+    },
+    {
+      "slug": "old-low-poly-laptop-psx-retro-prop",
+      "original_file": "old-low-poly-laptop-psx-retro-prop.zip",
+      "title": "Old Low-Poly Laptop | PSX Retro Prop",
+      "author": "ZwiebelGames",
+      "license": "CC BY 4.0",
+      "attribution": "“Old Low-Poly Laptop | PSX Retro Prop” by ZwiebelGames, CC BY 4.0",
+      "source_url": "https://sketchfab.com/ZwiebelGames",
+      "imported": false
+    },
+    {
+      "slug": "raven_spaceship_-_star_conflict_v-2",
+      "original_file": "raven_spaceship_-_star_conflict_v.2.glb",
+      "title": "Raven spaceship - Star Conflict (v.2)",
+      "author": "Polenta",
+      "license": "CC BY 4.0",
+      "attribution": "“Raven spaceship - Star Conflict (v.2)” by Polenta, CC BY 4.0",
+      "source_url": "https://sketchfab.com/kln",
+      "imported": false
+    },
+    {
+      "slug": "sci-fi_supercomputer",
+      "original_file": "sci-fi_supercomputer.glb",
+      "title": "Sci-fi Supercomputer",
+      "author": "Jungle Jim",
+      "license": "CC BY 4.0",
+      "attribution": "“Sci-fi Supercomputer” by Jungle Jim, CC BY 4.0",
+      "source_url": "https://sketchfab.com/jungle_jim",
+      "imported": false
+    },
+    {
+      "slug": "sci-fi_weapon__firearm___game_ready",
+      "original_file": "sci-fi_weapon__firearm___game_ready.glb",
+      "title": "Sci-fi Weapon | Firearm  | Game Ready",
+      "author": "by__Rx",
+      "license": "CC BY 4.0",
+      "attribution": "“Sci-fi Weapon | Firearm  | Game Ready” by by__Rx, CC BY 4.0",
+      "source_url": "https://sketchfab.com/by__Rx",
+      "imported": false
+    },
+    {
+      "slug": "shop",
+      "original_file": "shop.glb",
+      "title": "Shop",
+      "author": "Nikitos & 3130",
+      "license": "CC BY 4.0",
+      "attribution": "“Shop” by Nikitos & 3130, CC BY 4.0",
+      "source_url": "https://sketchfab.com/vrcityphoto",
+      "imported": false
+    },
+    {
+      "slug": "space-station",
+      "original_file": "space-station.zip",
+      "title": "Space Station",
+      "author": "re1monsen",
+      "license": "CC BY 4.0",
+      "attribution": "“Space Station” by re1monsen, CC BY 4.0",
+      "source_url": "https://sketchfab.com/re1monsen",
+      "imported": false
+    },
+    {
+      "slug": "space-station-3",
+      "original_file": "space-station-3.zip",
+      "title": "Space Station 3",
+      "author": "re1monsen",
+      "license": "CC BY 4.0",
+      "attribution": "“Space Station 3” by re1monsen, CC BY 4.0",
+      "source_url": "https://sketchfab.com/re1monsen",
+      "imported": false
+    },
+    {
+      "slug": "space_station_3",
+      "original_file": "space_station_3.glb",
+      "title": "Space Station 3",
+      "author": "re1monsen",
+      "license": "CC BY 4.0",
+      "attribution": "“Space Station 3” by re1monsen, CC BY 4.0",
+      "source_url": "https://sketchfab.com/re1monsen",
+      "imported": false
+    },
+    {
+      "slug": "spaceship_fighter__-_version_1_meshy_6",
+      "original_file": "spaceship_fighter__-_version_1_meshy_6.glb",
+      "title": "SpaceShip Fighter  - Version 1 [MESHY 6]",
+      "author": "Ethan Cox",
+      "license": "CC BY 4.0",
+      "attribution": "“SpaceShip Fighter  - Version 1 [MESHY 6]” by Ethan Cox, CC BY 4.0",
+      "source_url": "https://sketchfab.com/EthanfromEngland",
+      "imported": false
+    },
+    {
+      "slug": "usb-stick-psx-prop",
+      "original_file": "usb-stick-psx-prop.zip",
+      "title": "USB Stick | PSX Prop",
+      "author": "ZwiebelGames",
+      "license": "CC BY 4.0",
+      "attribution": "“USB Stick | PSX Prop” by ZwiebelGames, CC BY 4.0",
+      "source_url": "https://sketchfab.com/ZwiebelGames",
+      "imported": false
+    },
+    {
+      "slug": "wardrobe",
+      "original_file": "wardrobe.glb",
+      "title": "Wardrobe",
+      "author": "rizky alamsyah",
+      "license": "CC BY 4.0",
+      "attribution": "“Wardrobe” by rizky alamsyah, CC BY 4.0",
+      "source_url": "https://sketchfab.com/rizki29",
+      "imported": false
+    }
+  ]
+}

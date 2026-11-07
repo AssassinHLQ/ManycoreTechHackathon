@@ -1,0 +1,19 @@
+# 统一行尾：仓库里一律存 LF，检出时按平台转换。
+# 本机全局 core.autocrlf=true，这条把它压住，免得同一份脚本在别人机器上
+# 因为 CRLF/LF 产生满屏假 diff。
+* text=auto eol=lf
+
+# 明确按二进制处理，避免任何转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ogg binary
+*.wav binary
+*.ttf binary
+*.glb binary
+*.gltf binary
+*.blend binary
+
+# Windows 批处理必须保持 CRLF，否则 cmd.exe 解析会出错
+*.bat text eol=crlf
