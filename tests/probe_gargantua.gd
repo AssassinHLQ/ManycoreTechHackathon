@@ -100,27 +100,30 @@ func _run() -> void:
 				dark_index = int(value.substr(5))
 			var warm_tint := Color(1.0, 0.80, 0.52)
 			for i in range(game.gargantua_glow_materials.size()):
-				var material: StandardMaterial3D = game.gargantua_glow_materials[i]
+				var material: Material = game.gargantua_glow_materials[i]
+				if not (material is StandardMaterial3D):
+					continue
+				var std := material as StandardMaterial3D
 				if dark_index == i:
-					material.emission_energy_multiplier = 0.0
-					material.albedo_color = Color(0, 0, 0)
+					std.emission_energy_multiplier = 0.0
+					std.albedo_color = Color(0, 0, 0)
 				elif dark_index >= 0:
-					material.emission_energy_multiplier = 1.6
-					material.albedo_color = Color(1, 1, 1)
+					std.emission_energy_multiplier = 1.6
+					std.albedo_color = Color(1, 1, 1)
 				else:
-					material.emission_energy_multiplier = 0.0 if shadow else energy
-					material.emission = warm_tint if (warm or amber or warmtex) else Color(1, 1, 1)
+					std.emission_energy_multiplier = 0.0 if shadow else energy
+					std.emission = warm_tint if (warm or amber or warmtex) else Color(1, 1, 1)
 					if shadow:
-						material.albedo_color = Color(0, 0, 0)
+						std.albedo_color = Color(0, 0, 0)
 					elif amber:
 						# 摘掉反照率贴图，只留暖色自发光
-						material.albedo_color = warm_tint
-						material.albedo_texture = null
+						std.albedo_color = warm_tint
+						std.albedo_texture = null
 					elif warmtex:
 						# 折中：**保留**反照率贴图（保住盘面的层次），只把颜色相乘成暖色
-						material.albedo_color = warm_tint
+						std.albedo_color = warm_tint
 					else:
-						material.albedo_color = Color(1, 1, 1)
+						std.albedo_color = Color(1, 1, 1)
 			await _frames(3)
 			# 标签要带上处理方式，否则 dark/amber/warmtex 都会写成 "e<数值>" 互相覆盖
 			# （这个坑真踩过：warmtex 那两档把之前的对照图覆盖掉了）

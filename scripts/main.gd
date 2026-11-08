@@ -83,8 +83,31 @@ const GARGANTUA_SCALE := 4.0
 ## 自转角速度（弧度/秒）。原来 0.012，转一圈要 8.7 分钟，近距离看盘面纹理会一帧帧
 ## 挪动、像在抖；压到 0.004 后约 26 分钟一圈 —— 慢到只能看出「在转」，看不出「在卡」。
 const GARGANTUA_SPIN := 0.004
+## 吸积盘的着色器：按半径逐像素求值，不采样贴图（原因见 _build_gargantua 的注释）。
+const GARGANTUA_DISK_SHADER := "res://shaders/black_hole_disk.gdshader"
+## 外圈浮尘 / 碎屑壳的着色器：同一套思路，但更暗更薄。
+const GARGANTUA_HAZE_SHADER := "res://shaders/black_hole_haze.gdshader"
+## 外圈浮尘壳的内缘 / 外缘半径（模型局部单位，实测）。
+## 内缘设在最外那层吸积盘丝带（light3，外缘 1211）之外：blackoutside 这一层
+## 原本是从盘心铺到外圈的一整片浮尘，若从 0 就画会把吸积盘整个盖住。
+const GARGANTUA_HAZE_INNER := 1211.0
+const GARGANTUA_HAZE_OUTER := 1645.0
+## 颜色映射的半径上限：三个吸积盘壳共用同一个「半径 → 颜色」映射，
+## 数值取最外那层 light3 的外缘半径（实测 1210.6）。
+const GARGANTUA_DISK_RAMP_MAX := 1211.0
+## 丝带噪声沿半径的频率。原贴图是 512×512 的横条，落到盘面上每条约合
+## 半径 100+ 单位一条；这里调到约 90 单位一条，接近原贴图但更连续。
+const GARGANTUA_DISK_BAND_FREQ := 0.011
+## 三层吸积盘壳的内缘 / 外缘半径（模型局部单位，实测）。
+## 顺序与 glb 里的 surface 顺序一致：light1 → light2 → light3。
+## 内缘统一设在 180：视界那个球（black hole center）外缘实测约 176，
+## 丝带从它外面开始，中心才有那个纯黑的洞，而不是一团过曝的白。
+const GARGANTUA_SHELL_INNER := [180.0, 180.0, 180.0]
+const GARGANTUA_SHELL_OUTER := [646.0, 558.0, 1211.0]
 var gargantua: Node3D
-var gargantua_glow_materials: Array[StandardMaterial3D] = []
+## 带自发光的材质。吸积盘壳用的是 ShaderMaterial，视界壳仍是 StandardMaterial3D，
+## 所以这里存基类 Material。
+var gargantua_glow_materials: Array[Material] = []
 ## 带自发光的子网格 —— 只转它们，不转整个 gargantua 节点。
 var gargantua_glow_nodes: Array[MeshInstance3D] = []
 var solar_intensity := 0.0
@@ -1153,7 +1176,7 @@ func _build_menu_camera() -> void:
 	menu_camera.current = true
 
 
-## 卡冈图雅：建模 + 发光加亮 + 名牌。
+## 卡冈图雅：建模 + 吸积盘着色 + 名牌。
 ## 模型从 Blender 导出时处在「局部网格 3429 单位、靠节点缩放收到 1200」的状态，
 ## 所以这里只按 GARGANTUA_SCALE 整体再放大，不动它内部的变换。
 func _build_gargantua() -> void:
@@ -1170,38 +1193,83 @@ func _build_gargantua() -> void:
 	add_child(gargantua)
 	gargantua.add_child(packed.instantiate())
 
-	# 发光面加亮 + 调暖。
+	# ── 吸积盘着色 ──────────────────────────────────────────────
 	#
-	# 关于闪烁：这件资产是好几层同心盘面叠在一起的，如果把它们**全刷成同一个暖色、
-	# 同一个亮度**，它们按视角轮流遮挡时面积会忽大忽小，看上去就是「一层黄、一层黑」
-	# 在跳。所以这里只做四件事：
-	#   ① 亮度按层号拉开（内环更亮、外环更暗），层与层之间有余量，遮挡时不会整片塌成黑；
-	#   ② 颜色只**轻微**往暖里推，保留原贴图的彩虹层次，别把整张图压成一块黄；
-	#   ③ 关掉顶点色调制，避免导入的顶点色与贴图打架；
-	#   ④ 面档统一成双面渲染，转过来的时候背面不会突然消失。
+	# 「曲线不光滑」的根因（实测出来的，别再改回去）：
+	#   这件资产的 UV 是极坐标（v ≈ 半径），原贴图上的水平色带落到盘面上本该
+	#   是同心圆；但壳的角向只有约 30 段、径向只有 2~11 段，三角面很大，
+	#   于是每条色带边界被大三角面切成**直弦** —— 屏幕上就是一圈圈多边形阶梯。
+	#   实测：换成纯色（完全不采样贴图）盘面立刻变成完美光滑的椭圆；
+	#         恢复贴图立刻变回锯齿。**几何没问题，是贴图色带被网格量化了。**
+	#
+	# 所以这里不用贴图，改成让着色器**按半径逐像素求值**：同一条半径环上的所有
+	# 顶点颜色完全相同，角向分多少段都看不出接缝，色带边界天然是同心圆。
+	# 丝带层次用沿半径的一维噪声自己做，密度可以调到比原贴图细得多。
+	#
+	# 两套着色器：
+	#   · disk —— 三层吸积盘丝带（light1/light2/light3），暖金渐变 + 细丝带；
+	#   · haze —— 外圈浮尘与碎屑（blackoutside / ring），暗得多，只是一层薄雾。
+	#
+	# 各壳的半径范围与亮度按实测配（见下面的常量表）。注意 blackoutside 这一层
+	# 原本是「从盘心一直到外圈」的一整片浮尘，若从半径 0 就画会把吸积盘整个盖住，
+	# 所以它的内缘设在吸积盘外缘之外，只画盘外那一圈。
+	#
+	# 关于亮度分层：这几层同心盘面按视角轮流遮挡，若全刷成同一个亮度，
+	# 面积会忽大忽小，看上去像「一层黄、一层黑」在跳。所以按层号拉开亮度，
+	# 层与层之间留余量，遮挡时不会整片塌成黑。
+	#
 	# 自转交给 _update_gargantua，那里只转发光子节点，不动名牌、不动节点本身。
-	var warm := Color(1.0, 0.86, 0.66)
+	var disk_shader: Shader = load(GARGANTUA_DISK_SHADER)
+	var haze_shader: Shader = load(GARGANTUA_HAZE_SHADER)
 	var glow_layers: Array[MeshInstance3D] = []
+	var layer_index := 0
 	for node in gargantua.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		var mesh: Mesh = mesh_instance.mesh
-		var layer_index := 0
 		for surface in range(mesh.get_surface_count()):
 			var material := mesh_instance.get_active_material(surface)
 			if not (material is StandardMaterial3D):
 				continue
 			var standard := (material as StandardMaterial3D).duplicate() as StandardMaterial3D
+			var mat_name: String = standard.resource_name if standard.resource_name != "" else ""
 			if standard.emission_enabled:
+				# 吸积盘丝带 —— 换成按半径求值的 shader。
+				var disk := ShaderMaterial.new()
+				disk.shader = disk_shader
+				disk.set_shader_parameter("inner_radius", GARGANTUA_SHELL_INNER[layer_index])
+				disk.set_shader_parameter("outer_radius", GARGANTUA_SHELL_OUTER[layer_index])
+				disk.set_shader_parameter("ramp_max", GARGANTUA_DISK_RAMP_MAX)
 				# 层号每多一层，亮度稍降一点；下限 0.55，别让外环彻底黑掉。
+				#
+				# 亮度不能高：这三层壳在半径上大面积重叠（light1 到 646、light2 到 558、
+				# light3 到 1211），加法混合下中心会被叠三次。base 0.45 × 三层 ≈ 1.2，
+				# 刚好过曝一点点、还有层次；再高就糊成一团纯白。
 				var layer := clampf(1.0 - layer_index * 0.12, 0.55, 1.0)
-				standard.emission_energy_multiplier = 1.6 * layer
-				standard.albedo_color = standard.albedo_color.lerp(warm, 0.35)
-				standard.emission = standard.emission.lerp(warm, 0.35)
+				disk.set_shader_parameter("energy", 0.45 * layer)
+				disk.set_shader_parameter("band_frequency", GARGANTUA_DISK_BAND_FREQ)
+				disk.set_shader_parameter("band_strength", 0.5)
+				disk.set_shader_parameter("swirl_amount", 0.045)
+				disk.set_shader_parameter("edge_fade", 0.16)
+				disk.set_shader_parameter("core_fade", 0.012)
+				mesh_instance.set_surface_override_material(surface, disk)
+				gargantua_glow_materials.append(disk)
+				layer_index += 1
+			elif mat_name.begins_with("black hole blackoutside") or mat_name.begins_with("ring"):
+				# 外圈浮尘 / 碎屑：同一张横向条纹贴图，也会变成虚线状暗环，
+				# 所以同样换成按半径求值（更暗、更薄），且从吸积盘外缘才开始画。
+				var haze := ShaderMaterial.new()
+				haze.shader = haze_shader
+				haze.set_shader_parameter("inner_radius", GARGANTUA_HAZE_INNER)
+				haze.set_shader_parameter("outer_radius", GARGANTUA_HAZE_OUTER)
+				haze.set_shader_parameter("energy", 0.34)
+				haze.set_shader_parameter("band_frequency", 0.009)
+				haze.set_shader_parameter("band_strength", 0.55)
+				mesh_instance.set_surface_override_material(surface, haze)
+			else:
+				# 视界与扭曲壳：纯黑，本来就没有贴图。
 				standard.vertex_color_use_as_albedo = false
 				standard.cull_mode = BaseMaterial3D.CULL_DISABLED
-				gargantua_glow_materials.append(standard)
-				layer_index += 1
-			mesh_instance.set_surface_override_material(surface, standard)
+				mesh_instance.set_surface_override_material(surface, standard)
 		if layer_index > 0:
 			glow_layers.append(mesh_instance)
 	gargantua_glow_nodes = glow_layers
@@ -1749,6 +1817,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if state not in ["walk", "ship"] or paused:
 		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		# F5：飞船的第三人称视角切换。
+		# 只在**驾驶飞船时**才有意义 —— 走路时按 F5 不该有任何反应。
+		# 开发者模式的 F5（解锁全部条目）在上面已经被 dev_handle_key 吃掉了，
+		# 所以两者不冲突：开了开发者模式时 F5 仍然是开发者功能。
+		var ship_code: String = OS.get_keycode_string((event as InputEventKey).physical_keycode)
+		if ship_code == "F5" and state == "ship":
+			if ship.toggle_third_person():
+				return
 	if event.is_action_pressed("map"):
 		toggle_map()
 	elif event.is_action_pressed("journal"):
@@ -2229,7 +2306,7 @@ func get_prompt() -> String:
 		return "E 自动着陆（70 米内 / 速度低于 45）· 滚轮长焦 · X 制动"
 	if touch_ui_active():
 		return "摇杆平移 · 拖动右侧转向 · 圆钮上升 / 下降 / 加力 / 制动"
-	return "WASD / Space 上升 / Ctrl 或 C 下降 · 鼠标转向 · 滚轮长焦 · Tab 目的地 · T 自动航行"
+	return "WASD / Space 上升 / Ctrl 或 C 下降 · 鼠标转向 · 滚轮长焦 · Tab 目的地 · T 自动航行 · F5 看飞船"
 
 
 func _update_scanner(delta: float) -> void:

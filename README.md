@@ -218,6 +218,7 @@
 - 设置菜单（标题与暂停均可打开）：画质预设、分辨率、垂直同步、10 档帧率上限、MSAA、阴影、视野距离、草地密度、主音量与鼠标灵敏度，右侧实时显示当前 FPS；设置写入 `user://starward_settings.json`。
 - 实时星图：天体档案面板、航线虚线、轨道拖尾、彗星轨道、距离环、图例，支持滚轮缩放、拖动平移、点击 / Q E 选择与 T 设为目标；打开星图时角色停止移动。
 - 更厚的星空：三层程序化星场、银河带与尘埃带、双色星云、16 颗带十字光晕的亮星。
+- 卡冈图雅（远景黑洞，外部模型 “Black Hole” by Nestaeric / CC BY 4.0）：吸积盘**按半径逐像素求值**着色（`shaders/black_hole_disk.gdshader` + `shaders/black_hole_haze.gdshader`），不采样贴图。原贴图是横向条纹，而这件资产的 UV 是极坐标、壳的角向只有约 30 段，于是每条色带边界被大三角面切成直弦 —— 屏幕上就是一圈圈多边形阶梯（实测：换成纯色盘面立刻变光滑，恢复贴图立刻变回锯齿）。改成按半径求值后色带边界天然是同心圆，与网格密度无关。
 - 飞船与风车塔细节：座舱框、仪表台、船壳面板、姿态喷口、翼尖灯；塔顶盖板、六叶转子、石扶壁、门楣灯与外墙暖窗。
 - **开发者模式**（F3 连按 5 次）：常驻性能 / 显卡数据面板 + 四个特殊按键（F4 直达宇宙线结局、F5 解锁全部条目、F6 补满资源、F7 跳过本轮）。只在本次运行内有效，默认关闭，所以正式截图与基线里不会多出这块面板。
 
@@ -387,7 +388,7 @@ headless A/B（各取 3 次最小值，本机）：**行星阶段 2,735 → 1,23
 - **字体**：Noto Sans SC（wght=400 静态子集，含项目全部用字 + GB2312 一级 3755 常用字 + ASCII / 标点 / 符号，约 1.22 MB）与 Noto Sans Symbols 2（约 5 KB），SIL Open Font License 1.1，许可证全文见 `assets/OFL-NotoSansSC.txt` 与 `assets/OFL-NotoSansSymbols2.txt`。
   - 版权归属：Noto Sans SC © 2014-2021 Adobe (http://www.adobe.com/)，声明保留字体名 `Source`；Noto Sans Symbols 2 © 2022 The Noto Project Authors。
   - 本项目对字体的修改：① 由可变字体实例化为 wght=400 静态字重；② 按项目用字裁剪为子集。修改版仍以 SIL OFL 1.1 发布，未使用保留字体名 `Source`，也未使用任何权利方名称作宣传或背书。
-- **3D 模型、贴图、音频**：星球、地形、洞穴、建筑、归航站、家具、粒子、星云天空、太阳表面与全部音效均由项目代码或着色器程序化生成。**唯一的例外是玩家飞船**：使用 Sketchfab 作品 “SpaceShip Fighter - Version 1 [MESHY 6]” by **Ethan Cox**，许可 **CC BY 4.0**（可商用、需署名）。文件位于 `assets/models/ship-fighter/model.glb`（几何 0.51 MB）与 `assets/models/ship-fighter/textures/`（baseColor 4096×4096、normal 4096×4096、ORM 2048×2048，原始 PNG 无损；进包时 normal/ORM 按 `process/size_limit` 降到 2048/1024，画面上看不出差别）。原始下载件 38.8 MB；本项目把贴图**外链**到 `textures/`（Godot 的 GLTF 导入器会把内嵌贴图再抽一份到磁盘，内嵌等于同一份存两遍），并由 `tools/ship_build.py` 把变换烘焙进网格、原点移到底部中心、朝向校正为 Godot 约定（机头 -Z、机顶 +Y、翼展 X），运行时按机长缩放到 6.5 m。**朝向由脚本实测判定而非照抄注释** —— 旧版本只绕 X 轴 +90°，机头仍留在 -X，飞船是横着飞的；现由 `tests/probe_ship_facing.gd` 六向截图回归。其余 3D 模型、HDRI 天空盒与音频采样未使用任何外部素材。
+- **3D 模型、贴图、音频**：星球、地形、洞穴、建筑、归航站、家具、粒子、星云天空、太阳表面与全部音效均由项目代码或着色器程序化生成。**例外是两个外部模型**：玩家飞船使用 Sketchfab 作品 “SpaceShip Fighter - Version 1 [MESHY 6]” by **Ethan Cox**，远景黑洞「卡冈图雅」使用 “Black Hole” by **Nestaeric**，两者许可均为 **CC BY 4.0**（可商用、需署名）。飞船文件位于 `assets/models/ship-fighter/model.glb`（几何 0.51 MB）与 `assets/models/ship-fighter/textures/`（baseColor 4096×4096、normal 4096×4096、ORM 2048×2048，原始 PNG 无损；进包时 normal/ORM 按 `process/size_limit` 降到 2048/1024，画面上看不出差别）。原始下载件 38.8 MB；本项目把贴图**外链**到 `textures/`（Godot 的 GLTF 导入器会把内嵌贴图再抽一份到磁盘，内嵌等于同一份存两遍），并由 `tools/ship_build.py` 把变换烘焙进网格、原点移到底部中心、朝向校正为 Godot 约定（机头 -Z、机顶 +Y、翼展 X），运行时按机长缩放到 6.5 m。**朝向由脚本实测判定而非照抄注释** —— 旧版本只绕 X 轴 +90°，机头仍留在 -X，飞船是横着飞的；现由 `tests/probe_ship_facing.gd` 六向截图回归。黑洞模型位于 `assets/models/black-hole/model.glb`，其吸积盘**不使用原贴图**而是按半径程序化着色（见上节「已实现」）。其余 3D 模型、HDRI 天空盒与音频采样未使用任何外部素材。
 - **UI 与标牌**：使用项目内嵌字体与代码绘制，没有引入第三方图标库。
 
 ### 灵感借鉴

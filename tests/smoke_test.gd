@@ -138,10 +138,28 @@ func _run() -> void:
 		_check(model_meshes >= 2, "Gargantua keeps the black hole body and its accretion disk")
 		_check(game.gargantua_glow_materials.size() >= 3,
 			"the accretion disk glow materials are found and boosted")
+		# 吸积盘壳改用「按半径求值」的着色器（原因：贴图色带被稀疏网格切成直弦，
+		# 屏幕上是一圈圈多边形阶梯）。所以这里读 shader 参数，并且**额外钉住**
+		# 「壳按半径着色」这件事本身 —— 免得哪天有人改回贴图方案，锯齿又回来。
+		var disk_shader_materials := 0
 		for material in game.gargantua_glow_materials:
-			if material.emission_energy_multiplier <= 1.0:
-				_check(false, "every boosted glow material actually got a higher emission energy")
-				break
+			if material is ShaderMaterial:
+				disk_shader_materials += 1
+				var energy: float = (material as ShaderMaterial).get_shader_parameter("energy")
+				if energy <= 0.0:
+					_check(false, "every boosted glow material actually got a positive emission energy")
+					break
+				var inner_radius: float = (material as ShaderMaterial).get_shader_parameter("inner_radius")
+				var outer_radius: float = (material as ShaderMaterial).get_shader_parameter("outer_radius")
+				if outer_radius <= inner_radius:
+					_check(false, "every accretion disk shell has a positive radial span")
+					break
+			elif material is StandardMaterial3D:
+				if (material as StandardMaterial3D).emission_energy_multiplier <= 1.0:
+					_check(false, "every boosted glow material actually got a higher emission energy")
+					break
+		_check(disk_shader_materials == game.gargantua_glow_materials.size(),
+			"every accretion disk shell is shaded by radius instead of by texture")
 		_check(not game.gargantua.find_child("GargantuaLabel", true, false) is Label3D,
 			"Gargantua has no name plate floating over the disk")
 	# CC BY 4.0 要求署名必须出现在**游戏里**（导出后的 exe/网页并不带仓库文档）
