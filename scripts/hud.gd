@@ -16,6 +16,7 @@ var death_shade: ColorRect
 var death_reason: Label
 var death_progress: Label
 var solar_warning: Label
+var bh_warning: Label
 var location_title: Label
 var location_sub: Label
 var time_label: Label
@@ -139,6 +140,12 @@ func _build_hud() -> void:
 	_center_anchor(solar_warning, false)
 	solar_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	solar_warning.visible = false
+
+	# 卡冈图雅的引力警告：放在恒星警告下面一条，两者可以同时出现（理论上不会，但不必互斥）。
+	bh_warning = _label(hud_root, "", Rect2(-500, 192, 1000, 34), 17, Color("e8c07a"))
+	_center_anchor(bh_warning, false)
+	bh_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bh_warning.visible = false
 
 	prompt = _label(hud_root, "", Rect2(-490, -138, 980, 52), 17, Color("dcece7"))
 	_center_anchor(prompt, true)
@@ -644,6 +651,23 @@ func _process(delta: float) -> void:
 	if solar_warning.visible:
 		solar_warning.text = "⚠ 恒星高温区 · 辐射强度 %d%% · 立即远离" % int(game.solar_intensity * 100.0)
 		solar_warning.add_theme_color_override("font_color", Color("ff6d4c") if game.solar_intensity > 0.55 else Color("ffb178"))
+	# 卡冈图雅的引力告警：只在驾驶舱里、且真的被拉到了才显示，免得走路时也在喊。
+	var ship = game.ship
+	var bh_visible: bool = (not attic_line) and game.state == "ship" and ship != null \
+		and ship.bh_warn_level > 0 and not ship.landed and not ship.docked
+	bh_warning.visible = bh_visible
+	if bh_visible:
+		var strength := int(clampf(ship.bh_pull_strength * 100.0, 0.0, 100.0))
+		match int(ship.bh_warn_level):
+			1:
+				bh_warning.text = "引力场 · 卡冈图雅 %d%% · 航线已被牵引" % strength
+				bh_warning.add_theme_color_override("font_color", Color("e8c07a"))
+			2:
+				bh_warning.text = "⚠ 引力增强 %d%% · 推力已难对抗 · 按住 Shift 喷气脱离" % strength
+				bh_warning.add_theme_color_override("font_color", Color("ffb178"))
+			_:
+				bh_warning.text = "⚠ 临界 %d%% · 引擎已达极限 · 即将越过视界" % strength
+				bh_warning.add_theme_color_override("font_color", Color("ff6d4c"))
 	var planet = game.current_planet()
 	if game.in_attic:
 		location_title.text = "阁楼 · 给自己一段慢时间"

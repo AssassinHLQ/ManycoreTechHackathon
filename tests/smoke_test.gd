@@ -398,6 +398,54 @@ func _run() -> void:
 	game.ship.fuel_empty_time = 0.0
 	game.ship._physics_process(0.1)
 	_check(game.state == "ship", "deep space no longer kills the ship")
+
+	# ── 卡冈图雅的引力 ────────────────────────────────────────────────
+	# 钉四点：范围外完全自由、越近越大、内圈推力顶不住、压到视界就死。
+	var bh_ship = game.ship
+	var hole: Vector3 = game.gargantua.global_position
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_PULL_RANGE + 1500.0)
+	bh_ship.velocity = Vector3.ZERO
+	_check(bh_ship._black_hole_pull(0.016) == Vector3.ZERO,
+		"outside the pull range the black hole does not touch the ship")
+	var far_pull: float = bh_ship._black_hole_pull(0.016).length()
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, 1800.0)
+	bh_ship.velocity = Vector3.ZERO
+	var near_pull: float = bh_ship._black_hole_pull(0.016).length()
+	_check(near_pull > far_pull * 8.0,
+		"the black hole pulls harder the closer the ship gets")
+	_check(near_pull > 150.0,
+		"up close the pull beats even the boost thruster (150)")
+	# 耗油：引力场外不吃额外油耗，越靠近倍率越高（同样一次点火更烧钱）。
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_PULL_RANGE + 1500.0)
+	bh_ship.velocity = Vector3.ZERO
+	bh_ship._black_hole_pull(0.016)
+	_check(is_equal_approx(bh_ship.bh_fuel_multiplier, 1.0),
+		"outside the pull range thrust costs no extra propellant")
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, 2400.0)
+	bh_ship.velocity = Vector3.ZERO
+	bh_ship._black_hole_pull(0.016)
+	var mid_fuel: float = bh_ship.bh_fuel_multiplier
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, 300.0)
+	bh_ship.velocity = Vector3.ZERO
+	bh_ship._black_hole_pull(0.016)
+	var deep_fuel: float = bh_ship.bh_fuel_multiplier
+	_check(mid_fuel > 1.4 and deep_fuel > mid_fuel * 1.4,
+		"thrusting near the black hole burns noticeably more propellant")
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_HORIZON - 1.0)
+	bh_ship.velocity = Vector3.ZERO
+	var captured: bool = bh_ship._apply_black_hole_capture(0.016)
+	_check(captured and game.state == "dying",
+		"crossing the horizon swallows the ship and starts the death sequence")
+	# 这几条测完必须把飞船挪回引力场外、并把状态清干净，否则后面的燃料测试
+	# 会在黑洞旁边跑，被牵引力拖着，读出来的数就不对了。
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_PULL_RANGE + 1500.0)
+	bh_ship.velocity = Vector3.ZERO
+	bh_ship.bh_warn_level = 0
+	bh_ship.bh_orbit_age = 0.0
+	bh_ship.bh_distance = INF
+	bh_ship.bh_fuel_multiplier = 1.0
+	game.death_timer = 0.0
+	game.state = "ship"
 	game.ship.velocity = Vector3(100.0, 0.0, 0.0)
 	game.ship.fuel = 50.0
 	Input.action_press("brake")

@@ -21,6 +21,11 @@ const HULL_Z := 3.25
 const AUTOPILOT_ACCEL := 230.0
 const AUTOPILOT_FUEL_PER_DV := 0.008
 const MANUAL_FUEL_PER_DV := 0.00625
+## 卡冈图雅引力场里的最大油耗倍率（贴着视界时）。外圈从 1.0 平缓往上涨，
+## 进场越深越明显，到内圈是 3 倍 —— 也就是说「想靠推力和它硬顶」几乎一定会烧干。
+const BH_FUEL_MULTIPLIER := 3.0
+## 倍率曲线的形状：1 = 线性，>1 = 外圈几乎无感、内圈陡增。
+const BH_FUEL_CURVE := 2.4
 var thrust_level := 0.0
 var mouse_sensitivity := 0.0018
 const WEB_LOOK_SCALE := 0.5
@@ -40,6 +45,36 @@ const FUEL_LIFE_SUPPORT := 90.0
 const STATION_COLLISION_RANGE := 400.0
 const STATION_COLLISION_MASK := 5
 
+# ── 卡冈图雅的引力 ────────────────────────────────────────────────────────
+## 从多远开始有牵引力。再往外就完全自由航行了。
+const BH_PULL_RANGE := 7200.0
+## 视界半径（飞船在这个半径以内就被吞掉）。
+const BH_HORIZON := 120.0
+## 远端加速度（天文学上「拉到就回不来」的那圈，换算成游戏单位）。
+const BH_ACCEL_FAR := 1.6
+## 近端加速度：贴到视界附近时的最大牵引。飞船推力 72 / 喷气 150，
+## 所以约 0.70 closeness（离视界 ~2100）开始推不动 —— 那就是「回不来」的界线。
+const BH_ACCEL_NEAR := 420.0
+## 「逃逸层」系数：内层加速度就是再乘这个数，用来表现「越近越难挣脱」。
+const BH_ESCAPE_BOOST := 3.2
+## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
+const BH_TANGENT_RATIO := 0.5
+## 进场后多久之内还保留绕转（秒）。过了这个时间就只剩往里拽。
+const BH_ORBIT_FADE := 22.0
+## 轨道阻尼系数（每秒）。切向速度每帧按这个比例衰减，让绕转的飞船慢慢螺进，
+## 而不是在固定半径上变成一条闭合圆轨道。
+const BH_ORBIT_DRAG := 0.28
+var bh_orbit_age := 0.0
+var bh_distance := INF
+var bh_pull := Vector3.ZERO
+## 0~1，给 HUD 的牵引强度（1 = 已到视界边缘）。
+var bh_pull_strength := 0.0
+## 卡冈图雅引力带来的额外油耗倍率（1 = 不受影响）。由 _black_hole_pull 每帧算好，
+## 推力、喷气、制动、自动航行四处扣油都乘它 —— 越靠近黑洞，同样的动作越费推进剂。
+var bh_fuel_multiplier := 1.0
+var bh_warn_level := 0
+var bh_warn_cooldown := 0.0
+
 
 func _ready() -> void:
 	_build_model()
@@ -49,13 +84,25 @@ func _ready() -> void:
 	hull_body.collision_mask = 0
 	var hull_collision := CollisionShape3D.new()
 	hull_shape = BoxShape3D.new()
-	hull_shape.size = Vector3(3.0, 1.8, 4.6)
+	if ship_model_length > 0.01:
+		# 外部模型：按实测包围盒的 72% 做碰撞（留出翼尖、天线这类细枝末节）。
+		hull_shape.size = Vector3(
+			maxf(0.6, ship_model_span * 0.72),
+			maxf(0.5, ship_model_height * 0.85),
+			maxf(0.8, ship_model_length * 0.72))
+		hull_collision.position = Vector3(0.0, ship_model_height * 0.5, 0.0)
+	else:
+		hull_shape.size = Vector3(3.0, 1.8, 4.6)
+		hull_collision.position = Vector3(0, -0.2, 0.2)
 	hull_collision.shape = hull_shape
-	hull_collision.position = Vector3(0, -0.2, 0.2)
 	hull_body.add_child(hull_collision)
 	add_child(hull_body)
 	camera = Camera3D.new()
-	camera.position = Vector3(0, 1.54, -1.42)
+	if ship_model_length > 0.01:
+		# 座舱：机长 22% 处靠后、机高 78% 的高度，略微上抬看清机头。
+		camera.position = Vector3(0.0, ship_model_height * 0.78, ship_model_length * 0.22)
+	else:
+		camera.position = Vector3(0, 1.54, -1.42)
 	camera.fov = 72.0
 	camera.near = 0.09
 	camera.far = 60000.0
@@ -149,7 +196,90 @@ func _wing_mesh(span: float, root_chord: float, tip_chord: float,
 	return tool.commit()
 
 
+## 外部飞船模型（CC BY 4.0，见 assets/models/LICENSE_MANIFEST.json）。
+## 为空串时退回 _build_model() 的程序化几何 —— 保留旧模板，换模型不影响可玩性。
+const SHIP_MODEL_PATH := "res://assets/models/ship-fighter/model.glb"
+## 模型原始朝向是 Y-up（机头 -Y、机顶 +Z），绕 X 轴 +90° 转成 Godot 的 Z-up。
+const SHIP_MODEL_ROTATION := Vector3(PI * 0.5, 0.0, 0.0)
+## 目标机长（米）。原模型只有 1.38 m，放大到和旧程序化船体（全长 6.5 m）一致，
+## 否则驾驶员相机、着陆高度、对接口尺度全部要跟着改，还会看起来像个小无人机。
+const SHIP_MODEL_TARGET_LENGTH := 6.5
+## 落地下压量（米）：land() 给出的落点原本是给"旧船体 + 起落架"留过余量的，
+## 新船底是平的，不下压就会悬空约 0.96 m。这里把底部补到贴地。
+const SHIP_MODEL_GROUND_SINK := 0.96
+## 模型原始机长（Z, 米），用来把碰撞盒与相机按比例摆到船体上。
+var ship_model_length := 0.0
+var ship_model_height := 0.0
+var ship_model_span := 0.0
+
+
+## 尝试实例化外部模型。成功返回 true 并填好实测尺寸，失败返回 false 走程序化几何。
+func _build_external_model() -> bool:
+	if SHIP_MODEL_PATH == "" or not ResourceLoader.exists(SHIP_MODEL_PATH):
+		return false
+	var packed := load(SHIP_MODEL_PATH) as PackedScene
+	if packed == null:
+		return false
+	var holder := Node3D.new()
+	holder.name = "ShipModel"
+	var model := packed.instantiate() as Node3D
+	if model == null:
+		holder.free()
+		return false
+	model.rotation = SHIP_MODEL_ROTATION
+	holder.add_child(model)
+	add_child(holder)
+
+	# 实测包围盒：转完之后 X = 翼展，Y = 机高，Z = 机长。
+	# 关键：只能用相对 holder 的局部变换算，绝不能用 global_transform ——
+	# _ready() 时飞船自身还没被摆到世界位置，global 坐标是没有意义的
+	# （实测过：拿 global 算会把 holder.position 推成 -12248，模型直接飞出天际）。
+	var bounds := AABB()
+	var first := true
+	var stack: Array[Node] = [model]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D:
+			var mi := node as MeshInstance3D
+			# 从 mi 到 model 的相对变换（model 是 holder 的直接子节点，已带朝向旋转）
+			var rel := Transform3D.IDENTITY
+			var walker: Node = mi
+			while walker != null and walker != model:
+				rel = (walker as Node3D).transform * rel
+				walker = walker.get_parent()
+			if walker == model:
+				rel = model.transform * rel
+			var box: AABB = rel * mi.get_aabb()
+			if first:
+				bounds = box
+				first = false
+			else:
+				bounds = bounds.merge(box)
+		for child in node.get_children():
+			stack.append(child)
+	if first:
+		return false
+	# 把模型中心挪到原点、底部贴 y=0。注意顺序：先按 factor 缩放，再用缩放后的
+	# 包围盒算偏移 —— 之前写成 holder.position *= factor 会把模型往下推，直接陷进地形。
+	var center := bounds.get_center()
+	ship_model_span = absf(bounds.size.x)
+	ship_model_height = absf(bounds.size.y)
+	ship_model_length = absf(bounds.size.z)
+	var factor := 1.0
+	if ship_model_length > 0.001:
+		factor = SHIP_MODEL_TARGET_LENGTH / ship_model_length
+		ship_model_span *= factor
+		ship_model_height *= factor
+		ship_model_length *= factor
+	holder.scale = Vector3.ONE * factor
+	holder.position = Vector3(-center.x * factor, -bounds.position.y * factor - SHIP_MODEL_GROUND_SINK, -center.z * factor)
+	return true
+
+
 func _build_model() -> void:
+	# 优先用外部模型；没有就退回程序化几何（原逻辑一行没删）。
+	if _build_external_model():
+		return
 	var ivory := _material(Color("b9b6a6"))
 	ivory.metallic = 0.35
 	ivory.roughness = 0.5
@@ -460,6 +590,8 @@ func _physics_process(delta: float) -> void:
 	var normal: Vector3 = offset.normalized()
 	var altitude: float = offset.length() - planet.radius
 	var gravity: Vector3 = -normal * (planet.gravity_strength * clampf(1.0 - altitude / (planet.radius * 0.6), 0.0, 1.0))
+	# 卡冈图雅的牵引。它比行星重得多，所以先算它，再和行星重力叠一起。
+	gravity += _black_hole_pull(delta)
 	var thrusting := false
 
 	if autopilot and target != null:
@@ -476,7 +608,7 @@ func _physics_process(delta: float) -> void:
 		var delta_v := velocity.distance_to(before_velocity)
 		if delta_v > 0.0001:
 			if fuel > 0.0:
-				fuel = maxf(0.0, fuel - delta_v * AUTOPILOT_FUEL_PER_DV)
+				fuel = maxf(0.0, fuel - delta_v * AUTOPILOT_FUEL_PER_DV * bh_fuel_multiplier)
 			else:
 				velocity = before_velocity
 				autopilot = false
@@ -500,7 +632,7 @@ func _physics_process(delta: float) -> void:
 		if thrust.length_squared() > 0.01 and fuel > 0.0:
 			var acceleration := 150.0 if boosting else 72.0
 			velocity += global_transform.basis * thrust * acceleration * delta
-			fuel = maxf(0.0, fuel - delta * (1.6 if boosting else 0.45))
+			fuel = maxf(0.0, fuel - delta * (1.6 if boosting else 0.45) * bh_fuel_multiplier)
 			thrusting = true
 			thrust_level = 1.0 if boosting else 0.5
 		else:
@@ -510,7 +642,7 @@ func _physics_process(delta: float) -> void:
 			velocity = velocity.move_toward(Vector3.ZERO, delta * 260.0)
 			var brake_dv := velocity.distance_to(before_brake)
 			if brake_dv > 0.0001:
-				fuel = maxf(0.0, fuel - brake_dv * MANUAL_FUEL_PER_DV)
+				fuel = maxf(0.0, fuel - brake_dv * MANUAL_FUEL_PER_DV * bh_fuel_multiplier)
 				thrusting = true
 				thrust_level = 0.35
 		velocity += gravity * delta
@@ -518,6 +650,8 @@ func _physics_process(delta: float) -> void:
 	if velocity.length() > 1600.0:
 		velocity = velocity.normalized() * 1600.0
 	_move_with_station_collision(delta)
+	if _apply_black_hole_capture(delta):
+		return
 
 	if game.station != null and not docked and not landed and dock_cooldown <= 0.0:
 		var station_port: Vector3 = game.station.docking_point()
@@ -567,6 +701,113 @@ func _physics_process(delta: float) -> void:
 		fuel_empty_time = 0.0
 	game.audio.set_engine(thrusting, thrust_level)
 	_update_engine(delta)
+
+
+## 卡冈图雅的引力场。
+##
+## 强度按 1/r² 衰减：在 BH_PULL_RANGE 处大约是 1.6（巡航时几乎察觉不到，只是航线被
+## 慢慢掰弯），到视界附近涨到 BH_ACCEL_NEAR。推力只有 72（按 Shift 喷气 150），所以
+## 进入内圈之后基本是「看着自己被吸进去」—— 这正是想要的手感。
+##
+## 外圈加一层「切向拖拽」：飞船会绕着黑洞打转，像被甩进了轨道，而不是笔直撞上去。
+## 内圈把这层压掉，改成纯粹往里拽。
+##
+## 这里只负责算力，落点和死亡判定在 _apply_black_hole_capture 里。
+func _black_hole_pull(delta: float) -> Vector3:
+	bh_pull = Vector3.ZERO
+	bh_pull_strength = 0.0
+	bh_fuel_multiplier = 1.0
+	if game.gargantua == null:
+		bh_distance = INF
+		return Vector3.ZERO
+	var to_hole: Vector3 = game.gargantua.global_position - global_position
+	bh_distance = to_hole.length()
+	if bh_distance > BH_PULL_RANGE or bh_distance < 0.001:
+		bh_distance = maxf(bh_distance, 0.0)
+		bh_orbit_age = 0.0
+		return Vector3.ZERO
+	bh_orbit_age += delta
+	var direction := to_hole / bh_distance
+	# 用「离视界的距离」而不是绝对距离来插值，这样近处的加速度才够陡。
+	var span := maxf(BH_PULL_RANGE - BH_HORIZON, 1.0)
+	var closeness := clampf((BH_PULL_RANGE - bh_distance) / span, 0.0, 1.0)
+	var strength := lerpf(BH_ACCEL_FAR, BH_ACCEL_NEAR, pow(closeness, 2.2))
+	bh_pull_strength = closeness
+	# 越靠近黑洞，越要开大推力去对抗牵引，于是同样一次点火烧掉的推进剂更多。
+	# 倍率这里就定下来，推力/喷气/制动/自动航行四处的扣油统一乘它。
+	bh_fuel_multiplier = lerpf(1.0, BH_FUEL_MULTIPLIER, pow(closeness, BH_FUEL_CURVE))
+	var pull := direction * strength
+	# 切向分量：让飞船先被甩成绕转，而不是笔直扎进去。但绕转不能是永久的 ——
+	# 纯切向力是闭轨的，飞船会绕着黑洞一直转、永远掉不进去（实测会在 ~1000 处
+	# 稳成一个圆轨道）。所以切向强度随「在场时长」衰减：进来时是绕，绕上一圈多
+	# 之后就只剩往里拽。玩家看到的观感是「被拉住转了几圈，然后被吞进去」。
+	var tangential_weight := (1.0 - smoothstep(0.0, BH_ORBIT_FADE, bh_orbit_age)) \
+		* (1.0 - smoothstep(0.85, 0.97, closeness))
+	if tangential_weight > 0.001:
+		var drift := velocity - direction * velocity.dot(direction)
+		var tangent: Vector3
+		if drift.length_squared() > 0.0001:
+			tangent = drift.normalized()
+		else:
+			# 正对着黑洞飞：随便取一个垂直于视线的方向，把它推开一点形成绕转。
+			tangent = direction.cross(Vector3.UP)
+			if tangent.length_squared() < 0.0001:
+				tangent = direction.cross(Vector3.RIGHT)
+			tangent = tangent.normalized()
+		pull += tangent * strength * BH_TANGENT_RATIO * tangential_weight
+		# 轨道阻尼：真实的吸积过程靠摩擦耗掉角动量，游戏里也得有这一下。
+		# 不然飞船会绕成一条完美的闭合圆轨道、在固定半径上永远打转（实测卡在
+		# ~1000 处不动）。这里直接扣掉一点切向速度，让它慢慢往里螺进。
+		# 注意：只扣**切向**分量，朝里的那部分速度不动，所以「被吸进去」的手感还在。
+		var drag := drift * clampf(BH_ORBIT_DRAG * delta, 0.0, 0.5)
+		velocity -= drag
+	bh_pull = pull
+	return pull
+
+## 视界判定 + 分档警告。返回 true 表示这一帧已经被吞掉，调用方应当停止后续物理。
+func _apply_black_hole_capture(delta: float) -> bool:
+	if game.gargantua == null:
+		return false
+	# 自己再量一次距离：bh_distance 是 _black_hole_pull 里写的，而那个函数在上一帧
+	# 就可能因为各种原因提前 return。判定视界这么要紧的事不该依赖别处的副作用。
+	bh_distance = global_position.distance_to(game.gargantua.global_position)
+	bh_warn_cooldown = maxf(0.0, bh_warn_cooldown - delta)
+	if bh_distance <= BH_HORIZON:
+		autopilot = false
+		velocity = Vector3.ZERO
+		game.begin_death("飞船越过了卡冈图雅的视界", 5.2)
+		return true
+	# 自动航行一旦进了内圈就中止：让它继续算会自己撞进视界，玩家会以为程序出 bug。
+	if autopilot and bh_distance < BH_PULL_RANGE * 0.62:
+		autopilot = false
+		game.hud.show_toast("自动航行中止：卡冈图雅的引力吞掉了航线", 3.6)
+	var level := 0
+	if bh_distance < BH_PULL_RANGE * 0.34:
+		level = 3
+	elif bh_distance < BH_PULL_RANGE * 0.62:
+		level = 2
+	elif bh_distance < BH_PULL_RANGE:
+		level = 1
+	if level > bh_warn_level and bh_warn_cooldown <= 0.0:
+		bh_warn_cooldown = 6.0 if level == 1 else 9.0
+		match level:
+			1:
+				game.hud.show_toast("引力警告 · 前方黑洞正在拉扯航线 · 建议调头", 3.6)
+			2:
+				game.hud.show_toast("引力警告 · 推力已开始不敌牵引 · 按住 Shift 喷气或远离", 3.8)
+			3:
+				game.hud.show_toast("⚠ 临界 · 你已经逃不掉了 · 视界就近在眼前", 4.0)
+			_:
+				pass
+		game.audio.play_ui(220.0 - level * 30.0)
+	elif level < bh_warn_level:
+		# 往外退时把档位重置，这样下次再探头还会提醒。
+		bh_warn_cooldown = maxf(bh_warn_cooldown, 3.0)
+	bh_warn_level = level
+	if bh_distance < BH_HORIZON * 2.6 and bh_warn_cooldown <= 0.0:
+		game.hud.show_toast("⚠ 视界边缘 · 引擎已接近极限", 2.6)
+		bh_warn_cooldown = 2.4
+	return false
 
 
 func _move_with_station_collision(delta: float) -> void:
@@ -697,6 +938,11 @@ func takeoff() -> void:
 		return
 	if not landed or landed_planet == null:
 		return
+	# 新的一次飞行：上一轮留下的引力警告状态作废，别一升空就弹「你已经逃不掉」。
+	bh_warn_level = 0
+	bh_warn_cooldown = 2.0
+	bh_pull_strength = 0.0
+	bh_distance = INF
 	var normal: Vector3 = (global_position - landed_planet.global_position).normalized()
 	reparent(game, true)
 	landed = false

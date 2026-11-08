@@ -387,7 +387,7 @@ headless A/B（各取 3 次最小值，本机）：**行星阶段 2,735 → 1,23
 - **字体**：Noto Sans SC（wght=400 静态子集，含项目全部用字 + GB2312 一级 3755 常用字 + ASCII / 标点 / 符号，约 1.22 MB）与 Noto Sans Symbols 2（约 5 KB），SIL Open Font License 1.1，许可证全文见 `assets/OFL-NotoSansSC.txt` 与 `assets/OFL-NotoSansSymbols2.txt`。
   - 版权归属：Noto Sans SC © 2014-2021 Adobe (http://www.adobe.com/)，声明保留字体名 `Source`；Noto Sans Symbols 2 © 2022 The Noto Project Authors。
   - 本项目对字体的修改：① 由可变字体实例化为 wght=400 静态字重；② 按项目用字裁剪为子集。修改版仍以 SIL OFL 1.1 发布，未使用保留字体名 `Source`，也未使用任何权利方名称作宣传或背书。
-- **3D 模型、贴图、音频**：没有使用任何外部 3D 模型、贴图、HDRI 天空盒或音频采样。星球、地形、洞穴、建筑、归航站、家具、飞船、粒子、星云天空、太阳表面与全部音效均由项目代码或着色器程序化生成。
+- **3D 模型、贴图、音频**：星球、地形、洞穴、建筑、归航站、家具、粒子、星云天空、太阳表面与全部音效均由项目代码或着色器程序化生成。**唯一的例外是玩家飞船**：使用 Sketchfab 作品 “SpaceShip Fighter - Version 1 [MESHY 6]” by **Ethan Cox**，许可 **CC BY 4.0**（可商用、需署名）。文件位于 `assets/models/ship-fighter/model.glb`，原始 38.8 MB；本项目将贴图由 4096/2048 降为 1024 并转 JPEG、原点移到底部中心、运行时校正朝向并按机长缩放到 6.5 m（脚本见 `tools/slim_ship.py`）。其余 3D 模型、HDRI 天空盒与音频采样未使用任何外部素材。
 - **UI 与标牌**：使用项目内嵌字体与代码绘制，没有引入第三方图标库。
 
 ### 灵感借鉴
@@ -419,8 +419,9 @@ headless A/B（各取 3 次最小值，本机）：**行星阶段 2,735 → 1,23
 - 你可以自由使用、修改、再分发，但**衍生作品必须以同一许可证开源**；
 - AGPL 第 13 条：**通过网络提供服务时，必须向使用者提供对应源代码**——所以本项目的源码与这份
   构建产物一同公开；
-- 第三方组件保留各自许可证：**Godot Engine 4.7.1（MIT）**、**Noto Sans SC 子集（SIL OFL 1.1）**，
-  详见 `THIRD_PARTY_NOTICES.md` 与 `demo/licenses/`。
+- 第三方组件保留各自许可证：**Godot Engine 4.7.1（MIT）**、**Noto Sans SC 子集（SIL OFL 1.1）**、
+  **飞船模型 "SpaceShip Fighter - Version 1 [MESHY 6]" by Ethan Cox（CC BY 4.0）**，
+  详见 `THIRD_PARTY_NOTICES.md`、`assets/models/LICENSE_MANIFEST.json` 与 `demo/licenses/`。
 
 > 说明：AGPL 是"防倒钩"的法律手段（禁止他人拿走做成闭源产品），但它不阻止别人**照样开源地**
 > 复制与再分发；技术上无法阻止复制，只能保证复制必须公开源码。
