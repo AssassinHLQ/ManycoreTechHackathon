@@ -13,6 +13,13 @@ var fuel := 100.0
 var hull := 100.0
 var focus := false
 var zoom := 1.0
+## 第三人称（看飞船外观）模式。座舱视角看的是机腹斜角，很不好看。
+var third_person := false
+## 第三人称时相机绕船身转的角度（弧度）。鼠标左右拖动可以绕着看。
+var orbit_yaw := 0.0
+var orbit_pitch := 0.28
+## 第三人称相机的跟随距离（米）。滚轮也能调。
+var orbit_distance := 13.0
 
 ## 船体椭球半轴（米）。所有贴附件的位置都从它推导，避免悬空。
 const HULL_X := 1.75
@@ -99,8 +106,17 @@ func _ready() -> void:
 	add_child(hull_body)
 	camera = Camera3D.new()
 	if ship_model_length > 0.01:
-		# 座舱：机长 22% 处靠后、机高 78% 的高度，略微上抬看清机头。
-		camera.position = Vector3(0.0, ship_model_height * 0.78, ship_model_length * 0.22)
+		# 座舱相机：放在**机头一侧**的座舱罩里。
+		# 旧版这里是 Vector3(0, 机高*0.78, 机长*0.22) —— 机尾方向、高度 78%。
+		# 那组数字是照着**旧朝向**（机头在 -X、机身横着）调的，
+		# 修正朝向后（机头 -Z）镜头变成从机尾上方斜看机腹，
+		# 机头歪在画面角落 —— 玩家说的「视角不正」。
+		# 现在的数值来自 tests/probe_ship_cockpit.gd 的实测：
+		#   模型局部坐标里，座舱隆起在 Z ≈ -0.24（机头侧）、顶面 Y ≈ 0.348；
+		#   换算到游戏尺度（机长 6.5 m，factor ≈ 3.403）：
+		#   Z ≈ -0.82 m、Y ≈ 1.18 m。
+		# 相机再往机头方向挪一点点、略低于罩顶，这样罩沿不会糊住半个屏幕。
+		camera.position = Vector3(0.0, ship_model_height * 0.78, -ship_model_length * 0.125)
 	else:
 		camera.position = Vector3(0, 1.54, -1.42)
 	camera.fov = 72.0
@@ -537,9 +553,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		focus = event.pressed
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			zoom = clampf(zoom * 1.18, 1.0, 16.0)
+			if third_person:
+				# 第三人称：滚轮调的是**跟随距离**（拉近拉远看飞船），
+				# 不是座舱那个长焦 —— 长焦在第三人称没意义。
+				orbit_distance = clampf(orbit_distance * 0.9, 4.5, 60.0)
+			else:
+				zoom = clampf(zoom * 1.18, 1.0, 16.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			zoom = clampf(zoom / 1.18, 1.0, 16.0)
+			if third_person:
+				orbit_distance = clampf(orbit_distance * 1.1, 4.5, 60.0)
+			else:
+				zoom = clampf(zoom / 1.18, 1.0, 16.0)
 		if zoom < 1.01:
 			zoom = 1.0
 
@@ -549,8 +573,69 @@ func apply_look(relative: Vector2) -> void:
 		return
 	relative = relative.limit_length(120.0)
 	var sensitivity: float = mouse_sensitivity * (game.settings.sensitivity_multiplier() if game.settings != null else 1.0)
+	if third_person:
+		# 第三人称：鼠标改成「绕着飞船转视角」，不影响飞船朝向。
+		orbit_yaw = wrapf(orbit_yaw - relative.x * sensitivity * 2.4, -PI, PI)
+		orbit_pitch = clampf(orbit_pitch - relative.y * sensitivity * 1.8, -0.35, 1.15)
+		return
 	rotate_object_local(Vector3.UP, -relative.x * sensitivity)
 	rotate_object_local(Vector3.RIGHT, -relative.y * sensitivity)
+
+
+## 第三人称相机：绕着船身转，一直看船。
+## 座舱相机是**子节点**（挂在飞船下），所以相机坐标是**船的局部坐标**。
+## 要让它看船心，得用局部空间的 look_at —— Node3D.look_at() 用的是全局坐标，
+## 直接传局部坐标会转到别的地方去（表现就是「镜头看向太空，看不到船」）。
+func _update_third_person_camera(delta: float) -> void:
+	if not third_person:
+		return
+	var target := Vector3(0.0, ship_model_height * 0.5, 0.0)
+	# 相机在船的局部空间里绕圈：yaw 绕 Y，pitch 抬高/压低。
+	var offset := Vector3(
+		sin(orbit_yaw) * cos(orbit_pitch),
+		sin(orbit_pitch),
+		cos(orbit_yaw) * cos(orbit_pitch)) * orbit_distance
+	camera.position = target + offset
+	# 局部空间的朝向：相机的 -Z 要指向船心。
+	# 用 Basis.looking_at 手工构造，再转成四元数 —— 这样全程在局部空间里算。
+	var dir := (target - camera.position).normalized()
+	if dir.length_squared() > 0.0001:
+		var up := Vector3.UP
+		if absf(dir.dot(up)) > 0.98:
+			up = Vector3.FORWARD
+		camera.basis = Basis.looking_at(dir, up)
+	# 第三人称用固定视场，不再受座舱变焦影响。
+	camera.fov = 55.0
+
+
+## 切换第三人称。返回 true 表示这次切换生效了。
+func toggle_third_person() -> bool:
+	if game == null or game.state != "ship":
+		return false
+	third_person = not third_person
+	if third_person:
+		# 第三人称从「机尾斜后上方」开始看，一眼能看清整艘船。
+		orbit_yaw = PI
+		orbit_pitch = 0.28
+		orbit_distance = 13.0
+		# 立刻把相机摆过去 —— 不能等下一帧 _physics_process，
+		# 否则切过去的第一帧镜头还留在座舱里（会闪一下）。
+		_update_third_person_camera(0.0)
+		camera.fov = 55.0
+	else:
+		# 回座舱：把相机放回座舱位（_ready 里算好的那个）。
+		_reset_cockpit_camera()
+	game.hud.show_toast("第三人称视角 · 看飞船" if third_person else "座舱视角", 1.8)
+	return true
+
+
+func _reset_cockpit_camera() -> void:
+	if ship_model_length > 0.01:
+		camera.position = Vector3(0.0, ship_model_height * 0.78, -ship_model_length * 0.125)
+	else:
+		camera.position = Vector3(0, 1.54, -1.42)
+	camera.rotation = Vector3.ZERO
+	camera.fov = 72.0
 
 
 func _physics_process(delta: float) -> void:
@@ -568,6 +653,7 @@ func _physics_process(delta: float) -> void:
 	var base_fov := 46.0 if focus else 72.0
 	var target_fov := maxf(base_fov / zoom, 3.0)
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 8.0))
+	_update_third_person_camera(delta)
 	if docked:
 		velocity = Vector3.ZERO
 		thrust_level = 0.0

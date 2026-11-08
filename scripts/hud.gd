@@ -299,7 +299,7 @@ func _build_help() -> void:
 	left_scroll.custom_minimum_size.x = 400
 	left_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	columns.add_child(left_scroll)
-	var left := _text(left_scroll, "徒 步\n\nW A S D　移动\nCtrl　加速奔跑\nR　地形脱困\n鼠标　观察\nSpace　跳跃\nShift　喷气背包\nL　头灯\n右键　信号镜（滚轮 2.1×–16×）\nF　按住扫描符文\nE　登船 / 烤棉花糖\n\n飞 船\n\n鼠标　俯仰与转向\n滚轮　长焦观察 1×–16×（星点 / 彗星 / 太阳）\nW / S　前后推进\nA / D　横向推进\nSpace　上升 / 起飞\nCtrl 或 C　下降\nShift　加力\nX　制动\nTab　切换目的地\nT　自动航行 / 着陆\nE　低速着陆 / 离船\n\n归 航 站\n\n低速靠近对接口自动对接\nE　进入空间站\nSpace　脱离对接\n中央枢纽气闸旁 E 返回飞船\n六条放射走廊 A–F\n\n触 屏\n\n左摇杆　移动 / 平移\n右侧空白　拖动视角\n圆钮　跳跃 / 喷气 / 互动 / 扫描\n飞船圆钮　起飞 / 离船 / 上升 / 下降 / 加力 / 制动\n星图　右侧关闭 / 缩放按钮", 15, Color("bed2cd"))
+	var left := _text(left_scroll, "徒 步\n\nW A S D　移动\nCtrl　加速奔跑\nR　地形脱困\n鼠标　观察\nSpace　跳跃\nShift　喷气背包\nL　头灯\n右键　信号镜（滚轮 2.1×–16×）\nF　按住扫描符文\nE　登船 / 烤棉花糖\n\n飞 船\n\n鼠标　俯仰与转向\n滚轮　长焦观察 1×–16×（星点 / 彗星 / 太阳）\nW / S　前后推进\nA / D　横向推进\nSpace　上升 / 起飞\nCtrl 或 C　下降\nShift　加力\nX　制动\nTab　切换目的地\nT　自动航行 / 着陆\nE　低速着陆 / 离船\nF5　第三人称看飞船\n\n归 航 站\n\n低速靠近对接口自动对接\nE　进入空间站\nSpace　脱离对接\n中央枢纽气闸旁 E 返回飞船\n六条放射走廊 A–F\n\n触 屏\n\n左摇杆　移动 / 平移\n右侧空白　拖动视角\n圆钮　跳跃 / 喷气 / 互动 / 扫描\n飞船圆钮　起飞 / 离船 / 上升 / 下降 / 加力 / 制动\n星图　右侧关闭 / 缩放按钮", 15, Color("bed2cd"))
 	left.custom_minimum_size.x = 372
 	var right_scroll := ScrollContainer.new()
 	right_scroll.custom_minimum_size.x = 540

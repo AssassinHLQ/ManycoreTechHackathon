@@ -291,6 +291,53 @@ func _run() -> void:
 	_check(is_equal_approx(game.ship.zoom, 16.0), "ship zoom caps at 16x")
 	game.ship._physics_process(1.0)
 	_check(game.ship.camera.fov < 6.0, "16x zoom is a real telephoto view")
+	# ── F5 第三人称：只在驾驶飞船时可用，且不与开发者模式的 F5 冲突 ──
+	# 走路时按 F5 什么都不能发生。
+	game.state = "walk"
+	game.dev_mode = false
+	var f5 := InputEventKey.new()
+	f5.physical_keycode = KEY_F5
+	f5.pressed = true
+	game._unhandled_input(f5)
+	_check(not game.ship.third_person, "F5 does nothing while walking")
+	# 开着开发者模式时，F5 仍然是「解锁全部条目」，不能被第三人称抢走。
+	# 注意：解锁会把 xuanyuan 也写进去，后面的 discover("xuanyuan") 就成了空操作 ——
+	# 所以这里先把 discovered 备份一份，测完还原。
+	var saved_discovered: Dictionary = game.discovered.duplicate(true)
+	game.dev_mode = true
+	game.discovered.clear()
+	game._unhandled_input(f5)
+	_check(game.discovered.size() == game.anomalies.size(),
+		"dev-mode F5 still unlocks every signal record")
+	_check(not game.ship.third_person, "dev-mode F5 does not steal the third-person toggle")
+	game.discovered = saved_discovered
+	# 驾驶飞船时按 F5：切到第三人称，相机必须跑到船外。
+	game.dev_mode = false
+	game.state = "ship"
+	game._unhandled_input(f5)
+	_check(game.ship.third_person, "F5 switches to the third-person ship view")
+	_check(game.ship.camera.position.length() > 5.0,
+		"the third-person camera sits outside the hull")
+	var cam_forward: Vector3 = -game.ship.camera.global_transform.basis.z.normalized()
+	var to_center: Vector3 = (-game.ship.camera.position).normalized()
+	_check(to_center.dot(cam_forward) > 0.9, "the third-person camera looks at the ship")
+	# 第三人称里不能出现主角：玩家节点没有身体网格，只剩碰撞胶囊和相机。
+	var body_meshes := 0
+	for node in game.player.find_children("*", "MeshInstance3D", true, false):
+		var under_camera := false
+		var p: Node = node.get_parent()
+		while p != null and p != game.player:
+			if p is Camera3D:
+				under_camera = true
+				break
+			p = p.get_parent()
+		if not under_camera:
+			body_meshes += 1
+	_check(body_meshes == 0, "the player has no body mesh, so third person shows only the ship")
+	# 再按一次回到座舱。
+	game._unhandled_input(f5)
+	_check(not game.ship.third_person, "F5 again returns to the cockpit view")
+	_check(game.ship.camera.position.length() < 3.0, "the camera returns inside the cockpit")
 	game.state = "walk"
 	game.player.focus = true
 	for i in range(40):
