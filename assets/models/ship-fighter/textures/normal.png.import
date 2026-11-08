@@ -2,23 +2,21 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cv1jvegd50kwk"
-path="res://.godot/imported/model_Image_2.jpg-6da52d43eec1f7fc785abf53f27d12cc.ctex"
+uid="uid://d0hbcpk8uygbs"
+path.s3tc="res://.godot/imported/normal.png-d4dd15c35d22522b19574e0247a48f9a.s3tc.ctex"
 metadata={
-"vram_texture": false
-}
-generator_parameters={
-"md5": "ee296084f5a7e05d49ad450baf116028"
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
-source_file="res://assets/models/ship-fighter/model_Image_2.jpg"
-dest_files=["res://.godot/imported/model_Image_2.jpg-6da52d43eec1f7fc785abf53f27d12cc.ctex"]
+source_file="res://assets/models/ship-fighter/textures/normal.png"
+dest_files=["res://.godot/imported/normal.png-d4dd15c35d22522b19574e0247a48f9a.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -39,5 +37,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=0
-detect_3d/compress_to=1
+process/size_limit=2048
+detect_3d/compress_to=0

@@ -199,14 +199,22 @@ func _wing_mesh(span: float, root_chord: float, tip_chord: float,
 ## 外部飞船模型（CC BY 4.0，见 assets/models/LICENSE_MANIFEST.json）。
 ## 为空串时退回 _build_model() 的程序化几何 —— 保留旧模板，换模型不影响可玩性。
 const SHIP_MODEL_PATH := "res://assets/models/ship-fighter/model.glb"
-## 模型原始朝向是 Y-up（机头 -Y、机顶 +Z），绕 X 轴 +90° 转成 Godot 的 Z-up。
-const SHIP_MODEL_ROTATION := Vector3(PI * 0.5, 0.0, 0.0)
-## 目标机长（米）。原模型只有 1.38 m，放大到和旧程序化船体（全长 6.5 m）一致，
+## 模型的朝向**已经在 GLB 里烘焙好了**（tools/slim_ship.py 按 Godot 约定转成
+## 机头 -Z、机顶 +Y、翼展 X），运行时**不要再转**。
+## 旧版本这里写的是绕 X 轴 +90°，那是因为当时的 GLB 是 Y-up；
+## 但实测发现那个旋转只解决了「机顶朝上」，机头仍留在 -X ——
+## 飞船是**横着飞**的（前进方向 -Z 与机头差 90°），玩家从座舱看出去是机腹侧面。
+## 现在朝向由构建脚本负责并有 tests/probe_ship_facing.gd 六向截图复核。
+const SHIP_MODEL_ROTATION := Vector3.ZERO
+## 目标机长（米）。原模型机长 1.91 m，放大到和旧程序化船体（全长 6.5 m）一致，
 ## 否则驾驶员相机、着陆高度、对接口尺度全部要跟着改，还会看起来像个小无人机。
 const SHIP_MODEL_TARGET_LENGTH := 6.5
-## 落地下压量（米）：land() 给出的落点原本是给"旧船体 + 起落架"留过余量的，
-## 新船底是平的，不下压就会悬空约 0.96 m。这里把底部补到贴地。
-const SHIP_MODEL_GROUND_SINK := 0.96
+## 落地下压量（米）：land() 把船体原点放在 surface_position(normal, 2.3)，
+## 即离地 2.3 m。模型底面是**平的**（没有起落架，见 tests/probe_ship_facing.gd
+## 的 -Y 仰视图），所以要让底面贴地就得整体压下 2.3 m。
+## 旧值 0.96 是照着**旧朝向**的模型调的 —— 那时机头还在 -X（横着飞），
+## 修正朝向后模型底面相对原点的位置变了，0.96 会让船悬空 1.34 m。
+const SHIP_MODEL_GROUND_SINK := 2.3
 ## 模型原始机长（Z, 米），用来把碰撞盒与相机按比例摆到船体上。
 var ship_model_length := 0.0
 var ship_model_height := 0.0

@@ -12,12 +12,21 @@
 assets/models/
   <slug>/                 一个模型一个目录，slug 全小写、连字符分隔
     model.glb             主文件，固定叫 model.glb（不跟原名，原名进 manifest）
-    textures/             贴图（如果 glb 是外链贴图而不是内嵌）
+    textures/             贴图（**外链**：glb 用 uri 相对路径引用这里）
     LICENSE_MANIFEST.json 由 build_license_manifest.py 汇总，见第三节
 ```
 
 - **一个目录只放一个模型**。多文件（.blend + 贴图）留在 `_tmp_assets/<slug>/` 做溯源，不放进来。
 - `.import` 文件由 Godot 生成，**要提交**（它记录了导入设置）。
+
+### 贴图为什么必须外链
+
+Godot 的 GLTF 导入器（`gltf/embedded_image_handling=1`）会把 GLB 里**内嵌**的贴图
+**抽取**成磁盘上的独立文件，材质最终引用的是那些独立文件。
+也就是说：贴图在 GLB 里存一遍、在磁盘上又存一遍 —— **双份**。
+
+所以贴图一律走 `textures/` 外链（glb 里 `images[].uri = "textures/xxx.png"`），
+磁盘上只有一份，GLB 只剩几何。飞船的 baseColor 单张 18.6 MB，双份就是 37 MB 白扔。
 
 ## 二、导入设置（scale / 材质）
 
@@ -26,12 +35,56 @@ assets/models/
 | 单位 | 1 单位 = 1 米，导入后**人工量一遍包围盒** | Sketchfab 导出的比例千奇百怪，1.0 = 1m 不成立 |
 | 根节点 | 缩放与旋转**打平到网格里**（Apply Transform），根节点保持 identity | 否则运行时算位置/碰撞要一直补偿 |
 | 原点 | 放在**底部中心**（落地物体）或质心（漂浮物体） | 摆放时直接 `global_position = 地面点` |
+| 朝向 | **Godot 约定：机头/前进 = -Z、机顶 = +Y、翼展 = X** | 朝向必须**实测**，不能照抄注释 —— 见下方「朝向怎么验」 |
 | 碰撞 | 不信任模型自带碰撞；用 BoxShape3D / 简化凸包自己加 | glb 的碰撞网格往往过于精细 |
 | 材质 | 统一转 `StandardMaterial3D`，禁用模型自带的 PBR 极端值 | 有自己的 key_light 与环境光，直接照搬会过曝 |
-| 贴图 | ≤ 1024×1024（纯远景 ≤ 512） | 项目是低多边形风，2k/4k 贴图既没必要也吃显存。发光贴图可再降一档并转 JPEG：GLB 是走网页导出的，体积直接算进首包 |
-| 三角面 | 单体 ≤ 150k；远景剪影 ≤ 3k | 按**实测**定：probe_model_cost.gd 量到归航站 504,036 面、飞船 9,416 面、整个场景 1,460,256 面。规则取「不超过站体的三分之一」→ 150k（原来拍的 20k / 60k 两个数字都被实测推翻过） |
+| 贴图 | **外链到 `textures/`**；源文件保留原始分辨率，进包尺寸用导入设置里的 `process/size_limit` 控制 | 贴图逐张独立导入，峰值内存只剩单张，不再有「四张 4096² 一起导入撑爆 Godot」的问题。**法线贴图必须无损（PNG）**，JPEG 的块效应会破坏法线产生假高光 |
+| 导入压缩 | `compress/mode=2`（VRAM Compressed）+ `mipmaps/generate=true` + `detect_3d/compress_to=0` | mode=0（无损）会把 4096² PNG **原样**塞进 `.ctex`，一张就 11.9 MB；mode=2 走 BC 压缩，4096² 降到 10.7 MB。实测 3 MB 的 WebP 源用 mode=0 导入，出来仍是 9.9 MB —— **无损容器会把有损压缩的收益全吃掉**。网页版 preset 本来就是 `texture_format/s3tc_bptc=true`，mode=2 正好对上 |
+| 三角面 | 单体 ≤ 150k；远景剪影 ≤ 3k | 按**实测**定：probe_model_cost.gd 量到归航站 512,736 面、飞船 9,133 面、整个场景 1,626,162 面。规则取「不超过站体的三分之一」→ 150k（原来拍的 20k / 60k 两个数字都被实测推翻过） |
 
-`check_model_imports.py` 会把上面几条能量化的（三角面 / 贴图尺寸 / 节点数）扫一遍。
+`tools/check_model_imports.py` 会把上面几条能量化的（三角面 / 贴图尺寸 / 节点数）扫一遍
+（内嵌与外链贴图都算）。
+
+### 体积怎么控（实测数据）
+
+网页版是唯一的发布形态，包体直接等于首屏下载量，所以贴图尺寸必须算着来。
+以飞船为例（原始下载件 38.8 MB）：
+
+| 做法 | baseColor | normal | ORM | pck 体积 |
+|---|---|---|---|---|
+| 全 4096 PNG + 无损导入 | 4096² | 4096² | 2048² | **35.6 MB**（gzip 24.9 MB） |
+| baseColor 4096，其余导入降一档 | 4096² | 2048² | 1024² | **25.6 MB**（gzip 18.5 MB） |
+
+同样是 4K，**baseColor 值得保，normal / ORM 不值得**：
+baseColor 是涂装、编号、铆钉、蒙皮划痕 —— 4096² 一眼就比 1024² 清楚；
+normal 画的是粗糙蒙皮起伏、ORM 是低频的粗糙度/金属度 —— 降到 2048/1024 后
+逐帧对比**看不出差别**。这个取舍由 `tools/fix_ship_mipmaps.py` 的 `SIZE_LIMITS` 表控制。
+
+另外两条：
+
+- **删掉没用的贴图。** 飞船的 emissive 原始贴图整张是黑的（实测最大值 2/255，
+  非零像素只有 10398 个），视觉上完全不发光，却占 2.67 MB pck 空间 ——
+  用 `tools/ship_textures.py --drop emissive` 从材质和 GLB 里一起摘掉。
+- **别信「源码多大」，看 `process/size_limit`。** 源 PNG 可以留 4096 当母版，
+  真正进包的是导入时降采样后的版本 —— 两者是不同的事。
+
+### 朝向怎么验（2026-11-08 踩过的坑）
+
+旧版 `tools/slim_ship.py` 的注释写「原模型 Y-up，机头 -Y、机顶 +Z，绕 X 轴 +90° 即可」，
+脚本也就只做了这一个旋转。**结果飞船是横着飞的** —— 前进方向是 -Z，
+而机头仍在 -X，差 90°。玩家从座舱看出去是机腹侧面，还以为是镜头摆歪了。
+
+三个教训：
+
+1. **别信注释，信几何。** 脚本要用端面切片密度自己判定机头端、包围盒自己判定轴语义。
+2. **注意坐标系换算。** Blender 是 Z-up，导出 glTF 时（`export_yup=True`）做一次
+   `M: (x,y,z) -> (x,z,-y)`；Godot 导入 glTF 时**不再转**。「Blender 里摆好」≠「Godot 里摆好」。
+3. **必须有截图回归。** `tests/probe_ship_facing.gd` 从模型六个轴向各拍一张，
+   `-Z` 必须看到机头、`+Z` 必须看到发动机 —— 数字对不代表眼睛对。
+
+`tools/slim_ship.py` 现在会自己量、自己算朝向，并在结尾打印 Godot 空间的
+「机高应最小 / 机长应最大 / 机头在 -Z / 底部 y=0」四条断言；
+`tests/probe_ship_facing.gd` 的六向截图是最终确认。
 
 ## 三、许可闸门（硬性）
 
@@ -62,7 +115,23 @@ assets/models/
 
 1. `_tmp_assets/<slug>/` 放原始下载（zip 解开、留 .blend 做溯源）
 2. 在 `_合规审查_20261104` 里跑 `build_license_manifest.py` → 确认该资产在 manifest 里
-3. 导出/整理成 `assets/models/<slug>/model.glb`，按第二节的规则改比例、打平原点
-4. 跑 `check_model_imports.py` 看预算（三角面 / 贴图 / 节点）
-5. 在 `_arisu_learn` 那个独立小工程里先摆一次、看一眼（不动主工程）
-6. 主工程里用 `preload` / `load` 挂上，**加一处就截一张图**，视觉回归基线跟着更新
+3. **几何 + 贴图交给脚本**，别手工在 Blender 里摆：
+   ```
+   python tools/ship_build.py --src <原始.glb> --out-dir assets/models/<slug>
+   ```
+   这一步做三件事：Blender 烘焙变换并按 Godot 约定修正朝向、原点摆到底部中心；
+   贴图按语义名抽成 `textures/` 下的独立文件并让 glb 改用 uri 外链；
+   最后打印校验（外链是否成功、三角面数、每张贴图的分辨率与体积）。
+   换模型只改 `--src`，脚本会自己量轴向和机头端，不用改代码。
+4. **贴图导入设置**：`python tools/fix_ship_mipmaps.py`
+   （开 mipmap、切 VRAM 压缩、按 `SIZE_LIMITS` 设每张的进包尺寸上限）
+5. **删掉没用的贴图**：`python tools/ship_textures.py --glb ... --out ... --drop emissive`
+   （材质和 GLB 里的引用一起摘掉，否则导出时那张图还是会被打进 pck）
+6. 跑 `python tools/check_model_imports.py` 看预算（三角面 / 贴图 / 节点 / 许可闸门）
+7. 在 `_arisu_learn` 那个独立小工程里先摆一次、看一眼（不动主工程）
+8. 主工程里用 `preload` / `load` 挂上，**加一处就截一张图**，视觉回归基线跟着更新
+9. **朝向必须用六向截图确认**：跑 `godot --path . --script res://tests/probe_ship_facing.gd`，
+   看 `captures/facing_minus_z.png` 是机头、`facing_plus_z.png` 是发动机。
+   数字断言过了不代表眼睛过了 —— 这次的横飞就是这么漏过去的。
+10. **导一次网页版量体积**：`导出网页版.bat`，看 `build/web/index.pck` 的大小。
+    贴图改尺寸后一定要重新量 —— pck 才是玩家下载的东西。

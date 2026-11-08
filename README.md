@@ -236,7 +236,7 @@
 - **导出**：双击 `导出网页版.bat`（使用标准版 Godot 4.7.1 + 已安装的 Web 导出模板），产物在 `build/web/`。
 - **本地预览**：双击 `启动网页版.bat`，会启动 `http://127.0.0.1:8060/index.html` 并打开浏览器；关闭弹出的命令行窗口即可停止服务。
 - **部署**：把 `build/web` 整个目录上传到任意静态站点（GitHub Pages / Netlify / Cloudflare Pages）。必须通过 http(s) 访问，不能直接双击 `index.html`。
-- 包体：`index.wasm` 原始约 38 MB，GitHub Pages gzip 后实际传输约 **10.2 MB**；`index.pck` 约 0.55 MB（591,328 字节）。
+- 包体：`index.wasm` 原始约 38 MB，GitHub Pages gzip 后实际传输约 **10.2 MB**；`index.pck` 原始约 **25.6 MB**（gzip 后约 18.5 MB）—— 其中约 10 MB 是玩家飞船的 4K 贴图（baseColor 4096²），约 9 MB 是黑洞模型，其余是脚本、字体与着色器。贴图尺寸与压缩策略见 `assets/models/README.md` 第二节「体积怎么控」。
 - 加速：Service Worker 会把 wasm 缓存到本地，**第二次进入不再下载 wasm**，只更新约 0.8 MB 的 html / js / pck；换 Godot 版本或 wasm 导出选项时需要修改 `web_mobile/sw.js` 里的 `CACHE` 版本号。
 - 校园网限速：首次加载建议用手机流量/热点，或把 `build/web` 部署到 Cloudflare Pages / 国内对象存储；GitHub Pages 国内线路本身不稳定。
 - 手机浏览器支持横屏触屏操作：自动识别触摸屏并显示摇杆与圆钮；首次触摸会请求全屏并锁定横屏，左上角有「横屏全屏」兜底按钮；`?touch=1` 可强制开启触屏层。iOS Safari 需手动旋转。
@@ -387,7 +387,7 @@ headless A/B（各取 3 次最小值，本机）：**行星阶段 2,735 → 1,23
 - **字体**：Noto Sans SC（wght=400 静态子集，含项目全部用字 + GB2312 一级 3755 常用字 + ASCII / 标点 / 符号，约 1.22 MB）与 Noto Sans Symbols 2（约 5 KB），SIL Open Font License 1.1，许可证全文见 `assets/OFL-NotoSansSC.txt` 与 `assets/OFL-NotoSansSymbols2.txt`。
   - 版权归属：Noto Sans SC © 2014-2021 Adobe (http://www.adobe.com/)，声明保留字体名 `Source`；Noto Sans Symbols 2 © 2022 The Noto Project Authors。
   - 本项目对字体的修改：① 由可变字体实例化为 wght=400 静态字重；② 按项目用字裁剪为子集。修改版仍以 SIL OFL 1.1 发布，未使用保留字体名 `Source`，也未使用任何权利方名称作宣传或背书。
-- **3D 模型、贴图、音频**：星球、地形、洞穴、建筑、归航站、家具、粒子、星云天空、太阳表面与全部音效均由项目代码或着色器程序化生成。**唯一的例外是玩家飞船**：使用 Sketchfab 作品 “SpaceShip Fighter - Version 1 [MESHY 6]” by **Ethan Cox**，许可 **CC BY 4.0**（可商用、需署名）。文件位于 `assets/models/ship-fighter/model.glb`，原始 38.8 MB；本项目将贴图由 4096/2048 降为 1024 并转 JPEG、原点移到底部中心、运行时校正朝向并按机长缩放到 6.5 m（脚本见 `tools/slim_ship.py`）。其余 3D 模型、HDRI 天空盒与音频采样未使用任何外部素材。
+- **3D 模型、贴图、音频**：星球、地形、洞穴、建筑、归航站、家具、粒子、星云天空、太阳表面与全部音效均由项目代码或着色器程序化生成。**唯一的例外是玩家飞船**：使用 Sketchfab 作品 “SpaceShip Fighter - Version 1 [MESHY 6]” by **Ethan Cox**，许可 **CC BY 4.0**（可商用、需署名）。文件位于 `assets/models/ship-fighter/model.glb`（几何 0.51 MB）与 `assets/models/ship-fighter/textures/`（baseColor 4096×4096、normal 4096×4096、ORM 2048×2048，原始 PNG 无损；进包时 normal/ORM 按 `process/size_limit` 降到 2048/1024，画面上看不出差别）。原始下载件 38.8 MB；本项目把贴图**外链**到 `textures/`（Godot 的 GLTF 导入器会把内嵌贴图再抽一份到磁盘，内嵌等于同一份存两遍），并由 `tools/ship_build.py` 把变换烘焙进网格、原点移到底部中心、朝向校正为 Godot 约定（机头 -Z、机顶 +Y、翼展 X），运行时按机长缩放到 6.5 m。**朝向由脚本实测判定而非照抄注释** —— 旧版本只绕 X 轴 +90°，机头仍留在 -X，飞船是横着飞的；现由 `tests/probe_ship_facing.gd` 六向截图回归。其余 3D 模型、HDRI 天空盒与音频采样未使用任何外部素材。
 - **UI 与标牌**：使用项目内嵌字体与代码绘制，没有引入第三方图标库。
 
 ### 灵感借鉴

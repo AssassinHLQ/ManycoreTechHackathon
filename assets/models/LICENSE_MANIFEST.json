@@ -204,8 +204,8 @@
       "imported": true,
       "imported_slug": "ship-fighter",
       "imported_path": "assets/models/ship-fighter/model.glb",
-      "modifications": "贴图 4096/2048 -> 1024 并转 JPEG（原文件 38.8MB 直接导入导致 Godot OOM）；原点移到底部中心；运行时绕 X 轴 +90° 校正朝向，并按机长缩放到 6.5m",
-      "modified_by": "本项目构建脚本 tools/slim_ship.py"
+      "modifications": "贴图保留原始分辨率（baseColor/normal 4096x4096、ORM 2048x2048，PNG 无损），改为外链到 textures/ 目录（Godot 的 GLTF 导入器会把内嵌贴图再抽一份到磁盘，内嵌等于同一份存两遍）；删除了原始 emissive 贴图（实测整张为黑、最大值 2/255，视觉上不发光，却占 2.67 MB 包体）；几何变换烘焙进网格、原点移到底部中心、朝向校正为 Godot 约定（机头 -Z、机顶 +Y、翼展 X）；运行时按机长缩放到 6.5 m",
+      "modified_by": "本项目构建脚本 tools/ship_build.py（配合 tools/slim_ship.py）"
     },
     {
       "slug": "usb-stick-psx-prop",
