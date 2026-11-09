@@ -657,16 +657,22 @@ func _process(delta: float) -> void:
 		and ship.bh_warn_level > 0 and not ship.landed and not ship.docked
 	bh_warning.visible = bh_visible
 	if bh_visible:
-		var strength := int(clampf(ship.bh_pull_strength * 100.0, 0.0, 100.0))
+		# 报「推力余量」而不是「引力场百分比」。
+		# 以前那个百分比是 closeness（距离的归一化），跟实际加速度差得很远：
+		# 实测离黑洞 4000 处加速度已经是 83（推力 72，推不动了），可 HUD 才显示
+		# 45%、文案还在说「推力已难对抗」—— 玩家会以为还能跑。
+		# 现在直接拿实际径向加速度跟推力比，余量一目了然。
+		var accel: float = ship.bh_radial_accel
+		var margin: int = int(round((72.0 - accel) / 72.0 * 100.0))
 		match int(ship.bh_warn_level):
 			1:
-				bh_warning.text = "引力场 · 卡冈图雅 %d%% · 航线已被牵引" % strength
+				bh_warning.text = "引力场 · 卡冈图雅 · 推力余量 %d%% · 航线已被牵引" % margin
 				bh_warning.add_theme_color_override("font_color", Color("e8c07a"))
 			2:
-				bh_warning.text = "⚠ 引力增强 %d%% · 推力已难对抗 · 按住 Shift 喷气脱离" % strength
+				bh_warning.text = "⚠ 引力 %d · 推力余量 %d%% · 按住 Shift 喷气脱离" % [int(round(accel)), margin]
 				bh_warning.add_theme_color_override("font_color", Color("ffb178"))
 			_:
-				bh_warning.text = "⚠ 临界 %d%% · 引擎已达极限 · 即将越过视界" % strength
+				bh_warning.text = "⚠ 临界 · 引力 %d 已压过推力 · 即将越过视界" % int(round(accel))
 				bh_warning.add_theme_color_override("font_color", Color("ff6d4c"))
 	var planet = game.current_planet()
 	if game.in_attic:

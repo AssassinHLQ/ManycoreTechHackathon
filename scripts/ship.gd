@@ -63,7 +63,16 @@ const BH_ACCEL_FAR := 1.6
 ## 所以约 0.70 closeness（离视界 ~2100）开始推不动 —— 那就是「回不来」的界线。
 const BH_ACCEL_NEAR := 420.0
 ## 「逃逸层」系数：内层加速度就是再乘这个数，用来表现「越近越难挣脱」。
+## 以前这行只是定义、没接进公式（实测：全项目零引用），所以内圈根本没有
+## 「越近越绝望」的额外梯度。现在接上：closeness 超过 BH_ESCAPE_FROM 之后，
+## 加速度额外乘一个从 1 涨到 BH_ESCAPE_BOOST 的系数。
 const BH_ESCAPE_BOOST := 3.2
+## 逃逸层从多近开始生效（closeness，0~1）。
+const BH_ESCAPE_FROM := 0.55
+## 飞船的三档推力。用来算「推力余量」：余量 = 推力 - 引力。
+const SHIP_THRUST := 72.0
+const SHIP_BOOST_THRUST := 150.0
+const SHIP_BRAKE_DECEL := 260.0
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
 const BH_TANGENT_RATIO := 0.5
 ## 进场后多久之内还保留绕转（秒）。过了这个时间就只剩往里拽。
@@ -76,6 +85,10 @@ var bh_distance := INF
 var bh_pull := Vector3.ZERO
 ## 0~1，给 HUD 的牵引强度（1 = 已到视界边缘）。
 var bh_pull_strength := 0.0
+## 这一帧的**径向**引力加速度（不含切向分量），单位与 SHIP_THRUST 相同。
+## HUD 用它算「推力余量」——光报 closeness 会误导：closeness 是距离的归一化，
+## 而加速度是 pow(closeness, 2.2) 插值出来的，低区间两者差得很远。
+var bh_radial_accel := 0.0
 ## 卡冈图雅引力带来的额外油耗倍率（1 = 不受影响）。由 _black_hole_pull 每帧算好，
 ## 推力、喷气、制动、自动航行四处扣油都乘它 —— 越靠近黑洞，同样的动作越费推进剂。
 var bh_fuel_multiplier := 1.0
@@ -810,6 +823,7 @@ func _physics_process(delta: float) -> void:
 func _black_hole_pull(delta: float) -> Vector3:
 	bh_pull = Vector3.ZERO
 	bh_pull_strength = 0.0
+	bh_radial_accel = 0.0
 	bh_fuel_multiplier = 1.0
 	if game.gargantua == null:
 		bh_distance = INF
@@ -826,7 +840,17 @@ func _black_hole_pull(delta: float) -> Vector3:
 	var span := maxf(BH_PULL_RANGE - BH_HORIZON, 1.0)
 	var closeness := clampf((BH_PULL_RANGE - bh_distance) / span, 0.0, 1.0)
 	var strength := lerpf(BH_ACCEL_FAR, BH_ACCEL_NEAR, pow(closeness, 2.2))
+	# 逃逸层：closeness 过了 BH_ESCAPE_FROM 之后，加速度额外乘一个从 1 涨到
+	# BH_ESCAPE_BOOST 的系数 —— 表现「越近越难挣脱」。
+	# （以前这个系数只定义、没接进公式，所以内圈没有额外梯度，玩家感觉引力不够。）
+	var escape_layer := 1.0
+	if closeness > BH_ESCAPE_FROM:
+		var layer_t := (closeness - BH_ESCAPE_FROM) / maxf(1.0 - BH_ESCAPE_FROM, 0.0001)
+		escape_layer = lerpf(1.0, BH_ESCAPE_BOOST, pow(layer_t, 1.5))
+	strength *= escape_layer
 	bh_pull_strength = closeness
+	# 径向分量（不含切向）：HUD 拿它跟推力比，算「推力余量」。
+	bh_radial_accel = strength
 	# 越靠近黑洞，越要开大推力去对抗牵引，于是同样一次点火烧掉的推进剂更多。
 	# 倍率这里就定下来，推力/喷气/制动/自动航行四处的扣油统一乘它。
 	bh_fuel_multiplier = lerpf(1.0, BH_FUEL_MULTIPLIER, pow(closeness, BH_FUEL_CURVE))
@@ -869,18 +893,30 @@ func _apply_black_hole_capture(delta: float) -> bool:
 	if bh_distance <= BH_HORIZON:
 		autopilot = false
 		velocity = Vector3.ZERO
-		game.begin_death("飞船越过了卡冈图雅的视界", 5.2)
+		# 死亡过场 1.6 秒：越过视界就是被吞掉了，没有「在黑洞里飘一会儿」这回事。
+		# 原来给的是 5.2 秒，玩家看着镜头继续渲染，像是被吸进去还在里面待着。
+		game.begin_death("飞船越过了卡冈图雅的视界", 1.6)
 		return true
 	# 自动航行一旦进了内圈就中止：让它继续算会自己撞进视界，玩家会以为程序出 bug。
 	if autopilot and bh_distance < BH_PULL_RANGE * 0.62:
 		autopilot = false
 		game.hud.show_toast("自动航行中止：卡冈图雅的引力吞掉了航线", 3.6)
+	# 分档按**推力余量**算，不再按距离百分比。
+	# 以前按 closeness 分档有个硬伤：closeness 是距离的归一化，而加速度是
+	# pow(closeness, 2.2) 插值出来的，低区间两者差得很远 —— 实测在离黑洞
+	# 约 4000 处引力（83）就已经超过推力（72）、推不动了，可那时候 HUD 才刚
+	# 进入「一级」警告，玩家完全不知道已经逃不出去了。
+	# 现在直接拿实际径向加速度跟三档推力比：
+	#   还在被慢慢掰弯                        -> 一级
+	#   普通推力开始吃力（不到喷气的 1/3 余量） -> 二级
+	#   连喷气（150）都顶不住                  -> 三级
 	var level := 0
-	if bh_distance < BH_PULL_RANGE * 0.34:
+	var thrust_margin := SHIP_THRUST - bh_radial_accel
+	if bh_radial_accel >= SHIP_BOOST_THRUST:
 		level = 3
-	elif bh_distance < BH_PULL_RANGE * 0.62:
+	elif thrust_margin <= SHIP_BOOST_THRUST * 0.35:
 		level = 2
-	elif bh_distance < BH_PULL_RANGE:
+	elif bh_radial_accel > BH_ACCEL_FAR * 2.0:
 		level = 1
 	if level > bh_warn_level and bh_warn_cooldown <= 0.0:
 		bh_warn_cooldown = 6.0 if level == 1 else 9.0
