@@ -1,21 +1,22 @@
 extends SceneTree
 # 飞船视角取证：座舱视角 + 第三人称视角，各拍几张。
-# 用法：godot --path . --script res://tests/capture_ship_views.gd
+# 用法：godot --path . --no-capture --script res://tests/capture_ship_views.gd
+#
+# ⚠ 必须带 --no-capture（放在 -- 之后也行）：不带的话窗口一拿到焦点就收鼠标，
+#   会打断正在玩游戏的用户。见 AGENTS.md「绝对不许抢用户前台」。
 #
 # 为什么需要它：
 #   座舱相机位置是**按模型几何实测**定的（tests/probe_ship_cockpit.gd），
 #   第三人称是**绕船转**的相机 —— 两者都只能靠截图确认好不好看。
-#   顺便验证第三人称里**没有主角**：玩家在船上时 player.visible=false，
-#   但相机和提灯是 player 的子节点，要确认它们没跟着跑到画面里。
+#   顺便验证第三人称里**没有主角**：玩家在船上时 player.visible=false。
+
+const OffWin := preload("res://scripts/offscreen_window.gd")
 
 var game
 var camera: Camera3D
 
 
 func _initialize() -> void:
-	if DisplayServer.get_name() != "headless":
-		DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
-		DisplayServer.window_set_position(Vector2i(-20000, -20000))
 	call_deferred("_run")
 
 
@@ -32,6 +33,12 @@ func _shot(name: String) -> void:
 
 
 func _run() -> void:
+	# 窗口先丢到屏幕外，别抢用户前台。
+	await OffWin.apply(self)
+	# 出图探针会在 _initialize 之外再跑一次窗口设置，顺手确认一下没犯规。
+	var safety: Array = OffWin.is_safe()
+	print("窗口安全检查: ", safety[1])
+
 	var save := "user://starward_views.json"
 	if FileAccess.file_exists(save):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save))
@@ -51,18 +58,11 @@ func _run() -> void:
 	print("座舱相机位置 = ", ship.camera.position)
 	print("船尺寸 长=%.2f 翼展=%.2f 高=%.2f" % [
 		ship.ship_model_length, ship.ship_model_span, ship.ship_model_height])
-	print("座舱相机世界位置 = ", ship.camera.global_position)
-	print("飞船世界位置 = ", ship.global_position)
-
-	camera = Camera3D.new()
-	camera.near = 0.05
-	camera.far = 60000.0
-	camera.fov = 55.0
-	game.add_child(camera)
-	# 注意：不要 camera.current = true —— 那会抢走飞船的相机，
-	# 第三人称拍出来就变成「外部相机看太空」而不是「看飞船」。
+	print("尾焰材质 = %d 个，尾灯 = %d 个，喷焰网格 = %d 个" % [
+		ship.engine_materials.size(), ship.engine_lights.size(), ship.engine_plumes.size()])
 
 	# ── 座舱视角（飞船自己的相机）──
+	# 不要自己 new 一个相机设 current —— 那会抢走飞船的相机。
 	ship.camera.current = true
 	await _frames(8)
 	await _shot("cockpit")

@@ -337,7 +337,10 @@ func _run() -> void:
 	# 再按一次回到座舱。
 	game._unhandled_input(f5)
 	_check(not game.ship.third_person, "F5 again returns to the cockpit view")
-	_check(game.ship.camera.position.length() < 3.0, "the camera returns inside the cockpit")
+	# 判据必须**相对船体尺寸**，不能写死 3.0：机长从 6.5 改成 14 之后，
+	# 座舱相机距离本身就从 0.81 m 变成了 1.75 m，写死的阈值会误报。
+	_check(game.ship.camera.position.length() < game.ship.ship_model_length * 0.5,
+		"the camera returns inside the cockpit")
 	game.state = "walk"
 	game.player.focus = true
 	for i in range(40):

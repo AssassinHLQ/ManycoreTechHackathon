@@ -38,6 +38,8 @@ var mouse_sensitivity := 0.0018
 const WEB_LOOK_SCALE := 0.5
 var engine_materials: Array = []
 var engine_lights: Array = []
+## 外部模型的尾焰锥体（程序化几何那套没有这个）。用来按推力改长度。
+var engine_plumes: Array = []
 ## 按材质分组的盒体批次，_build_model 末尾统一合并提交。
 var _batch := {}
 var hull_body: StaticBody3D
@@ -75,6 +77,36 @@ const SHIP_BOOST_THRUST := 150.0
 const SHIP_BRAKE_DECEL := 260.0
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
 const BH_TANGENT_RATIO := 0.5
+## ── 防「擦边逃逸」────────────────────────────────────────────────
+## 玩家实测能靠引力弹弓从黑洞旁边擦边过去。原因是纯径向引力只改方向、
+## 不改速度大小，速度够快就能走双曲线轨道溜掉。
+## 下面三个参数在近黑洞区域强行吃掉切向速度，让高速飞船也逃不掉。
+##
+## 从多近开始吃切向速度（closeness，0~1）。0.62 约合离黑洞 4100。
+const BH_CAPTURE_FROM := 0.62
+## 「逃逸速度」参考值：切向速度超过它的倍数越多，被吃得越快。
+## 飞船速度上限是 1600，取 520 让高速擦边也躲不过。
+const BH_ESCAPE_SPEED := 520.0
+## 切向速度的吞噬速率（每秒占切向速度的比例，还会乘超速倍数）。
+const BH_TANGENT_SINK := 1.6
+## 被吃掉的切向动量有多少转成向心加速度（让它真的被卷进去，而不是单纯刹停）。
+const BH_SINK_TO_INWARD := 0.9
+
+## ── 强制捕获兜底 ─────────────────────────────────────────────────
+## 进了这个半径就别想走：不管速度多少，切向速度被吃掉、径向速度被拉满。
+## 120 是视界，这里留出一段缓冲区，让「已经没救了」的观感提前出现，
+## 而不是等贴脸才判定。
+##
+## 取 2400：实测 3000 处、1600 全速擦边时，仅靠引力+切向吞噬仍能逃出去
+## （60 秒后飞到 44645 之外）。把兜底半径放到 2400，让最高速的擦边也躲不过。
+const BH_FORCE_CAPTURE := 2400.0
+## 强制捕获时每秒吃掉多少切向速度（占总切向速度的比例，1.0 = 秒杀）。
+const BH_FORCE_BRAKE := 3.0
+## 强制捕获时保持的最小向心速度。
+const BH_FORCE_INWARD := 180.0
+## 捕获锁存：一旦进过 BH_FORCE_CAPTURE 就记住，直到退出这个倍数的外圈才解锁。
+## 不锁存的话，1600 全速一帧能飞 26 单位，高速擦边会直接穿过判定圈。
+const BH_CAPTURE_RELEASE := 1.35
 ## 进场后多久之内还保留绕转（秒）。过了这个时间就只剩往里拽。
 const BH_ORBIT_FADE := 22.0
 ## 轨道阻尼系数（每秒）。切向速度每帧按这个比例衰减，让绕转的飞船慢慢螺进，
@@ -94,6 +126,8 @@ var bh_radial_accel := 0.0
 var bh_fuel_multiplier := 1.0
 var bh_warn_level := 0
 var bh_warn_cooldown := 0.0
+## 是否已经被黑洞捕获（锁存）。见 _apply_black_hole_capture 里的说明。
+var bh_captured := false
 
 
 func _ready() -> void:
@@ -237,7 +271,15 @@ const SHIP_MODEL_PATH := "res://assets/models/ship-fighter/model.glb"
 const SHIP_MODEL_ROTATION := Vector3.ZERO
 ## 目标机长（米）。原模型机长 1.91 m，放大到和旧程序化船体（全长 6.5 m）一致，
 ## 否则驾驶员相机、着陆高度、对接口尺度全部要跟着改，还会看起来像个小无人机。
-const SHIP_MODEL_TARGET_LENGTH := 6.5
+##
+## ⚠ 2026-11-09 从 6.5 提到 14.0：玩家身高 1.65 m，而 6.5 m 机长的船
+## 机高只有 1.53 m —— **比人还矮**，截图里就像个能一脚踩扁的模型玩具。
+## 真实战斗机的量级：F-16 机长 15 m、翼展 9.5 m。14 m 机长对应
+## 翼展 10.1 m、机高 3.30 m，站在旁边才有「这是一架战机」的体量感，
+## 又不会大到把小岛和台阶压得不像样。
+## 注意：改这个值会连带影响碰撞盒、座舱相机、着陆高度与登船判定半径
+## （它们都从 ship_model_length / height / span 推导，见 _ready 与 _build_external_model）。
+const SHIP_MODEL_TARGET_LENGTH := 14.0
 ## 落地下压量（米）：land() 把船体原点放在 surface_position(normal, 2.3)，
 ## 即离地 2.3 m。模型底面是**平的**（没有起落架，见 tests/probe_ship_facing.gd
 ## 的 -Y 仰视图），所以要让底面贴地就得整体压下 2.3 m。
@@ -310,7 +352,142 @@ func _build_external_model() -> bool:
 		ship_model_length *= factor
 	holder.scale = Vector3.ONE * factor
 	holder.position = Vector3(-center.x * factor, -bounds.position.y * factor - SHIP_MODEL_GROUND_SINK, -center.z * factor)
+	# 外部模型只有网格和贴图，**没有尾焰** —— 程序化几何里那几块发光盘不会自动出现。
+	# 玩家反馈「飞船没尾焰吗」，就是这里缺了。补三束喷焰，坐标用模型局部空间
+	# 挂在 holder 下，自动跟着 factor 缩放。
+	_build_external_exhaust(holder, bounds)
 	return true
+
+
+## 按实测包围盒在机尾补三束喷焰（外部模型专用，见 _build_external_model）。
+##
+## 为什么要手写：GLB 里只有网格 + 贴图，没有「这里在喷火」的信息；
+## 程序化几何那套 engine_materials 是在 _build_model() 里创建的，
+## 走外部模型分支时**根本不会执行**，于是运行时一个发光材质都没有，
+## 尾焰自然就没了。
+##
+## 坐标全部用**模型局部空间**（挂在 holder 下）：
+##   · holder.scale = factor，所以这里写 0.3 就是 0.3×factor 米；
+##   · 改 SHIP_MODEL_TARGET_LENGTH 时这里不用动。
+## 横向排三束是因为机尾实测是一个宽 0.34（占翼展 25%）的喷口簇，
+## 截图里也看得出是三个并排的喷口。
+func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
+	var tail_z: float = bounds.position.z + bounds.size.z
+	var nozzle_y: float = bounds.position.y + bounds.size.y * 0.37
+	var length := bounds.size.z
+	var span := bounds.size.x
+
+	# 外焰：加法混合。**必须用顶点色做沿轴渐变**，否则整根锥体亮度一致，
+	# 屏幕上就是一块白色实心板（第一版就栽在这）。
+	# vertex_color_use_as_albedo 让顶点色直接当颜色/透明度用。
+	var flame := StandardMaterial3D.new()
+	flame.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flame.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	flame.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	flame.vertex_color_use_as_albedo = true
+	flame.albedo_color = Color(0.55, 0.90, 1.0, 1.0)
+	flame.emission_enabled = true
+	flame.emission = Color(0.30, 0.72, 1.0)
+	flame.emission_energy_multiplier = 0.55
+	flame.cull_mode = BaseMaterial3D.CULL_DISABLED
+	engine_materials.append(flame)
+
+	# 内焰核心：更小更亮，接近白色
+	var core_mat := StandardMaterial3D.new()
+	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	core_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	core_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	core_mat.vertex_color_use_as_albedo = true
+	core_mat.albedo_color = Color(0.92, 0.98, 1.0, 1.0)
+	core_mat.emission_enabled = true
+	core_mat.emission = Color(0.75, 0.93, 1.0)
+	core_mat.emission_energy_multiplier = 1.1
+	core_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	engine_materials.append(core_mat)
+
+	# 三束喷口横向间距：实测机尾喷口簇宽度只占翼展约 25%
+	# （tests/probe_ship_nozzles.gd 量到 x ∈ ±0.172，翼展 1.378）。
+	# 取 0.075 让三束都落在簇内，超出就会从机翼上穿出去 —— 那是错的。
+	for i in range(3):
+		var side := float(i - 1)                    # -1 / 0 / +1
+		var nozzle := Vector3(side * span * 0.075, nozzle_y, tail_z)
+
+		# 外层火舌：细长、尾端收尖并淡出
+		var plume := MeshInstance3D.new()
+		plume.mesh = _plume_mesh(length * 0.26, length * 0.055, 14)
+		plume.material_override = flame
+		plume.position = nozzle
+		plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(plume)
+		engine_plumes.append(plume)
+
+		# 内层亮芯：短一半，贴合喷口
+		var core := MeshInstance3D.new()
+		core.mesh = _plume_mesh(length * 0.13, length * 0.028, 12)
+		core.material_override = core_mat
+		core.position = nozzle
+		core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(core)
+
+		# 尾灯：照亮机尾地面
+		var light := OmniLight3D.new()
+		light.position = nozzle + Vector3(0.0, 0.0, length * 0.10)
+		light.light_color = Color("67dceb")
+		light.light_energy = 0.0
+		light.omni_range = span * 1.6
+		holder.add_child(light)
+		engine_lights.append(light)
+
+
+## 生成一束尾焰网格：从喷口（z=0，粗、亮）沿 +Z 收尖（z=len，细、透明）。
+## 顶点色带 alpha，配合 vertex_color_use_as_albedo 做出真实的「烧到尾端就散开」。
+##
+## 为什么要手搓 ArrayMesh：CylinderMesh 的顶点色全是一样���，
+## 拿它做加法混合只能得到一块亮度均匀的实心板。
+func _plume_mesh(length: float, radius: float, sides: int) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# 沿长度分 4 段，让淡出是渐变而不是突变
+	var rings := 4
+	for r in range(rings):
+		var t0 := float(r) / rings
+		var t1 := float(r + 1) / rings
+		var z0 := length * t0
+		var z1 := length * t1
+		# 半径往后收窄：喷口处最粗，尾端收到 12%
+		var rad0 := radius * (1.0 - 0.88 * t0)
+		var rad1 := radius * (1.0 - 0.88 * t1)
+		# 透明度：喷口 0.85 → 尾端 0
+		var a0 := 0.85 * (1.0 - t0) * (1.0 - t0)
+		var a1 := 0.85 * (1.0 - t1) * (1.0 - t1)
+		for s in range(sides):
+			var ang0 := TAU * float(s) / sides
+			var ang1 := TAU * float(s + 1) / sides
+			var p00 := Vector3(cos(ang0) * rad0, sin(ang0) * rad0, z0)
+			var p01 := Vector3(cos(ang1) * rad0, sin(ang1) * rad0, z0)
+			var p10 := Vector3(cos(ang0) * rad1, sin(ang0) * rad1, z1)
+			var p11 := Vector3(cos(ang1) * rad1, sin(ang1) * rad1, z1)
+			# 法线朝内（cull_disabled，两面都画）；用顶点法线让光照稳定
+			var n0 := Vector3(cos(ang0), sin(ang0), 0.0)
+			var n1 := Vector3(cos(ang1), sin(ang1), 0.0)
+			_tri_colored(st, p00, n0, a0, p01, n1, a1, p11, n1, a1)
+			_tri_colored(st, p00, n0, a0, p11, n1, a1, p10, n0, a1)
+	st.generate_tangents()
+	return st.commit()
+
+
+func _tri_colored(st: SurfaceTool, a: Vector3, na: Vector3, aa: float,
+		b: Vector3, nb: Vector3, ab: float,
+		c: Vector3, nc: Vector3, ac: float) -> void:
+	st.set_color(Color(1.0, 1.0, 1.0, aa))
+	st.set_normal(na)
+	st.add_vertex(a)
+	st.set_color(Color(1.0, 1.0, 1.0, ab))
+	st.set_normal(nb)
+	st.add_vertex(b)
+	st.set_color(Color(1.0, 1.0, 1.0, ac))
+	st.set_normal(nc)
+	st.add_vertex(c)
 
 
 func _build_model() -> void:
@@ -555,7 +732,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if game.state != "ship" or game.paused or game.map_open:
 		focus = false
 		return
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not landed and not docked:
+	# 第三人称是观察模式：着陆 / 对接时也要能拖鼠标绕船看，
+	# 所以「必须飞行中」这条限制只对座舱视角生效。
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (third_person or (not landed and not docked)):
 		if not autopilot:
 			# Web 的鼠标位移会被乘以 devicePixelRatio；screen_relative 在 4.7 里与 relative 相同。
 			var look_delta: Vector2 = event.relative
@@ -582,7 +761,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func apply_look(relative: Vector2) -> void:
-	if game.state != "ship" or game.paused or game.map_open or landed or docked or autopilot:
+	if game.state != "ship" or game.paused or game.map_open:
+		return
+	# 第三人称是「观察模式」：船停着（landed）或对接中也该能绕圈看，
+	# 不然一着陆镜头就卡死，拖鼠标完全没反应 —— 玩家会以为「按 F5 只是平移」。
+	# 座舱视角仍然限制在飞行中（着陆时转船体没有意义）。
+	if not third_person and (landed or docked or autopilot):
 		return
 	relative = relative.limit_length(120.0)
 	var sensitivity: float = mouse_sensitivity * (game.settings.sensitivity_multiplier() if game.settings != null else 1.0)
@@ -855,12 +1039,31 @@ func _black_hole_pull(delta: float) -> Vector3:
 	# 倍率这里就定下来，推力/喷气/制动/自动航行四处的扣油统一乘它。
 	bh_fuel_multiplier = lerpf(1.0, BH_FUEL_MULTIPLIER, pow(closeness, BH_FUEL_CURVE))
 	var pull := direction * strength
-	# 切向分量：让飞船先被甩成绕转，而不是笔直扎进去。但绕转不能是永久的 ——
-	# 纯切向力是闭轨的，飞船会绕着黑洞一直转、永远掉不进去（实测会在 ~1000 处
-	# 稳成一个圆轨道）。所以切向强度随「在场时长」衰减：进来时是绕，绕上一圈多
-	# 之后就只剩往里拽。玩家看到的观感是「被拉住转了几圈，然后被吞进去」。
+	# ── 擦边逃逸的修法 ──────────────────────────────────────────
+	#
+	# 问题：玩家实测能靠引力弹弓从黑洞旁边擦边过去，还能逃出来。
+	# 原因：纯径向引力只改**方向**、不改**速度大小**。飞船擦边时走的是双曲线轨道，
+	# 速度够快就偏一下就溜了 —— 这是真实物理，但在游戏里不行：
+	# 卡冈图雅应该是「一旦靠近就别想走」。
+	#
+	# 做法：在近黑洞区域额外吃切向速度（相当于吸积盘的阻力）,
+	# 让高速飞船也被拖住。速率用「速度超出逃逸速度多少」来调 ——
+	# 速度越快，吃掉的越多，这样高速度也躲不过。
 	var tangential_weight := (1.0 - smoothstep(0.0, BH_ORBIT_FADE, bh_orbit_age)) \
 		* (1.0 - smoothstep(0.85, 0.97, closeness))
+	if closeness > BH_CAPTURE_FROM:
+		# 切向速度（垂直于半径方向的分量）—— 这是「擦边溜走」靠的那个分量。
+		var tx := velocity - direction * velocity.dot(direction)
+		var tx_speed := tx.length()
+		if tx_speed > 0.1:
+			# 吃掉的量：近黑洞系数 × 超速倍数。速度越快吃得越狠。
+			var grab := smoothstep(BH_CAPTURE_FROM, 1.0, closeness)
+			var overspeed := clampf(tx_speed / BH_ESCAPE_SPEED, 0.25, 4.0)
+			var bleed := grab * overspeed * BH_TANGENT_SINK * delta
+			velocity -= tx * clampf(bleed, 0.0, 0.85)
+			# 速度被吃掉后，这部分动量转成一点向心加速度，
+			# 让飞船是真的「被卷进去」，而不是单纯停下。
+			pull += direction * minf(tx_speed, BH_ESCAPE_SPEED) * grab * BH_SINK_TO_INWARD * delta
 	if tangential_weight > 0.001:
 		var drift := velocity - direction * velocity.dot(direction)
 		var tangent: Vector3
@@ -882,6 +1085,14 @@ func _black_hole_pull(delta: float) -> Vector3:
 	bh_pull = pull
 	return pull
 
+## 探针专用：只读地问「按现在的状态，这一帧会不会被吞掉 / 会不会被强制捕获」，
+## 不改任何状态（不触发 begin_death、不动 velocity）。生产路径不走这里。
+## 存在的理由：探针要复用真实判定逻辑，否则测的是一份影子实现，
+## 改完代码它照样绿 —— 那种测试等于没测。
+func _is_swallowed_for_probe(hole_position: Vector3) -> bool:
+	var d: float = global_position.distance_to(hole_position)
+	return d <= BH_HORIZON
+
 ## 视界判定 + 分档警告。返回 true 表示这一帧已经被吞掉，调用方应当停止后续物理。
 func _apply_black_hole_capture(delta: float) -> bool:
 	if game.gargantua == null:
@@ -897,6 +1108,30 @@ func _apply_black_hole_capture(delta: float) -> bool:
 		# 原来给的是 5.2 秒，玩家看着镜头继续渲染，像是被吸进去还在里面待着。
 		game.begin_death("飞船越过了卡冈图雅的视界", 1.6)
 		return true
+	# ── 强制捕获：进了内圈就别想走 ─────────────────────────────
+	# 引力本身只改方向、不改速度大小，所以理论上高速飞船还能靠双曲线轨道
+	# 擦边溜掉。BH_FORCE_CAPTURE 以内直接兜底：不管速度多少，都往视界里拽。
+	# 这是「游戏性优先于物理正确性」的一处刻意选择 —— 卡冈图雅不是可以
+	# 刷引力弹弓的景点，靠近它就该有代价。
+	#
+	# 注意用 bh_captured 锁存：1600 全速时一帧能飞 26 单位，只在「这一帧
+	# 恰好落在半径内」判定会被直接穿过去（实测 3000 处 1600 速就从兜底圈
+	# 里漏了出去）。一旦进过捕获圈就记住，直到退出更外圈才解锁。
+	if bh_distance <= BH_FORCE_CAPTURE:
+		bh_captured = true
+	elif bh_distance > BH_FORCE_CAPTURE * BH_CAPTURE_RELEASE:
+		bh_captured = false
+	if bh_captured:
+		var inward: Vector3 = (game.gargantua.global_position - global_position).normalized()
+		# 先把切向速度吃掉，再把径向速度拉满，保证一定会落到视界里。
+		var tangential_v: Vector3 = velocity - inward * velocity.dot(inward)
+		velocity -= tangential_v * clampf(BH_FORCE_BRAKE * delta, 0.0, 1.0)
+		var inward_speed: float = velocity.dot(inward)
+		if inward_speed < BH_FORCE_INWARD:
+			velocity += inward * (BH_FORCE_INWARD - inward_speed)
+		if bh_warn_cooldown <= 0.0:
+			bh_warn_cooldown = 2.0
+			game.hud.show_toast("⚠ 已被卡冈图雅捕获 · 引擎无法挽回", 2.2)
 	# 自动航行一旦进了内圈就中止：让它继续算会自己撞进视界，玩家会以为程序出 bug。
 	if autopilot and bh_distance < BH_PULL_RANGE * 0.62:
 		autopilot = false
@@ -1123,6 +1358,13 @@ func _update_engine(delta: float) -> void:
 		material.emission_energy_multiplier = lerpf(material.emission_energy_multiplier, 0.35 + thrust_level * 3.5, delta * 8.0)
 	for light in engine_lights:
 		light.light_energy = lerpf(light.light_energy, 0.15 + thrust_level * 1.8, delta * 8.0)
+	# 尾焰：推力越大越长。缩的是 Z 轴（锥体已经绕 X 转 90°，长轴落在 Z 上）。
+	# 同时让整束往后伸，不然缩短时喷口处会露出一截空隙。
+	for plume in engine_plumes:
+		var node := plume as Node3D
+		var t: float = 0.35 + thrust_level * 1.15
+		var target_scale := Vector3(1.0, 1.0, t)
+		node.scale = node.scale.lerp(target_scale, 1.0 - exp(-delta * 10.0))
 
 
 ## 把一个盒体塞进按材质分组的 SurfaceTool 批次，用于铆钉 / 格栅 / 防滑条这类重复小件。

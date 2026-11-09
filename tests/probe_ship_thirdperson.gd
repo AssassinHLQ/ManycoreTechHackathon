@@ -111,7 +111,8 @@ func _run() -> void:
 	print("\n=== 切回座舱 ===")
 	print("  third_person = ", ship.third_person)
 	print("  相机局部位置 = ", ship.camera.position)
-	if ship.camera.position.length() > 3.0:
+	# 相对船体尺寸判断，别写死米数 —— 改机长时不会误报。
+	if ship.camera.position.length() > ship.ship_model_length * 0.5:
 		failures += 1
 		print("  ! 相机没有回到座舱")
 

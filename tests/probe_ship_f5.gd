@@ -76,7 +76,9 @@ func _run() -> void:
 	_check(dist > 5.0, "in ship: the camera moved outside the hull (%.2f m)" % dist)
 	game._unhandled_input(_f5())
 	_check(not ship.third_person, "in ship: F5 again switches back to the cockpit")
-	_check(ship.camera.position.length() < 3.0, "in ship: the camera returned to the cockpit")
+	# 相对船体尺寸判断，别写死米数 —— 改机长时不会误报。
+	_check(ship.camera.position.length() < ship.ship_model_length * 0.5,
+		"in ship: the camera returned to the cockpit")
 
 	# ── 4. 暂停时不响应 ──
 	print("\n=== 暂停时按 F5 ===")
