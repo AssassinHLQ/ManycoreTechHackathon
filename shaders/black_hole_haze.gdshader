@@ -1,5 +1,9 @@
 shader_type spatial;
-render_mode unshaded, cull_disabled, blend_add, depth_draw_never, shadows_disabled, fog_disabled;
+render_mode unshaded, cull_front, blend_add, depth_draw_never, shadows_disabled, fog_disabled;
+
+// 注：与 black_hole_disk.gdshader 同样改用 cull_front。
+// 这件资产的壳绕序是反的（法线朝内），cull_back 会留下远侧内表面、
+// cull_disabled 会让近远两侧在加法混合下叠出三角状硬边。详见 disk 那个文件。
 
 // 卡冈图雅：外圈尘埃 / 星尘壳。
 //
@@ -52,12 +56,6 @@ void fragment() {
 	vec2 d = local_pos.xz;
 	float r = length(d);
 
-	// 与 black_hole_disk.gdshader 同样处理内部闪烁：薄壳只画朝向相机的这一面。
-	float facing = dot(normalize(NORMAL), normalize(VIEW));
-	if (facing < -0.02) {
-		discard;
-	}
-
 	float span = max(1.0, outer_radius - inner_radius);
 	float t = clamp((r - inner_radius) / span, 0.0, 1.0);
 
@@ -72,7 +70,6 @@ void fragment() {
 	float fade = 1.0;
 	fade *= 1.0 - smoothstep(max(0.0, outer_radius - edge), outer_radius, r);
 	fade *= smoothstep(inner_radius, inner_radius + core, r);
-	fade *= smoothstep(0.0, 0.18, abs(facing));
 
 	ALBEDO = col * energy * fade;
 	ALPHA = 1.0;
