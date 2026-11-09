@@ -1,4 +1,12 @@
 shader_type spatial;
+// 内部闪烁的根源：blend_add + depth_draw_never + cull_disabled 三者叠加，
+// 三角面不写深度、正反两面都画，同一像素叠了哪些面完全取决于飞船当时的角度。
+// 飞船一动，重叠的三角面数量就变 —— 屏幕上那片闪烁的三角形就是这么来的。
+//
+// 修法：不再靠「双面全叠」，改为在 fragment 里按盘面朝向自己算一遍遮挡 ——
+// 盘面是厚度几乎为零的一层，从侧面看时正面/背面会互相穿透，所以只在
+// 「这一层确实朝向相机」时才画，穿透的那部分直接丢掉。
+// 同时保留 blend_add（三层同心盘面本来就该加法叠加）。
 render_mode unshaded, cull_disabled, blend_add, depth_draw_never, shadows_disabled, fog_disabled;
 
 // 卡冈图雅吸积盘：按「半径」直接求值，不采样贴图。
@@ -64,6 +72,21 @@ void fragment() {
 	float r = length(d);
 	float t = clamp(r / max(1.0, ramp_max), 0.0, 1.0);
 
+	// ── 内部闪烁的修法 ──────────────────────────────────────────
+	// 盘面厚度几乎为零，双面渲染时正反两面会在同一个像素上互相穿透。
+	// 飞船一动，穿过的三角面数量就变 —— 屏幕上就是那片闪烁。
+	//
+	// 这里按「法线朝向」把背面丢掉：薄盘只需要画朝向相机的这一面。
+	// 用 NG（几何法线，不受光照影响，unshaded 下稳定）点 V（视线方向）。
+	// 盘面本身略有起伏，所以留一点容差，别把正侧对时的那圈也丢光。
+	//
+	// 这一步让「每个像素最多只叠到该层真正朝外的那一面」，
+	// 闪烁随之消失，而加法混合的层次感保留。
+	float facing = dot(normalize(NORMAL), normalize(VIEW));
+	if (facing < -0.02) {
+		discard;
+	}
+
 	// 旋臂扰动：同心圆加一点角向抖动，避免读成靶心
 	float ang = atan(d.y, d.x);
 	float rr = r + swirl_amount * ramp_max * sin(ang * 2.0 + r * 0.0032);
@@ -82,6 +105,9 @@ void fragment() {
 	float fade = 1.0;
 	fade *= 1.0 - smoothstep(max(0.0, outer_radius - edge), outer_radius, r);
 	fade *= smoothstep(inner_radius, inner_radius + core, r);
+
+	// 掠射角也淡一点：盘面几乎侧对相机时那一圈最容易闪
+	fade *= smoothstep(0.0, 0.18, abs(facing));
 
 	ALBEDO = col * energy * fade;
 	ALPHA = 1.0;
