@@ -13,10 +13,41 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS = os.path.join(ROOT, "assets", "models")
 MANIFEST = os.path.join(MODELS, "LICENSE_MANIFEST.json")
+EXPORT_PRESETS = os.path.join(ROOT, "export_presets.cfg")
 
 # 贴图预算：主角/近景 ≤ 4096；纯远景剪影 ≤ 512。
 # 这里用 4096 作为上限 —— 超过就是「明确超预算」，具体用途由 README 那一栏管。
 BUDGET = {"triangles": 150000, "texture_edge": 4096, "nodes": 400, "materials": 24}
+
+
+def excluded_from_export():
+    """读 export_presets.cfg 的 exclude_filter，返回被排除的路径前缀集合。
+
+    为什么需要它：
+      预算（三角面 ≤ 150k 等）管的是**进游戏/进包**的模型。
+      但 `assets/models/` 里可以放**母版资产** —— 比如 Lux3D 生成的高面数星球，
+      留着备用或做下游烘焙的源，**明确排除出导出**，不占 pck。
+      这类资产不该按「进包预算」判红，否则检查器会一直报错，
+      真出问题的时候反而没人看。
+    """
+    prefixes = set()
+    if not os.path.isfile(EXPORT_PRESETS):
+        return prefixes
+    with io.open(EXPORT_PRESETS, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line.startswith("exclude_filter"):
+                continue
+            _, _, value = line.partition("=")
+            for part in value.strip().strip('"').split(","):
+                part = part.strip()
+                # 只看 assets/models/ 下的排除项，转成相对 MODELS 的 slug
+                marker = "assets/models/"
+                if marker in part:
+                    slug = part.split(marker, 1)[1].split("/")[0]
+                    if slug:
+                        prefixes.add(slug)
+    return prefixes
 
 
 def read_glb(path):
@@ -120,6 +151,7 @@ def main(argv):
     targets = argv[1:] or sorted(
         d for d in os.listdir(MODELS)
         if os.path.isdir(os.path.join(MODELS, d)) and not d.startswith("_"))
+    excluded_slugs = excluded_from_export()
     problems = []
     for slug in targets:
         model_dir = os.path.join(MODELS, slug)
@@ -134,7 +166,10 @@ def main(argv):
         textures = collect_textures(gltf, binary, model_dir)
         edges = [e for _, _, e in textures if e]
         max_edge = max(edges) if edges else 0
-        print("== %s" % slug)
+        # 母版资产：明确排除出导出的，不按「进包预算」判红（见 excluded_from_export）
+        is_master = slug in excluded_slugs
+        tag = "  【母版·不进包】" if is_master else ""
+        print("== %s%s" % (slug, tag))
         print("   三角面 %d / 预算 %d" % (tris, BUDGET["triangles"]))
         print("   节点   %d / 预算 %d" % (nodes, BUDGET["nodes"]))
         print("   材质   %d / 预算 %d" % (mats, BUDGET["materials"]))
@@ -147,6 +182,9 @@ def main(argv):
             print("      %-28s %s%s" % (src, edge or "?", size))
         if slug not in allowed:
             problems.append("%s：不在 LICENSE_MANIFEST.json 的已导入列表里" % slug)
+        if is_master:
+            # 母版只查许可闸门；面数/贴图只是记录，不判红。
+            continue
         if tris > BUDGET["triangles"]:
             problems.append("%s：%d 三角面，超出预算 %d" % (
                 slug, tris, BUDGET["triangles"]))
