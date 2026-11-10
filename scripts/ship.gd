@@ -210,17 +210,18 @@ const BH_TANGENT_RATIO := 0.5
 ##
 ## 从多近开始吃切向速度（closeness，0~1）。0.62 约合离黑洞 4100。
 const BH_CAPTURE_FROM := 0.62
-## 「逃逸速度」参考值：切向速度超过它的倍数越多，被吃得越快。
-## 飞船速度上限是 1600，取 520 让高速擦边也躲不过。
-##
-## ⚠ 2026-11-10 注意：SHIP_SPEED_SAFETY_CAP 从 1600 提到 3200 之后，
-##   下面这几个黑洞参数（BH_ESCAPE_SPEED / BH_FORCE_CAPTURE）**还是按 1600 标定的**。
-##   实测过 1600 全速擦边能被拦住，但 2000+ 是否仍能拦住**没有验证**。
-##   本次改动不连带调整（一次只改一个系统，避免两头都出问题），
-##   如果实测发现高速能逃出黑洞，再单独标定这三个数。
+## 「逃逸速度」参考值：切向速度超过它的倍数会影响吞噬强度（但有上限）。
 const BH_ESCAPE_SPEED := 520.0
-## 切向速度的吞噬速率（每秒占切向速度的比例，还会乘超速倍数）。
-const BH_TANGENT_SINK := 1.6
+## 切向速度的吞噬速率：**每秒最多砍掉多少 m/s 的切向速度**（不是比例）。
+##
+## ⚠ 2026-11-10 用户实测：「3200m/s 和 1000m/s 都是靠近后 3 秒左右失去速度」。
+##   原因是这里（和下面的 BH_FORCE_BRAKE）原本按**比例**砍速度：
+##       velocity -= tx * (grab * overspeed * BH_TANGENT_SINK * delta)
+##   每帧砍固定百分比，于是刹停耗时与初速度无关 —— 快慢感觉一样，很假。
+##   真实的黑洞拖曳是**固定减速度**：速度越快，要花越久才被拖停。
+##   改成按「每秒最多砍 X m/s」之后：
+##       1000 m/s 约 1.1 秒停；3200 m/s 约 3.5 秒停。
+const BH_TANGENT_DECEL := 900.0
 ## 被吃掉的切向动量有多少转成向心加速度（让它真的被卷进去，而不是单纯刹停）。
 const BH_SINK_TO_INWARD := 0.9
 
@@ -229,11 +230,21 @@ const BH_SINK_TO_INWARD := 0.9
 ## 120 是视界，这里留出一段缓冲区，让「已经没救了」的观感提前出现，
 ## 而不是等贴脸才判定。
 ##
-## 取 2400：实测 3000 处、1600 全速擦边时，仅靠引力+切向吞噬仍能逃出去
-## （60 秒后飞到 44645 之外）。把兜底半径放到 2400，让最高速的擦边也躲不过。
+## ── 强制捕获兜底 ─────────────────────────────────────────────────
+## 进了这个半径就别想走：不管速度多少，切向速度被吃掉、径向速度被拉满。
+## 120 是视界，这里留出一段缓冲区，让「已经没救了」的观感提前出现。
+##
+## 取 2400：实测 3000 处、1600 全速擦边时，仅靠引力+切向吞噬仍能逃出去。
 const BH_FORCE_CAPTURE := 2400.0
-## 强制捕获时每秒吃掉多少切向速度（占总切向速度的比例，1.0 = 秒杀）。
-const BH_FORCE_BRAKE := 3.0
+## 强制捕获时每秒最多砍掉多少 m/s 的切向速度（**固定量，不是比例**）。
+##
+## ⚠ 2026-11-10 用户实测「3200 和 1000 都是 3 秒失去速度」：
+##   这里原来写着 `velocity -= tangential_v * clampf(3.0 * delta, 0, 1)`，
+##   即每帧砍 5% —— 3 秒 180 帧之后剩 0.95^180 ≈ 0.006%，几乎归零。
+##   **与初速度完全无关**，所以快慢感觉一模一样。
+##   改成固定减速度 1500 m/s² 之后：1000 m/s 约 0.7 秒停、3200 m/s 约 2.1 秒停，
+##   高速明显「撑得更久」。
+const BH_FORCE_BRAKE_DECEL := 1500.0
 ## 强制捕获时保持的最小向心速度。
 const BH_FORCE_INWARD := 180.0
 ## 捕获锁存：一旦进过 BH_FORCE_CAPTURE 就记住，直到退出这个倍数的外圈才解锁。
@@ -1447,11 +1458,13 @@ func _black_hole_pull(delta: float) -> Vector3:
 		var tx := velocity - direction * velocity.dot(direction)
 		var tx_speed := tx.length()
 		if tx_speed > 0.1:
-			# 吃掉的量：近黑洞系数 × 超速倍数。速度越快吃得越狠。
+			# 砍掉的量：**固定减速量**（m/s），不再按比例。
+			# 近黑洞系数 grab 决定减速度有多接近满值；超速只要略微加成，
+			# 但仍然是有上限的固定量 —— 速度快就得多花几秒，不会瞬停。
 			var grab := smoothstep(BH_CAPTURE_FROM, 1.0, closeness)
-			var overspeed := clampf(tx_speed / BH_ESCAPE_SPEED, 0.25, 4.0)
-			var bleed := grab * overspeed * BH_TANGENT_SINK * delta
-			velocity -= tx * clampf(bleed, 0.0, 0.85)
+			var over := clampf(tx_speed / BH_ESCAPE_SPEED, 0.5, 2.0)
+			var cut := minf(tx_speed, BH_TANGENT_DECEL * grab * over * delta)
+			velocity -= tx / tx_speed * cut
 			# 速度被吃掉后，这部分动量转成一点向心加速度，
 			# 让飞船是真的「被卷进去」，而不是单纯停下。
 			pull += direction * minf(tx_speed, BH_ESCAPE_SPEED) * grab * BH_SINK_TO_INWARD * delta
@@ -1514,9 +1527,13 @@ func _apply_black_hole_capture(delta: float) -> bool:
 		bh_captured = false
 	if bh_captured:
 		var inward: Vector3 = (game.gargantua.global_position - global_position).normalized()
-		# 先把切向速度吃掉，再把径向速度拉满，保证一定会落到视界里。
+		# 先把切向速度吃掉（**固定减速度**，速度快就多花几秒，不会瞬停），
+		# 再把径向速度拉满，保证一定会落到视界里。
 		var tangential_v: Vector3 = velocity - inward * velocity.dot(inward)
-		velocity -= tangential_v * clampf(BH_FORCE_BRAKE * delta, 0.0, 1.0)
+		var tv_speed: float = tangential_v.length()
+		if tv_speed > 0.01:
+			var cut: float = minf(tv_speed, BH_FORCE_BRAKE_DECEL * delta)
+			velocity -= tangential_v / tv_speed * cut
 		var inward_speed: float = velocity.dot(inward)
 		if inward_speed < BH_FORCE_INWARD:
 			velocity += inward * (BH_FORCE_INWARD - inward_speed)
