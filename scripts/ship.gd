@@ -76,32 +76,45 @@ const SHIP_THRUST := 72.0
 const SHIP_BOOST_THRUST := 150.0
 const SHIP_BRAKE_DECEL := 260.0
 
-## ── 飞行手感（2026-11-10 二次修正）──
+## ── 飞行手感（2026-11-10 第三次修正，这次是真正的目标方案）──
 ##
-## 历史：
-##   第一版是纯牛顿漂移 —— `velocity += basis * thrust * accel * delta`，
-##   没有阻尼，也没有方向对齐。
-##   第二版本喵加了 `IDLE_DRAG`（松油门自动减速），**这是错的**：
-##   太空没有介质、没有空气阻力，不受外力就永远匀速直线运动（用户当场指出）。
-##   那是凭手感拍的数，不是物理。
+## 历史（前两版都错了）：
+##   第一版：纯牛顿漂移，鼠标直接转动飞船，A/D 直接横移。
+##          → 玩家感觉「在平移」，因为横移让飞船侧向蹭，机头不跟着看的方向。
+##   第二版：本喵加了阻尼 + 速度对齐，但**方向逻辑没变**。
+##          → 更糟：阻尼违反太空物理（用户当场指出）。
 ##
-## 现在（第三版）：**只保留「速度矢量向机头对齐」这一条**。
-##   它既是「战斗机手感」的真正来源（转向时速度跟着机头转，
-##   而不是笔直飘出画面），也**不违反**太空物理 ——
-##   对齐是飞船自己的姿态控制系统在施加外力，不是凭空减速。
-##   速度不会因为「松开油门」而消失，只有：
-##     · 玩家按 X 制动（主动施加反向推力）
-##     · 行星/黑洞引力
-##     · 撞击
-##   才会改变。
+## 这一版要的是：
+##   1. **鼠标只决定「想看哪里」**，不直接转飞船。
+##   2. 飞船**缓慢转向**那个方向（有角速度上限，像真飞机一样转不快）。
+##   3. **机头永远指向屏幕中心**（即始终 = 期望朝向）。
+##   4. A/D 不再横移，改成**滚转**（战斗机那样压坡度转弯）。
+##   5. 遵循宇宙物理：只有推进、引力、撞击能改变速度；**没有任何阻尼**。
+##
+## 实现方式：
+##   · 维护一个「期望朝向」`aim_basis`（鼠标推动它）
+##   · 每帧让飞船的实际 basis 用**角速度受限**的方式向 aim_basis 旋转
+##   · 机头 -Z 永远收敛到 aim 的 -Z，所以「头朝屏幕中心」自动成立
+##   · 速度只由推力/引力改变，飞船转向不直接改速度矢量
+##     （但推力方向随机头，所以转向后推进自然改变速度方向）
 
-## 速度矢量与机头方向的每秒对齐率。
-## 越高越「有抓地感」（像战斗机），越低越「飘」（像纯太空模拟）。
-## 0 = 完全不做对齐（纯牛顿，转向后机头转了但速度方向不变）。
-const ALIGN_RATE := 2.6
-## 推进速度上限（米/秒）。加力时另算。
-## 注意：这是**推力能加速到的上限**，不是「速度上限」——
-## 借引力或惯性超过它不拦。
+## 期望朝向（鼠标推动的「想看的方向」）。飞船会缓慢追上来。
+var aim_basis := Basis.IDENTITY
+
+## 最大角速度（弧度/秒）。这是「转得多快」的上限 ——
+## 2.4 约合 137°/秒，像战斗机而不是陀螺。
+const MAX_TURN_RATE := 2.4
+## 角速度的加速度（弧度/秒²）。有它才不是「瞬间到位」，而是慢慢起转、慢慢停。
+const TURN_ACCEL := 9.0
+## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
+var _turn_velocity := Vector3.ZERO
+
+## 滚转速率（弧度/秒），A/D 控制。
+const ROLL_RATE := 2.0
+## 鼠标灵敏度（每像素转多少弧度）。
+const AIM_SENSITIVITY := 0.0022
+
+## 推进速度上限（米/秒）。只限制推力能加速到多快，不拦惯性。
 const SHIP_MAX_SPEED := 420.0
 const SHIP_BOOST_MAX_SPEED := 700.0
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
@@ -757,6 +770,67 @@ func _build_model() -> void:
 	_batch_flush()
 
 
+## 姿态控制：让飞船**平滑地**转向 `aim_basis`（鼠标想看的方向）。
+##
+## 为什么不用 `basis.slerp(aim, delta * k)`：
+##   那会让转向速度跟「当前差角」成正比 —— 差角大时瞬间甩过去，
+##   差角小时磨磨蹭蹭，既不像飞机，也没法做「转得慢」的体感。
+##   玩家看到的就是「鼠标一动船就歪过去了」。
+##
+## 这里用**角速度 + 角加速度**：
+##   1. 算出从当前朝向转到 aim 需要的「角速度轴」（旋转轴 × 差角）
+##   2. 用 TURN_ACCEL 让实际角速度追上去，并夹在 MAX_TURN_RATE 以内
+##   3. 按这个角速度转一帧
+## 效果：飞船像有惯性一样慢慢起转、慢慢停，最高不超过 MAX_TURN_RATE。
+##
+## ⚠ 这是姿态控制（喷口在做功），不是凭空改速度 —— 速度矢量完全不受影响，
+##   符合「不受外力不改变运动状态」。
+func _apply_attitude(delta: float) -> void:
+	var cur := global_transform.basis.orthonormalized()
+	var target := aim_basis.orthonormalized()
+
+	# 当前朝向到目标朝向的「差旋转」
+	var diff := target * cur.inverse()
+	var q := diff.get_rotation_quaternion()
+	# 四元数的角度（0..PI）
+	var angle := q.get_angle()
+	var axis := q.get_axis()
+
+	if angle < 0.0005 or absf(axis.length()) < 0.0001:
+		# 基本对齐了：角速度衰减到 0
+		_turn_velocity = _turn_velocity.lerp(Vector3.ZERO, clampf(delta * 12.0, 0.0, 1.0))
+		return
+
+	# 目标角速度 = 轴 × 差角（单位：弧度/秒），并限制大小
+	var desired := axis.normalized() * angle
+	# 差角越大越想转快，但不超过 MAX_TURN_RATE
+	var desired_len := minf(angle / maxf(delta, 0.0001), MAX_TURN_RATE)
+	desired = desired.normalized() * desired_len
+
+	# 角速度向目标靠拢（受角加速度限制）
+	var dv := desired - _turn_velocity
+	var max_dv := TURN_ACCEL * delta
+	if dv.length() > max_dv:
+		dv = dv.normalized() * max_dv
+	_turn_velocity += dv
+	# 再夹一次上限（防止累积超过）
+	if _turn_velocity.length() > MAX_TURN_RATE:
+		_turn_velocity = _turn_velocity.normalized() * MAX_TURN_RATE
+
+	# 按角速度转一帧
+	var step_angle := _turn_velocity.length() * delta
+	if step_angle > 0.0001:
+		var step_axis := _turn_velocity.normalized()
+		# 不要转过头
+		if step_angle > angle:
+			step_angle = angle
+		var step := Basis(step_axis, step_angle)
+		var new_basis := (step * cur).orthonormalized()
+		var t := global_transform
+		t.basis = new_basis
+		global_transform = t
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if game.state != "ship" or game.paused or game.map_open:
 		focus = false
@@ -792,9 +866,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func apply_look(relative: Vector2) -> void:
 	if game.state != "ship" or game.paused or game.map_open:
 		return
-	# 第三人称是「观察模式」：船停着（landed）或对接中也该能绕圈看，
-	# 不然一着陆镜头就卡死，拖鼠标完全没反应 —— 玩家会以为「按 F5 只是平移」。
-	# 座舱视角仍然限制在飞行中（着陆时转船体没有意义）。
+	# 第三人称是「观察模式」：船停着（landed）或对接中也该能绕圈看。
 	if not third_person and (landed or docked or autopilot):
 		return
 	relative = relative.limit_length(120.0)
@@ -804,8 +876,49 @@ func apply_look(relative: Vector2) -> void:
 		orbit_yaw = wrapf(orbit_yaw - relative.x * sensitivity * 2.4, -PI, PI)
 		orbit_pitch = clampf(orbit_pitch - relative.y * sensitivity * 1.8, -0.35, 1.15)
 		return
-	rotate_object_local(Vector3.UP, -relative.x * sensitivity)
-	rotate_object_local(Vector3.RIGHT, -relative.y * sensitivity)
+
+	# ── 座舱视角：鼠标**只推动期望朝向 aim_basis**，不直接转飞船 ──
+	#
+	# 这是本次改动的核心。旧版直接 `rotate_object_local()` —— 鼠标一动飞船立刻
+	# 转身，而 A/D 又是横移，于是「鼠标转一点 + 横移一点」看起来就是原地平移。
+	# 现在鼠标推动的是「我想看的方向」，飞船要靠**角速度**慢慢追上来，
+	# 机头最终会精确指向那个方向（也就是屏幕中心）。
+	#
+	# 偏航：绕**世界 Y 轴**转（不是飞船自身的 up）——
+	#   否则飞船压坡度后，鼠标左右会变成滚转，很难控制。
+	# 俯仰：绕**飞船自身的右轴**（pitch 跟随机身，才符合飞行器手感）。
+	var yaw := -relative.x * sensitivity * AIM_SENSITIVITY / mouse_sensitivity
+	var pitch := -relative.y * sensitivity * AIM_SENSITIVITY / mouse_sensitivity
+
+	# 先算当前期望朝向的 forward 与 right，用来构造新的 aim
+	var aim_forward := -aim_basis.z.normalized()
+	var aim_right := aim_basis.x.normalized()
+
+	# 俯仰：绕自身右轴，并夹住上下限（别翻过去）
+	var pitched := Basis(aim_right, pitch) * aim_forward
+	# 限制俯仰角：与世界上方向夹角限制在 [-85°, +85°]
+	var up := Vector3.UP
+	var cos_limit := cos(deg_to_rad(85.0))
+	if pitched.dot(up) > cos_limit:
+		# 太朝上了，压回上限
+		var flat := (pitched - up * pitched.dot(up)).normalized()
+		pitched = (flat * cos_limit + up * sqrt(maxf(0.0, 1.0 - cos_limit * cos_limit))).normalized()
+	elif pitched.dot(-up) > cos_limit:
+		var flat2 := (pitched + up * pitched.dot(up)).normalized()
+		pitched = (flat2 * cos_limit - up * sqrt(maxf(0.0, 1.0 - cos_limit * cos_limit))).normalized()
+
+	# 偏航：绕世界 Y
+	var yawed := Basis(Vector3.UP, yaw) * pitched
+
+	# 用「新的 forward + 保持机身上方向尽量不变」重建 aim_basis
+	var body_up := aim_basis.y.normalized()
+	# 让 up 与 forward 正交
+	var right_axis := yawed.cross(body_up)
+	if right_axis.length() < 0.001:
+		right_axis = yawed.cross(Vector3.RIGHT)
+	right_axis = right_axis.normalized()
+	var final_up := right_axis.cross(yawed).normalized()
+	aim_basis = Basis(right_axis, final_up, -yawed).orthonormalized()
 
 
 ## 第三人称相机：绕着船身转，一直看船。
@@ -870,6 +983,11 @@ func _physics_process(delta: float) -> void:
 		return
 	impact_cooldown = maxf(0.0, impact_cooldown - delta)
 	dock_cooldown = maxf(0.0, dock_cooldown - delta)
+	# 着陆 / 对接时：姿态锁定在当前朝向，并把 aim 同步过来，
+	# 否则下次起飞会因为 aim 停在旧方向而突然甩头。
+	if landed or docked:
+		aim_basis = global_transform.basis.orthonormalized()
+		_turn_velocity = Vector3.ZERO
 	if game.station != null:
 		var port_now: Vector3 = game.station.docking_point()
 		if last_station_port != Vector3.ZERO:
@@ -947,44 +1065,34 @@ func _physics_process(delta: float) -> void:
 		thrusting = autopilot and delta_v > 0.02
 		thrust_level = 0.8 if thrusting else 0.0
 	else:
+		# ── 姿态：飞船缓慢转向期望朝向，机头始终对着屏幕中心 ──
+		_apply_attitude(delta)
+
 		var thrust := Vector3.ZERO
+		# 前后推进照旧；**左右改成滚转**，不再横移。
+		# 这是这次改动的关键之一：A/D 横移正是「平移感」的来源。
 		thrust.z = Input.get_axis("move_forward", "move_back")
-		thrust.x = Input.get_axis("move_left", "move_right")
 		thrust.y = Input.get_axis("thrust_down", "jump")
 		thrust = thrust.limit_length(1.0)
 		var boosting := Input.is_action_pressed("jetpack") and fuel > 0.0
-		var has_input := thrust.length_squared() > 0.01
+		var has_input := thrust.length_squared() > 0.01 or absf(Input.get_axis("move_left", "move_right")) > 0.1
 
-		if has_input and fuel > 0.0:
+		# 滚转：绕着机头轴转机身（不影响前进方向）
+		var roll_input := Input.get_axis("move_right", "move_left")
+		if absf(roll_input) > 0.05 and fuel > 0.0:
+			var roll := Basis(Vector3.FORWARD, -roll_input * ROLL_RATE * delta)
+			aim_basis = (aim_basis * roll).orthonormalized()
+
+		if thrust.length_squared() > 0.01 and fuel > 0.0:
 			var acceleration := SHIP_BOOST_THRUST if boosting else SHIP_THRUST
 			velocity += global_transform.basis * thrust * acceleration * delta
 			fuel = maxf(0.0, fuel - delta * (1.6 if boosting else 0.45) * bh_fuel_multiplier)
 			thrusting = true
 			thrust_level = 1.0 if boosting else 0.5
 		else:
-			# 没有输入：尾焰**完全熄灭**（用户要求「没开的时候不要尾焰」）
+			# 没有推进：尾焰**完全熄灭**（用户要求「没开的时候不要尾焰」）
 			thrusting = false
 			thrust_level = 0.0
-
-		# ── 飞行手感：速度矢量向机头对齐 ──
-		# 转向时机头转了，速度方向也跟着转 —— 这是「战斗机感」的来源，
-		# 但它**不是减速**：对齐的是**方向**，速度大小不变。
-		#
-		# ⚠ 只在没有推力输入时才对齐。
-		#   一旦有输入（哪怕是 Space 上升），强行对齐会把垂直/横向推力
-		#   立刻当成侧滑吃掉 —— 实测表现是「按 Space 不上升」，
-		#   冒烟里的 "Space applies upward thrust" 直接红。
-		#   有输入时完全不碰 velocity，玩家想怎么飞就怎么飞。
-		#
-		# ⚠ 这里**没有任何阻尼**：松开油门后速度大小保持不变，
-		#   飞船会永远匀速直线飘下去（真实太空）。
-		#   想减速只能按 X 制动（主动施加反向推力）。
-		var forward := -global_transform.basis.z.normalized()
-		if not has_input:
-			var speed := velocity.length()
-			if speed > 0.5:
-				var aligned := forward * speed
-				velocity = velocity.lerp(aligned, clampf(delta * ALIGN_RATE, 0.0, 1.0))
 
 		if Input.is_action_pressed("brake") and fuel > 0.0:
 			var before_brake := velocity
@@ -995,12 +1103,9 @@ func _physics_process(delta: float) -> void:
 				thrusting = true
 				thrust_level = 0.35
 
-		# 推进上限：**只限制推力能加速到多快**，不拦惯性。
-		# 做法是「超速时这一帧不加速」，而不是把速度硬压回上限 ——
-		# 后者会把引力弹弓、俯冲加速也一起削平，那就又不像太空了。
+		# 推进上限：超速时这一帧不加速（不硬压，保留惯性）
 		var max_speed: float = SHIP_BOOST_MAX_SPEED if boosting else SHIP_MAX_SPEED
-		if has_input and velocity.length() > max_speed:
-			# 撤销这一帧的推进增量（只保留引力的部分）
+		if thrust.length_squared() > 0.01 and velocity.length() > max_speed:
 			velocity -= global_transform.basis * thrust * (SHIP_BOOST_THRUST if boosting else SHIP_THRUST) * delta
 
 		velocity += gravity * delta
