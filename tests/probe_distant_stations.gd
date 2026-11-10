@@ -48,7 +48,7 @@ func _run() -> void:
 			var mi := node as MeshInstance3D
 			meshes += 1
 			for s in range(mi.mesh.get_surface_count()):
-				tris += mi.mesh.surface_get_array_len(s) / 3
+				tris += mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX].size() / 3
 		print("  %-22s pos=%s  网格=%d  三角≈%d" % [
 			holder.name, str(holder.global_position), meshes, tris])
 

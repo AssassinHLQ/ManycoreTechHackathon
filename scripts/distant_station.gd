@@ -118,5 +118,52 @@ func is_distant_station() -> bool:
 	return true
 
 
+## 内部舱室：一个环形观景舱，挂在站心下方（盘面以下），
+## 从气闸走进去能看到外面的星空与行星。
+## 懒加载 —— 玩家第一次按 E 进站时才造，省掉启动开销。
+var interior: Node3D = null
+const DistantStationInterior = preload("res://scripts/distant_station_interior.gd")
+
+
+func ensure_interior() -> Node3D:
+	if interior != null:
+		return interior
+	var hall: Node3D = DistantStationInterior.new()
+	hall.name = "Interior"
+	# 舱室挂在本节点下、但**不从属于自转**：否则玩家站在里面会被转晕。
+	# 做法是把它挂到父节点（main）下，位置跟随站点，但朝向固定朝站心。
+	add_child(hall)
+	# 舱半径由 interior.build() 自己按站体半径换算（那边一处即够）：
+	# 这里必须传**站体半径本身**，不能再预先缩放 —— 之前这里写了
+	# maxf(disk_radius/12, 20)，build 里又乘 0.042，两处缩放叠加，
+	# 358 米的站最后得到 12 米舱（撞到 clamp 下限），舱室小得不像话。
+	var tint := Color("d9b879") if display_name.find("环塔") >= 0 else Color("cfe6ff")
+	hall.build(disk_radius, tint)
+	# 舱中心放在盘面下方，避免和站体几何打架
+	hall.position = Vector3(0.0, -maxf(half_extent.y * 0.15, 8.0), 0.0)
+	interior = hall
+	return interior
+
+
+func interior_spawn_transform() -> Transform3D:
+	return ensure_interior().interior_spawn_transform()
+
+
+func is_interior_position(position: Vector3) -> bool:
+	if interior == null:
+		return false
+	return interior.is_interior_position(position)
+
+
+func airlock_position() -> Vector3:
+	return ensure_interior().airlock_position()
+
+
+func is_at_airlock(position: Vector3) -> bool:
+	if interior == null:
+		return false
+	return interior.is_at_airlock(position)
+
+
 func update_spin(delta: float) -> void:
 	rotate_y(spin_rate * delta)

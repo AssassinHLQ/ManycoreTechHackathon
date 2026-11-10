@@ -46,6 +46,9 @@ var planets: Array = []
 var anomalies: Array = []
 var quantum: Node3D
 var station: Node3D
+## 玩家此刻身处哪座站的内部（归航站或某座远景站）。
+## station 是归航站专用变量，远景站走这条，别混用。
+var active_station: Node3D = null
 var in_station := false
 var in_attic := false
 var attic: Node3D
@@ -1510,7 +1513,7 @@ func _station_local_aabb(root: Node3D) -> AABB:
 		var box: AABB = mi.get_aabb()
 		# 把网格盒子八个角变换到 root 空间，再求新的包围盒
 		var to_root: Transform3D = root.global_transform.affine_inverse() * mi.global_transform
-		var world_box := Transform3D(Basis(), Vector3.ZERO)
+		var _world_box := Transform3D(Basis(), Vector3.ZERO)
 		# 用 AABB 的 8 个角手动变换
 		var lo := Vector3(INF, INF, INF)
 		var hi := Vector3(-INF, -INF, -INF)
@@ -1658,7 +1661,7 @@ func _process(delta: float) -> void:
 		return
 	if paused or state not in ["walk", "ship"]:
 		return
-	if in_station and player != null and station != null and not station.is_interior_position(player.global_position):
+	if in_station and player != null and active_station != null and not active_station.is_interior_position(player.global_position):
 		_recover_from_station_void()
 	# 阁楼是地面线，轮回不该在这里倒计时。
 	if in_attic:
@@ -2200,10 +2203,10 @@ func _interact() -> void:
 			hud.show_toast("走到门（或镜面）前再按 E", 2.2)
 			return
 		if in_station:
-			if player.global_position.distance_to(station.airlock_position()) < 4.0:
+			if active_station != null and player.global_position.distance_to(active_station.airlock_position()) < 4.0:
 				exit_station_to_ship()
 			else:
-				hud.show_toast("气闸控制台在枢纽中央 · 靠近发光圆环再按 E", 2.2)
+				hud.show_toast("气闸在舱室中央 · 站到地面发光环上再按 E", 2.2)
 			return
 		if player.global_position.distance_to(ship.global_position) < 8.0:
 			if roast != null:
@@ -2221,12 +2224,8 @@ func _interact() -> void:
 			audio.play_ui(520.0)
 	elif state == "ship":
 		if ship.docked:
-			# 远景站没有内部通道，按 E 直接脱离（当「离开」用），别让玩家卡在
-			# 「对接了但按 E 什么都没发生」的状态里。
-			if ship.docked_station != null and ship.docked_station.has_method("is_distant_station"):
-				ship.undock()
-			else:
-				enter_station()
+			# 远景站也有内部舱室了，按 E 进站；进站后再按 E（站在出口环上）回飞船。
+			enter_station()
 		elif ship.landed:
 			exit_ship()
 		else:
@@ -2255,8 +2254,11 @@ func exit_ship() -> void:
 
 
 func enter_station() -> void:
-	if station == null or not ship.docked:
+	if not ship.docked or ship.docked_station == null:
 		return
+	# 用 docked_station 而不是写死的 station —— 远景站也能进。
+	var target_station: Node3D = ship.docked_station
+	active_station = target_station
 	if roast != null:
 		roast.cancel(false)
 	in_station = true
@@ -2264,8 +2266,8 @@ func enter_station() -> void:
 	paused = false
 	journal_open = false
 	map_open = false
-	player.reparent(station, false)
-	player.global_transform = station.interior_spawn_transform()
+	player.reparent(target_station, false)
+	player.global_transform = target_station.interior_spawn_transform()
 	player.camera.rotation = Vector3.ZERO
 	player.velocity = Vector3.ZERO
 	player.oxygen = 100.0
@@ -2273,11 +2275,15 @@ func enter_station() -> void:
 	player.camera.current = true
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	audio.play_ui(430.0)
-	hud.show_toast("已进入归航站中央枢纽 · 六条放射走廊 A–F · 气闸控制台旁按 E 返回飞船", 5.0)
+	if target_station.has_method("is_distant_station"):
+		hud.show_toast("已进入%s · 环形观景舱 · 站上地面发光环按 E 返回飞船" % target_station.display_name, 5.0)
+	else:
+		hud.show_toast("已进入归航站中央枢纽 · 六条放射走廊 A–F · 气闸控制台旁按 E 返回飞船", 5.0)
 
 
 func _recover_from_station_void() -> void:
-	player.global_transform = station.interior_spawn_transform()
+	var target_station: Node3D = active_station if active_station != null else station
+	player.global_transform = target_station.interior_spawn_transform()
 	player.camera.rotation = Vector3.ZERO
 	player.velocity = Vector3.ZERO
 	audio.play_ui(180.0)
