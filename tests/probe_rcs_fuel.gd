@@ -116,6 +116,57 @@ func _run() -> void:
 	print("   滚转 1 秒：燃料 %.3f -> %.3f" % [f0, ship.fuel])
 	_check(f0 - ship.fuel > 0.0001, "rolling costs fuel too")
 
+	# ── 5. 完全静止时零消耗 ──
+	print("\n=== 5. 完全不动时零消耗 ===")
+	ship.fuel = 100.0
+	ship.aim_yaw = 0.0
+	ship.aim_pitch = 0.0
+	ship._roll_angle = 0.0
+	ship.global_transform.basis = Basis.IDENTITY
+	ship._turn_velocity = Vector3.ZERO
+	ship.velocity = -ship.global_transform.basis.z * 120.0
+	# 先让它对齐好
+	for i in range(120):
+		ship.global_position = Vector3(50000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+	var fuel_idle_start: float = ship.fuel
+	# 再空跑 2 秒，什么都不按
+	for i in range(120):
+		ship.global_position = Vector3(50000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+	var fuel_idle_end: float = ship.fuel
+	print("   静止 2 秒：燃料 %.6f -> %.6f（应完全不变）" % [fuel_idle_start, fuel_idle_end])
+	_check(absf(fuel_idle_start - fuel_idle_end) < 0.0001,
+		"doing nothing costs no fuel (%.6f -> %.6f)" % [fuel_idle_start, fuel_idle_end])
+
+	# ── 6. 速度对齐耗燃料 ──
+	print("\n=== 6. 速度对齐也耗燃料 ===")
+	ship.fuel = 100.0
+	# 造一个「速度与机头相反」的状态：直接把速度反过来
+	ship.velocity = ship.global_transform.basis.z.normalized() * 120.0   # 反向
+	ship._turn_velocity = Vector3.ZERO
+	var f_align0: float = ship.fuel
+	for i in range(120):
+		ship.global_position = Vector3(50000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+	var f_align1: float = ship.fuel
+	print("   速度对齐 2 秒：燃料 %.5f -> %.5f（消耗 %.5f）" % [f_align0, f_align1, f_align0 - f_align1])
+	_check(f_align0 - f_align1 > 0.0001, "aligning velocity to the nose costs fuel")
+
+	# ── 7. 没燃料时不对齐（保持惯性）──
+	print("\n=== 7. 没燃料时保持惯性方向 ===")
+	ship.fuel = 0.0
+	ship.velocity = ship.global_transform.basis.z.normalized() * 120.0   # 反向
+	ship._turn_velocity = Vector3.ZERO
+	var vel_before_dir: Vector3 = ship.velocity.normalized()
+	for i in range(120):
+		ship.global_position = Vector3(50000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+	var vel_after_dir: Vector3 = ship.velocity.normalized()
+	var drift: float = vel_before_dir.dot(vel_after_dir)
+	print("   燃料 0 时 2 秒，速度方向·原方向 = %.6f（应为 1.0，即完全不变）" % drift)
+	_check(drift > 0.9999, "with no fuel the velocity direction is unchanged (drift=%.6f)" % drift)
+
 	print("\nRCS FUEL PROBE: %d failure(s)" % failures)
 	game.queue_free()
 	await process_frame

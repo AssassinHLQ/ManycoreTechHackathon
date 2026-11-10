@@ -1247,9 +1247,16 @@ func _physics_process(delta: float) -> void:
 				# 这一帧最多转这么多弧度
 				var max_step := VELOCITY_ALIGN_RATE * delta
 				var t := clampf(max_step / maxf(angle_between, 0.0001), 0.0, 1.0)
-				# 球面线性插值（不是普通 lerp，普通 lerp 在大角度时方向会失真）
-				var new_dir := vel_dir.slerp(nose_dir, t).normalized()
-				velocity = new_dir * speed_aligned
+				var actual_step := angle_between * t
+				# ⚠ 速度转向机头同样要烧 RCS 推进剂。
+				#   用户：「只有在完全不动鼠标，不加速减速的情况下才不花费」——
+				#   也就是任何改变运动状态的操作用户都要付燃料。
+				#   没燃料时不做对齐：飞船保持原有惯性方向继续飘
+				#   （这才符合「不受外力就匀速直线运动」）。
+				if fuel > 0.0:
+					var new_dir := vel_dir.slerp(nose_dir, t).normalized()
+					velocity = new_dir * speed_aligned
+					fuel = maxf(0.0, fuel - actual_step * RCS_FUEL_PER_RAD)
 
 		velocity += gravity * delta
 	_move_with_station_collision(delta)
