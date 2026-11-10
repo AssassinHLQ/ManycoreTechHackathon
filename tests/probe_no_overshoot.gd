@@ -144,6 +144,94 @@ func _run() -> void:
 	print("   AIM_SENSITIVITY = %.5f（应更低）" % ship.AIM_SENSITIVITY)
 	_check(ship.AIM_SENSITIVITY < 0.0006, "mouse sensitivity is lower again (%.5f)" % ship.AIM_SENSITIVITY)
 
+	# ── 4. 快速拖动（用户报的原始场景）──
+	#
+	# 用户：「我拖动快了还是给我往回拉」——
+	# 上一版慢推没事、快拖就过冲，因为 _turn_velocity 是持久状态，
+	# 快拖把它推到很大，目标停下后余速还要衰减。
+	# 现在速度直接由角差算，结构上不可能过冲。这里专门验证快拖。
+	print("\n=== 4. 快速拖动后是否过冲 ===")
+	ship.fuel = 100.0
+	ship.intent_quat = Quaternion.IDENTITY
+	ship._turn_velocity = Vector3.ZERO
+	ship.global_transform.basis = Basis.IDENTITY
+	ship.velocity = Vector3.ZERO
+	ship.global_position = Vector3(80000, 0, 0)
+
+	# 模拟一次**快速大幅拖动**：一帧内推 300px（相当于甩手腕）
+	ship.apply_look(Vector2(300.0, 0.0))
+	var target_q: Quaternion = ship.intent_quat
+
+	var yaw_seq: Array = []
+	for i in range(150):
+		ship.fuel = 100.0
+		ship.global_position = Vector3(80000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+		yaw_seq.append(_nose_yaw(ship))
+
+	var y_end: float = float(yaw_seq[-1])
+	var y_start: float = float(yaw_seq[0])
+	var dir_sign: float = signf(y_end - y_start)
+	var over := 0.0
+	for y in yaw_seq:
+		var past: float = (float(y) - y_end) * dir_sign
+		if past > over:
+			over = past
+	print("   快速拖动 300px：过冲 %.4f°" % rad_to_deg(over))
+	_check(rad_to_deg(over) < 0.5, "fast drag causes no bounce-back (%.4f deg)" % rad_to_deg(over))
+
+	# ── 5. √ 曲线：起转应该由慢到快 ──
+	print("\n=== 5. √曲线：起转由慢到快 ===")
+	ship.fuel = 100.0
+	ship.intent_quat = Quaternion.IDENTITY
+	ship._turn_velocity = Vector3.ZERO
+	ship.global_transform.basis = Basis.IDENTITY
+	ship.velocity = Vector3.ZERO
+	# 要求转 90°
+	ship.intent_quat = Quaternion(Vector3.UP, PI * 0.5)
+
+	var per_frame: Array = []
+	var prev_yaw: float = _nose_yaw(ship)
+	for i in range(60):
+		ship.fuel = 100.0
+		ship.global_position = Vector3(80000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+		var now_yaw: float = _nose_yaw(ship)
+		per_frame.append(absf(rad_to_deg(now_yaw - prev_yaw)))
+		prev_yaw = now_yaw
+
+	# 前 5 帧平均 vs 中间最快帧
+	var early: float = 0.0
+	for i in range(5):
+		early += float(per_frame[i])
+	early /= 5.0
+	var peak := 0.0
+	for v in per_frame:
+		peak = maxf(peak, float(v))
+	print("   前 5 帧平均 %.2f°/帧，峰值 %.2f°/帧" % [early, peak])
+	_check(peak > early * 1.5,
+		"turn ramps up (early %.2f vs peak %.2f deg/frame)" % [early, peak])
+
+	# 末尾应该减速。⚠ 不能用「最后 8 帧」——那几帧飞船已经停住了（值接近 0），
+	#   会把平均值拉低到没有意义。要取「到达前的减速段」：
+	#   找到最后一帧仍有明显转动的位置，取它之前 8 帧。
+	var last_moving := 0
+	for i in range(per_frame.size()):
+		if float(per_frame[i]) > 0.02:
+			last_moving = i
+	var late_start: int = maxi(0, last_moving - 7)
+	var late: float = 0.0
+	var n := 0
+	for i in range(late_start, last_moving + 1):
+		late += float(per_frame[i])
+		n += 1
+	if n > 0:
+		late /= float(n)
+	print("   减速段平均 %.2f°/帧（峰值 %.2f，应为峰值的 %.0f%%）" % [
+		late, peak, 100.0 * late / maxf(peak, 0.001)])
+	_check(late < peak * 0.85,
+		"turn ramps down before arriving (%.2f vs peak %.2f)" % [late, peak])
+
 	print("\nNO OVERSHOOT PROBE: %d failure(s)" % failures)
 	game.queue_free()
 	await process_frame

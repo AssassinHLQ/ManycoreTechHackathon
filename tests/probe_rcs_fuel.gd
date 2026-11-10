@@ -63,24 +63,16 @@ func _run() -> void:
 	_check(fuel_before - fuel_after > 0.001, "turning costs fuel (used %.4f)" % (fuel_before - fuel_after))
 
 	# ── 2. 转得越多消耗越多 ──
+	#
+	# ⚠ 2026-11-10 修测法：旧版固定跑 2 秒。
+	#   但转 162° 的飞船 2 秒内**转不完**（√ 曲线前段慢），
+	#   所以它实际只转了一半，消耗反而少。
+	#   改成**转完为止**（最多 8 秒），这才能比较完成相同动作的代价。
 	print("\n=== 2. 转角越大越费油 ===")
-	ship.fuel = 100.0
-	ship.intent_quat = Quaternion.IDENTITY
-	ship._turn_velocity = Vector3.ZERO
-	for i in range(120):
-		ship.global_position = Vector3(50000, 0, 0)
-		ship._physics_process(1.0 / 60.0)
-	var used_small: float = 100.0 - ship.fuel
-
-	ship.fuel = 100.0
-	ship.intent_quat = Quaternion(Vector3.UP, PI * 0.9)   # 更大的转角
-	ship._turn_velocity = Vector3.ZERO
-	for i in range(120):
-		ship.global_position = Vector3(50000, 0, 0)
-		ship._physics_process(1.0 / 60.0)
-	var used_big: float = 100.0 - ship.fuel
-	print("   转约 90° 用 %.4f；转约 162° 用 %.4f" % [used_small, used_big])
-	_check(used_big > used_small, "larger turns cost more fuel")
+	var used_small: float = _turns_fuel(ship, Quaternion(Vector3.UP, PI * 0.25))
+	var used_big: float = _turns_fuel(ship, Quaternion(Vector3.UP, PI * 0.9))
+	print("   转 45° 用 %.5f；转 162° 用 %.5f" % [used_small, used_big])
+	_check(used_big > used_small, "larger turns cost more fuel (%.5f vs %.5f)" % [used_small, used_big])
 
 	# ── 3. 没燃料转不了 ──
 	print("\n=== 3. 没燃料就转不动 ===")
@@ -168,3 +160,30 @@ func _run() -> void:
 	if FileAccess.file_exists(save):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save))
 	quit(0 if failures == 0 else 1)
+
+
+## 让飞船从零朝向转到指定朝向（转完为止，最多 8 秒），返回消耗的燃料。
+func _turns_fuel(ship, target_q: Quaternion) -> float:
+	ship.fuel = 100.0
+	ship.intent_quat = Quaternion.IDENTITY
+	ship._turn_velocity = Vector3.ZERO
+	ship.global_transform.basis = Basis.IDENTITY
+	ship._sweep_progress = 0.0
+	ship._sweep_total = 0.0
+	# 先跑几帧让它稳定
+	for i in range(10):
+		ship.global_position = Vector3(50000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+	ship.fuel = 100.0
+	ship.intent_quat = target_q
+	ship._sweep_progress = 0.0
+	ship._sweep_total = 0.0
+	for i in range(480):
+		ship.global_position = Vector3(50000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+		var cur: Basis = ship.global_transform.basis.orthonormalized()
+		var tgt: Basis = ship.get_aim_basis()
+		var diff: Basis = tgt * cur.inverse()
+		if rad_to_deg(diff.get_rotation_quaternion().get_angle()) < 0.3:
+			break
+	return 100.0 - ship.fuel

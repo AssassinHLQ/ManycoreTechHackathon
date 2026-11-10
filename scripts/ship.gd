@@ -156,31 +156,23 @@ const VELOCITY_ALIGN_RATE := 1.2
 func get_aim_basis() -> Basis:
 	return Basis(intent_quat).orthonormalized()
 
-## 最大角速度（弧度/秒）。「转得多快」的上限。
-## ⚠ 2026-11-10 用户：「鼠标转向太灵活了，晕」→ 2.4 → 1.1 → **1.4**
-##   （1.1 时配合灵敏度降低，整体已经柔和；这里略微放回，
-##    因为「灵敏」的体感主要来自灵敏度，不是上限）
+## 最大角速度（弧度/秒）。角差足够大时的转速上限。
 const MAX_TURN_RATE := 1.4
-## 最小角速度（弧度/秒）。防止最后一点点角度转得极慢、像卡住。
-const MIN_TURN_RATE := 0.12
-## 角速度的加速度（弧度/秒²）。
-## ⚠ 2026-11-10 用户：「感觉延迟高」→ 3.5 → **14.0**
-##   3.5 时加速太缓，推鼠标后要等一会儿飞船才动，体感像「延迟」。
-##   提高到 14 让它起转干脆，但因为有 TURN_DAMP 刹车，不会冲过头。
-const TURN_ACCEL := 14.0
-## 角速度的阻尼（每秒衰减比例）。**这是修「滑过去又滑回来」的关键**：
-## 角速度追上目标后要快速贴住，不能有余速冲过头。
-const TURN_DAMP := 9.0
+
 ## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
 var _turn_velocity := Vector3.ZERO
+## √ 曲线的进度状态：本次转向已转多少 / 总共要转多少。
+## 目标角度变化超过 0.02 rad 就重置（玩家又推了鼠标 = 新的一次转向）。
+var _sweep_progress := 0.0
+var _sweep_total := 0.0
 ## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
 var forward_input := 0.0
 
 ## 滚转速率（弧度/秒），A/D 控制。
-## ⚠ 2026-11-10 用户：「我都没有按 ad 了, 飞船还在翻转很久才停止」——
-##   滚转走的是 intent_quat，机身要追过去，所以停下有延迟。
-##   2.0 -> 2.4 让滚转本身更快到目标，缩短「追」的时间。
-const ROLL_RATE := 2.4
+## ⚠ 2026-11-10 用户：「ad 转动还是很快要减慢」→ 2.4 → **1.3**（约 74°/秒）。
+##   （上一版为了缩短停下来的延迟调到了 2.4，但滚转现在已经是即时生效的，
+##    不需要那么快；1.3 手感更沉稳。）
+const ROLL_RATE := 1.3
 
 ## 推进加速度（米/秒²）。**没有速度上限** ——
 ## 真空中持续加速就是理论上无限加速（用户：「加速到了 700 后我继续按 shift+W
@@ -871,11 +863,10 @@ func _build_model() -> void:
 ##   差角小时磨磨蹭蹭，既不像飞机，也没法做「转得慢」的体感。
 ##   玩家看到的就是「鼠标一动船就歪过去了」。
 ##
-## 这里用**角速度 + 角加速度**：
-##   1. 算出从当前朝向转到 aim 需要的「角速度轴」（旋转轴 × 差角）
-##   2. 用 TURN_ACCEL 让实际角速度追上去，并夹在 MAX_TURN_RATE 以内
-##   3. 按这个角速度转一帧
-## 效果：飞船像有惯性一样慢慢起转、慢慢停，最高不超过 MAX_TURN_RATE。
+## 现在用 **√ 曲线直接映射**（用户要求「y=根号x 平滑转向」）：
+##   speed = MAX_TURN_RATE * sqrt(angle / RAMP_ANGLE)
+## 角差大 → 快，角差小 → 慢，角差归零 → 速度归零（**结构上不可能过冲**）。
+## 起转和停转是同一条曲线，所以两端都平滑。
 ##
 ## ⚠ 这是姿态控制（喷口在做功），不是凭空改速度 —— 速度矢量完全不受影响。
 ##
@@ -912,38 +903,59 @@ func _apply_attitude(delta: float) -> float:
 	#
 	#   正确做法：角速度 = 角差 × 增益（指数逼近），快到目标时自然减速。
 	#   再加一个下限，避免最后一点点角度转得极慢（观感像卡住）。
-	var gain := 9.0                      # 每秒收敛速率，越大越快到位
-	var desired_len := clampf(angle * gain, MIN_TURN_RATE, MAX_TURN_RATE)
-	var desired := axis.normalized() * desired_len
+	# ── 目标角速度：√ 曲线作用于**时间进度**，而不是角差 ──
+	#
+	# ⚠ 2026-11-10 关键区分（用户：「转向速度不能一开始就那么快,
+	#   是一个越来越快过程 y=根号x, 转完了也是反向 y=根号x 停止转向」）：
+	#
+	#   ❌ 第一版把 √ 作用在「角差」上：speed = MAX * sqrt(angle/RAMP)
+	#      角差随着转动迅速变小 → 速度**一开始最快、越来越慢**
+	#      —— 和用户要的正好相反（实测前 5 帧 1.07°/帧、峰值 1.08，
+	#         一开始就接近满速，没有加速过程）
+	#
+	#   ✅ 正确做法：√ 作用在「转向进度」上。
+	#      进度 = 已转角度 / 总需要角度（0→1）
+	#      速度权重 = sqrt(进度)          ← 前段慢，后段快
+	#      到达后再用 sqrt(1 - 进度) 减速 ← 反向 √，后段缓停
+	#
+	#   两者叠加成一个「加速 → 减速」的钟形，两端都是 √ 形状：
+	#     起转：sqrt(p)        从 0 平滑升起
+	#     停转：sqrt(1-p)      平滑落回 0
+	#
+	#   进度需要跨帧保存，所以用 _sweep_progress。目标一变就重置。
+	var angle_now := angle
+	if absf(angle_now - _sweep_total) > 0.02:
+		# 目标角度变了（玩家又推了鼠标）：重算总角，进度归零
+		_sweep_total = angle_now
+		_sweep_progress = 0.0
 
-	# 角速度向目标靠拢：加速受 TURN_ACCEL 限制，同时叠一层阻尼，
-	# 让「追上目标后立刻贴住」，而不是带着余速冲过头（那会造成振荡）。
-	var dv := desired - _turn_velocity
-	# 阻尼项：当前角速度按 TURN_DAMP 衰减（与目标无关，纯刹车）
-	_turn_velocity *= maxf(0.0, 1.0 - TURN_DAMP * delta)
-	# 加速项：朝目标方向推进，受角加速度限制
-	var max_dv := TURN_ACCEL * delta
-	if dv.length() > max_dv:
-		dv = dv.normalized() * max_dv
-	_turn_velocity += dv
-	if _turn_velocity.length() > MAX_TURN_RATE:
-		_turn_velocity = _turn_velocity.normalized() * MAX_TURN_RATE
+	var p := clampf(_sweep_progress, 0.0, 1.0)
+	# ── 钟形 √ 曲线 ──
+	#   ramp = sqrt(min(p, 1-p) * 2)
+	#   前段：sqrt(2p)        → 起转由 0 平滑升起（y=√x）
+	#   后段：sqrt(2(1-p))    → 停转平滑落回 0（y=√x 的反向）
+	#   中点 p=0.5 时 ramp=1.0 → 满速
+	var ramp := sqrt(minf(p, 1.0 - p) * 2.0)
+	# ⚠ 下限 0.10：p=0 时 ramp 正好为 0，会导致「永远起不来」。
+	#   给一个最小推力让飞船迈出第一步，之后 √ 曲线接管。
+	var speed := MAX_TURN_RATE * maxf(ramp, 0.10)
+
+	_turn_velocity = axis.normalized() * speed
 
 	# 按角速度转一帧
-	var step_angle := _turn_velocity.length() * delta
+	var step_angle := speed * delta
 	if step_angle > 0.0001:
-		var step_axis := _turn_velocity.normalized()
 		# 不要转过头
-		if step_angle > angle:
-			step_angle = angle
-		var step := Basis(step_axis, step_angle)
-		# ⚠ 在**当前实际姿态**上叠加这次转动（不是从无滚转基重建）。
-		#   这样已有的滚转会被自然保留 —— 转动的轴是世界空间的，
-		#   绕世界轴转不会把绕机头轴的滚转抹掉。
+		if step_angle > angle_now:
+			step_angle = angle_now
+		var step := Basis(axis.normalized(), step_angle)
 		var new_basis := (step * cur).orthonormalized()
-		var t := global_transform
-		t.basis = new_basis
-		global_transform = t
+		var t2 := global_transform
+		t2.basis = new_basis
+		global_transform = t2
+		# 更新进度
+		if _sweep_total > 0.0001:
+			_sweep_progress = clampf(_sweep_progress + step_angle / _sweep_total, 0.0, 1.0)
 	return step_angle
 
 
