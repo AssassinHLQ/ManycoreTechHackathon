@@ -52,14 +52,16 @@ func _run() -> void:
 	ship.global_position = Vector3(20000, 0, 0)
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship.aim_basis = Basis.IDENTITY
+	ship.aim_yaw = 0.0
+	ship.aim_pitch = 0.0
+	ship._roll_angle = 0.0
 	ship._turn_velocity = Vector3.ZERO
 
 	# ── 1. 鼠标推动 aim，飞船不该当帧就转到位 ──
 	print("\n=== 1. 鼠标只推 aim，不直接转飞船 ===")
 	var before: Basis = ship.global_transform.basis
 	ship.apply_look(Vector2(400.0, 0.0))       # 大幅左右移鼠标
-	var aim_after: Basis = ship.aim_basis
+	var aim_after: Basis = ship.get_aim_basis()
 	var ship_after: Basis = ship.global_transform.basis
 	var aim_delta := _angle_between(before, aim_after)
 	var ship_delta := _angle_between(before, ship_after)
@@ -78,13 +80,13 @@ func _run() -> void:
 	# 跑 2 秒让飞船追上去
 	for i in range(120):
 		ship._physics_process(1.0 / 60.0)
-	var final_delta := _angle_between(ship.global_transform.basis, ship.aim_basis)
+	var final_delta := _angle_between(ship.global_transform.basis, ship.get_aim_basis())
 	print("   2 秒后 飞船与 aim 差 %.3f°" % final_delta)
 	_check(final_delta < 3.0, "the ship converges to the aim direction (%.2f deg)" % final_delta)
 
 	# ── 3. 机头朝 aim 前方（即「屏幕中心」）──
 	var ship_forward: Vector3 = -ship.global_transform.basis.z.normalized()
-	var aim_forward: Vector3 = -ship.aim_basis.z.normalized()
+	var aim_forward: Vector3 = -ship.get_aim_basis().z.normalized()
 	var dot: float = ship_forward.dot(aim_forward)
 	print("\n=== 3. 机头对准屏幕中心 ===")
 	print("   机头·期望前向 = %.4f（1.0 = 完全对齐）" % dot)
@@ -93,7 +95,9 @@ func _run() -> void:
 	# ── 4. A/D 不再横移 ──
 	print("\n=== 4. A/D 不再是横移 ===")
 	ship.velocity = Vector3.ZERO
-	ship.aim_basis = ship.global_transform.basis
+	var gf: Vector3 = -ship.global_transform.basis.z.normalized()
+	ship.aim_yaw = atan2(-gf.x, -gf.z)
+	ship.aim_pitch = asin(clampf(gf.y, -1.0, 1.0))
 	Input.action_press("move_right")
 	for i in range(60):
 		ship.fuel = 100.0

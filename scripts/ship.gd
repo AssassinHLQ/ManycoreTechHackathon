@@ -98,8 +98,45 @@ const SHIP_BRAKE_DECEL := 260.0
 ##   · 速度只由推力/引力改变，飞船转向不直接改速度矢量
 ##     （但推力方向随机头，所以转向后推进自然改变速度方向）
 
-## 期望朝向（鼠标推动的「想看的方向」）。飞船会缓慢追上来。
-var aim_basis := Basis.IDENTITY
+## 期望朝向的偏航/俯仰角（欧拉角，单位弧度）。
+##
+## ⚠ 2026-11-10 重写（用户：「鼠标被局限在一个圆内根本转不出去」）：
+##   上一版用「每次鼠标位移去旋转一个 aim_basis」，有三个致命问题：
+##     1. `relative.limit_length(120.0)` —— 鼠标快速移动被截断，
+##        推得再快也只转 120px 对应的角度，累积起来转不动
+##     2. 俯仰被夹在 ±85° —— 上下永远出不去
+##     3. 绕「世界 Y」做偏航 + 绕「自身右轴」做俯仰混着算，
+##        飞船压了坡度之后这两个轴会打架，越推越乱
+##   结果就是玩家感觉「鼠标被限制在一个小圆圈里」。
+##
+##   现在改成最标准的飞行控制做法：**直接累加欧拉角**。
+##     aim_yaw   += 鼠标横向位移   （绕世界 Y，可以无限转，会 wrap）
+##     aim_pitch += 鼠标纵向位移   （绕机身右轴，夹在 ±89° 防止翻过来）
+##   灵敏度是直接的乘数，不再有那套除以再乘以 mouse_sensitivity 的折腾。
+var aim_yaw := 0.0
+var aim_pitch := 0.0
+## 机身滚转角（弧度）。A/D 控制，独立于机头指向。
+## 机头方向由 aim_yaw/aim_pitch 决定，滚转只让机身绕自己的机头轴转。
+var _roll_angle := 0.0
+## 鼠标灵敏度（弧度/像素）。0.0022 约合「推 700 像素转 90°」。
+const AIM_SENSITIVITY := 0.0022
+## 俯仰极限（弧度）。89° 是为了防止万向节死锁 —— 但**偏航不限**，
+## 所以玩家可以原地转一整圈。
+const PITCH_LIMIT := deg_to_rad(89.0)
+
+## 从 aim_yaw / aim_pitch 算出期望朝向。
+##
+## 顺序很重要：**先俯仰、再偏航**（Yaw-Pitch，标准航空顺序）。
+##   basis = Ry(yaw) * Rx(pitch)
+## 这样 yaw 永远是绕世界 Y 转（可以转一整天），pitch 只在机身坐标系里点头，
+## 两者不打架。
+func get_aim_basis() -> Basis:
+	var b := Basis(Vector3.UP, aim_yaw)
+	b = b * Basis(Vector3.RIGHT, aim_pitch)
+	# 最后叠一层**绕机头轴（-Z）**的滚转。
+	# 滚转不改变机头指向，只让机身上下左右翻 —— 这是战斗机压坡度的动作。
+	b = b * Basis(Vector3.FORWARD, _roll_angle)
+	return b.orthonormalized()
 
 ## 最大角速度（弧度/秒）。这是「转得多快」的上限 ——
 ## 2.4 约合 137°/秒，像战斗机而不是陀螺。
@@ -111,8 +148,6 @@ var _turn_velocity := Vector3.ZERO
 
 ## 滚转速率（弧度/秒），A/D 控制。
 const ROLL_RATE := 2.0
-## 鼠标灵敏度（每像素转多少弧度）。
-const AIM_SENSITIVITY := 0.0022
 
 ## 推进速度上限（米/秒）。只限制推力能加速到多快，不拦惯性。
 const SHIP_MAX_SPEED := 420.0
@@ -787,7 +822,7 @@ func _build_model() -> void:
 ##   符合「不受外力不改变运动状态」。
 func _apply_attitude(delta: float) -> void:
 	var cur := global_transform.basis.orthonormalized()
-	var target := aim_basis.orthonormalized()
+	var target := get_aim_basis()
 
 	# 当前朝向到目标朝向的「差旋转」
 	var diff := target * cur.inverse()
@@ -869,46 +904,33 @@ func apply_look(relative: Vector2) -> void:
 	# 着陆 / 对接 / 自动驾驶时不接受转向意图（姿态锁定）
 	if landed or docked or autopilot:
 		return
-	relative = relative.limit_length(120.0)
-	var sensitivity: float = mouse_sensitivity * (game.settings.sensitivity_multiplier() if game.settings != null else 1.0)
 
-	# ── 座舱 / 第三人称**共用同一套逻辑**：鼠标只推动期望朝向 ──
+	# ── 鼠标直接累加期望的偏航/俯仰角 ──
 	#
-	# ⚠ 2026-11-10 改（用户：「鼠标也要不能自由转视角，这是控制飞船。
-	#   绝对禁止飞船头不朝向准星」）：
-	#   旧版第三人称里鼠标是「绕着飞船转相机」（orbit_yaw/orbit_pitch），
-	#   相机可以停在任意角度 —— 准星指向船身中心，机头却指着别处，
-	#   于是截图里准星和机头分开。
-	#   现在第三人称相机**永远在机头正后方**（见 _update_third_person_camera），
-	#   鼠标只推动 aim_basis，飞船转过去后机头 = 相机前向 = 准星方向。
-	var yaw := -relative.x * sensitivity * (AIM_SENSITIVITY / mouse_sensitivity)
-	var pitch := -relative.y * sensitivity * (AIM_SENSITIVITY / mouse_sensitivity)
+	# ⚠ 2026-11-10 重写（用户：「鼠标被局限在一个圆内根本转不出去」）：
+	#
+	#   上一版有三个致命问题，合起来就是「困在圆圈里」：
+	#     1. `relative.limit_length(120.0)` —— 鼠标快速移动被截断，
+	#        推得再快也只转 120px 对应的角度，怎么推都转不动
+	#     2. 俯仰被夹在 ±85°，而且夹的方式是「把方向向量压回去」，
+	#        压回去之后偏航也跟着乱
+	#     3. 用「每次位移去旋转一个 basis」的迭代方式，误差会累积，
+	#        压了坡度之后越推越歪
+	#
+	#   现在是最标准的飞行控制做法 —— **直接累加欧拉角**：
+	#     aim_yaw   += 鼠标横向   （绕世界 Y，无上限，会 wrap 到 ±PI）
+	#     aim_pitch += 鼠标纵向   （绕机身右轴，夹在 ±89° 防万向节死锁）
+	#   灵敏度是**直接乘数**，不再有「除以 mouse_sensitivity 再乘回来」的折腾。
+	#   偏航**完全不限制**，所以可以原地转一整圈甚至更多。
+	var sens: float = mouse_sensitivity * (game.settings.sensitivity_multiplier() if game.settings != null else 1.0)
+	# 用固定倍率把「机身灵敏度」换算到「转向灵敏度」，
+	# 让玩家在设置里调鼠标灵敏度时，转向跟着一起变。
+	var turn_scale := AIM_SENSITIVITY / 0.0018     # 0.0018 是 mouse_sensitivity 的默认值
+	var yaw_step := -relative.x * sens * turn_scale
+	var pitch_step := -relative.y * sens * turn_scale
 
-	var aim_forward := -aim_basis.z.normalized()
-	var aim_right := aim_basis.x.normalized()
-
-	# 俯仰：绕自身右轴，并夹住上下限（别翻过去）
-	var pitched := Basis(aim_right, pitch) * aim_forward
-	var up := Vector3.UP
-	var cos_limit := cos(deg_to_rad(85.0))
-	if pitched.dot(up) > cos_limit:
-		var flat := (pitched - up * pitched.dot(up)).normalized()
-		pitched = (flat * cos_limit + up * sqrt(maxf(0.0, 1.0 - cos_limit * cos_limit))).normalized()
-	elif pitched.dot(-up) > cos_limit:
-		var flat2 := (pitched + up * pitched.dot(up)).normalized()
-		pitched = (flat2 * cos_limit - up * sqrt(maxf(0.0, 1.0 - cos_limit * cos_limit))).normalized()
-
-	# 偏航：绕世界 Y
-	var yawed := Basis(Vector3.UP, yaw) * pitched
-
-	# 用「新的 forward + 保持机身上方向尽量不变」重建 aim_basis
-	var body_up := aim_basis.y.normalized()
-	var right_axis := yawed.cross(body_up)
-	if right_axis.length() < 0.001:
-		right_axis = yawed.cross(Vector3.RIGHT)
-	right_axis = right_axis.normalized()
-	var final_up := right_axis.cross(yawed).normalized()
-	aim_basis = Basis(right_axis, final_up, -yawed).orthonormalized()
+	aim_yaw = wrapf(aim_yaw + yaw_step, -PI, PI)
+	aim_pitch = clampf(aim_pitch + pitch_step, -PITCH_LIMIT, PITCH_LIMIT)
 
 
 ## 第三人称相机：**始终在机头正后方**，跟着机头走。
@@ -986,7 +1008,11 @@ func _physics_process(delta: float) -> void:
 	# 着陆 / 对接时：姿态锁定在当前朝向，并把 aim 同步过来，
 	# 否则下次起飞会因为 aim 停在旧方向而突然甩头。
 	if landed or docked:
-		aim_basis = global_transform.basis.orthonormalized()
+		# 把当前朝向反解成 yaw/pitch 同步给 aim，
+		# 否则下次起飞会因为 aim 停在旧方向而突然甩头。
+		var fwd := -global_transform.basis.z.normalized()
+		aim_yaw = atan2(-fwd.x, -fwd.z)
+		aim_pitch = clampf(asin(clampf(fwd.y, -1.0, 1.0)), -PITCH_LIMIT, PITCH_LIMIT)
 		_turn_velocity = Vector3.ZERO
 	if game.station != null:
 		var port_now: Vector3 = game.station.docking_point()
@@ -1080,8 +1106,9 @@ func _physics_process(delta: float) -> void:
 		# 滚转：绕着机头轴转机身（不影响前进方向）
 		var roll_input := Input.get_axis("move_right", "move_left")
 		if absf(roll_input) > 0.05 and fuel > 0.0:
-			var roll := Basis(Vector3.FORWARD, -roll_input * ROLL_RATE * delta)
-			aim_basis = (aim_basis * roll).orthonormalized()
+			# 滚转不改变机头方向，所以直接转机身姿态；
+			# aim_yaw/aim_pitch 描述的是「机头指向」，滚转不该动它。
+			_roll_angle = wrapf(_roll_angle + roll_input * ROLL_RATE * delta, -PI, PI)
 
 		if thrust.length_squared() > 0.01 and fuel > 0.0:
 			var acceleration := SHIP_BOOST_THRUST if boosting else SHIP_THRUST
