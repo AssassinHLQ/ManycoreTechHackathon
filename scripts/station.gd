@@ -1126,46 +1126,20 @@ func _build_hub() -> void:
 	for i in range(12):
 		var seam := TAU * float(i) / 12.0
 		_box(hub_root, Vector3(26.0, 0.02, 0.05), Vector3(cos(seam) * 15.0, FLOOR_TOP + 0.045, sin(seam) * 15.0), _mat_dark, Vector3(0.0, -seam, 0.0))
-	_cylinder(hub_root, 4.0, 4.0, 10.0, Vector3(0.0, 3.0, 0.0), _mat_hull, 24)
-	_add_hub_cylinder_collider(4.0, 10.0, Vector3(0.0, 3.0, 0.0))
-	_cylinder(hub_root, 5.0, 5.0, 0.3, Vector3(0.0, FLOOR_TOP + 0.05, 0.0), _mat_trim, 32)
-	_torus(hub_root, 5.2, 5.4, Vector3(0.0, FLOOR_TOP + 0.18, 0.0), _mat_teal, Vector3.ZERO, 8, 48)
-	for i in range(8):
-		var lift_angle := TAU * float(i) / 8.0
-		_box(hub_root, Vector3(0.06, 8.4, 0.34), Vector3(cos(lift_angle) * 4.04, 2.1, sin(lift_angle) * 4.04),
-			_mat_trim, Vector3(0.0, -lift_angle, 0.0))
-		var recess_angle := TAU * (float(i) + 0.5) / 8.0
-		_box(hub_root, Vector3(0.04, 7.4, 0.55), Vector3(cos(recess_angle) * 4.03, 2.1, sin(recess_angle) * 4.03),
-			_mat_dark, Vector3(0.0, -recess_angle, 0.0))
-	_torus(hub_root, 4.03, 4.14, Vector3(0.0, -1.2, 0.0), _mat_trim, Vector3.ZERO, 8, 48)
-	_torus(hub_root, 4.03, 4.14, Vector3(0.0, 0.6, 0.0), _mat_teal, Vector3.ZERO, 8, 48)
-	_torus(hub_root, 4.03, 4.14, Vector3(0.0, 2.4, 0.0), _mat_trim, Vector3.ZERO, 8, 48)
-	_torus(hub_root, 4.06, 4.32, Vector3(0.0, 7.35, 0.0), _mat_trim, Vector3.ZERO, 8, 48)
-	for i in range(4):
-		var door_angle := TAU * float(i) / 4.0
-		var lift_door := Node3D.new()
-		lift_door.position = Vector3(cos(door_angle) * 4.08, -0.7, sin(door_angle) * 4.08)
-		lift_door.rotation.y = -door_angle
-		hub_root.add_child(lift_door)
-		_box(lift_door, Vector3(0.1, 3.2, 2.4), Vector3.ZERO, _mat_dark)
-		_box(lift_door, Vector3(0.14, 0.18, 2.9), Vector3(0.02, 1.83, 0.0), _mat_trim)
-		for side: float in [-1.0, 1.0]:
-			_box(lift_door, Vector3(0.08, 3.0, 1.08), Vector3(0.06, 0.0, side * 0.57), _mat_lift)
-			_box(lift_door, Vector3(0.12, 3.2, 0.16), Vector3(0.02, 0.0, side * 1.18), _mat_trim)
-			_box(lift_door, Vector3(0.16, 3.0, 0.2), Vector3(0.0, 0.0, side * 1.32), _mat_orange)
-			_box(lift_door, Vector3(0.05, 2.8, 0.035), Vector3(0.12, 0.0, side * 0.04), _mat_glow)
-			_box(lift_door, Vector3(0.12, 0.45, 0.3), Vector3(0.14, -1.15, side * 1.55), _mat_dark)
-			_sphere(lift_door, 0.075, Vector3(0.22, -1.15, side * 1.55), _mat_glow)
-		_box(lift_door, Vector3(0.12, 0.22, 0.9), Vector3(0.14, 1.45, 0.0), _mat_dark)
-		_box(lift_door, Vector3(0.05, 0.08, 0.55), Vector3(0.21, 1.45, 0.0), _mat_teal)
-	for i in range(18):
-		var hazard_angle := TAU * float(i) / 18.0
-		_box(hub_root, Vector3(0.62, 0.02, 0.34), Vector3(cos(hazard_angle) * 5.0, FLOOR_TOP + 0.21, sin(hazard_angle) * 5.0),
-			_mat_orange if i % 2 == 0 else _mat_dark, Vector3(0.0, -hazard_angle, 0.0))
-	_label("中央升降梯", Vector3(4.32, 2.7, 0.0), 34, 0.008, PI * 0.5, Color("ffe4b4"), hub_root)
-	_label("中央升降梯", Vector3(-4.32, 2.7, 0.0), 34, 0.008, -PI * 0.5, Color("ffe4b4"), hub_root)
-	_cylinder(hub_root, 0.25, 0.25, 7.0, Vector3(0.0, 5.5, 0.0), _mat_trim, 8)
-	_sphere(hub_root, 0.7, Vector3(0.0, 9.0, 0.0), _mat_glow)
+	# ── 中央立柱（2026-11-10 精简）────────────────────────────────
+	# 原先这里是一整圈「升降梯」装饰：4 米圆柱外壳 + 8 根竖条 + 4 个凹槽 +
+	# 4 道环 + 4 扇 lift_door 假门（有门缝、橙色警示条、小灯球）+ 18 块警示
+	# 地砖 + 两块「中央升降梯」标牌 + 灯杆 + 顶灯球。
+	#
+	# 问题：那些假门长得太像能开的门，玩家反复去撞、以为卡 bug；
+	# 而且它们贴在半径 4 米的实心柱面上，本来就只是为了「看着像升降梯」。
+	# 既然进不去，就不该摆出要请你进去的样子 —— 全部删掉，只留一根光柱。
+	_cylinder(hub_root, 3.2, 3.2, 10.0, Vector3(0.0, 3.0, 0.0), _mat_hull, 24)
+	_add_hub_cylinder_collider(3.2, 10.0, Vector3(0.0, 3.0, 0.0))
+	# 柱脚一圈收边 + 一道细环，让这根柱子有「结构件」的收口，不至于秃得太难看
+	_cylinder(hub_root, 3.5, 3.5, 0.3, Vector3(0.0, FLOOR_TOP + 0.05, 0.0), _mat_trim, 32)
+	_torus(hub_root, 3.22, 3.34, Vector3(0.0, 2.4, 0.0), _mat_trim, Vector3.ZERO, 8, 48)
+	_torus(hub_root, 3.24, 3.5, Vector3(0.0, 7.35, 0.0), _mat_trim, Vector3.ZERO, 8, 48)
 	_cylinder(hub_root, 2.4, 2.8, 1.0, Vector3(0.0, FLOOR_TOP + 0.5, -10.0), _mat_dark, 20)
 	_cylinder(hub_root, 2.5, 2.5, 0.1, Vector3(0.0, FLOOR_TOP + 1.02, -10.0), _mat_glass, 32)
 	_torus(hub_root, 2.0, 2.4, Vector3(0.0, FLOOR_TOP + 1.2, -10.0), _mat_teal, Vector3.ZERO, 8, 32)
@@ -1272,13 +1246,26 @@ func _build_hub() -> void:
 		_box(door, Vector3(26.0, 0.2, 0.3), Vector3(15.0, 7.7, 0.0), _mat_dark)
 		_box(door, Vector3(24.0, 0.025, 0.08), Vector3(15.0, FLOOR_TOP + 0.04, 0.0), _mat_glow)
 		_light(Vector3(cos(angle) * 25.5, 2.6, sin(angle) * 25.5), Color("ffd8ac"), 1.0, 12.0, hub_root)
+		# 注：门两侧原先在这里补过一小段侧墙，但间隔墙改到门洞同一半径、
+		# 并按「弧长 - 门洞宽」精确填满之后，缝隙已经不存在了 ——
+		# 侧墙反而会压到门洞上，所以去掉。
 		var mid_angle := angle + TAU / 12.0
 		var wall := Node3D.new()
-		wall.position = Vector3(cos(mid_angle) * 28.5, 0.0, sin(mid_angle) * 28.5)
+		wall.position = Vector3(cos(mid_angle) * HUB_RADIUS, 0.0, sin(mid_angle) * HUB_RADIUS)
 		wall.rotation.y = -mid_angle
 		hub_root.add_child(wall)
-		_box(wall, Vector3(0.5, 10.0, 21.0), Vector3(0.0, 3.0, 0.0), _mat_wall)
-		_add_hub_box_collider(Vector3(0.5, 10.0, 21.0), wall.transform * Vector3(0.0, 3.0, 0.0), wall.rotation)
+		# 间隔墙改到**门洞所在的同一个半径**（HUB_RADIUS），并且按 30° 角距算出
+		# 正好填满两门之间的弧长。
+		#
+		# 原来这道墙在半径 28.5、宽 21 米：一是比门洞靠里 1.5 米，留下一条能斜穿
+		# 出去的径向缝；二是半径 28.5 处每扇门占弧长 29.85 米，21 米的墙两侧各漏
+		# 4.42 米。两者相加，玩家从枢纽里能直接看到站外虚空（实测截图确认）。
+		#
+		# 现在墙贴在门洞半径上，宽度取「弧长 - 门洞宽 + 一点重叠」，与门框咬合。
+		var arc_span: float = TAU * HUB_RADIUS / float(CORRIDOR_COUNT)
+		var wall_span: float = arc_span - DOOR_HALF_WIDTH * 2.0
+		_box(wall, Vector3(0.5, 10.0, wall_span), Vector3(0.0, 3.0, 0.0), _mat_wall)
+		_add_hub_box_collider(Vector3(0.5, 10.0, wall_span), wall.transform * Vector3(0.0, 3.0, 0.0), wall.rotation)
 		_build_hub_wall_detail(wall)
 		_light(Vector3(cos(mid_angle) * 20.0, 6.3, sin(mid_angle) * 20.0), Color("ffd8ac"), 1.3, 18.0, hub_root)
 	for i in range(12):
