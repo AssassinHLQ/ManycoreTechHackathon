@@ -21,7 +21,11 @@
       "license": "CC BY 4.0",
       "attribution": "“A Windy Day” by Loïc Norgeot, CC BY 4.0",
       "source_url": "https://sketchfab.com/norgeotloic",
-      "imported": false
+      "imported": true,
+      "imported_slug": "one-dim-star",
+      "imported_path": "assets/models/one-dim-star/model.glb",
+      "modifications": "Sketchfab 原始导出所有 mesh 只有 1e-10 大小、靠 scale=1e-10 的父节点（该父节点还带一个 Z-up→Y-up 的纯旋转 matrix）放大回来；这种「极小几何+极大缩放」在渲染端会出问题，所以用 tools/flatten_glb_scale.py 把缩放烘焙进顶点、打平所有节点变换；另在运行时把材质改为 vertex_color_use_as_albedo=true + UNSHADED （glTF 导入默认不启用顶点色，会整颗变白）；按观察者距离分批隐藏 mesh 实现「靠近就散开」。未改变原始几何形状与颜色。",
+      "modified_by": "tools/flatten_glb_scale.py + scripts/one_dim_star.gd"
     },
     {
       "slug": "backrooms-vr",
@@ -171,17 +175,19 @@
       "license": "CC BY 4.0",
       "attribution": "“Space Station” by re1monsen, CC BY 4.0",
       "source_url": "https://sketchfab.com/re1monsen",
-      "imported": false
+      "imported": true,
+      "modifications": "FBX 转 GLB：烘焙变换、统一到按米、原点移到质心、贴图外链到 textures/。几何与贴图内容未修改。"
     },
     {
       "slug": "space-station-3",
-      "original_file": "space-station-3.zip",
+      "original_file": "space_station_3.glb",
       "title": "Space Station 3",
       "author": "re1monsen",
       "license": "CC BY 4.0",
       "attribution": "“Space Station 3” by re1monsen, CC BY 4.0",
       "source_url": "https://sketchfab.com/re1monsen",
-      "imported": false
+      "imported": true,
+      "modifications": "blend 转 GLB：烘焙变换、统一到按米、原点移到质心、三套材质的贴图手动挂接并外链到 textures/。几何与贴图内容未修改。"
     },
     {
       "slug": "space_station_3",

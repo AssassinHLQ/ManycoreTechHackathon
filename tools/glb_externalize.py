@@ -94,8 +94,12 @@ def slot_names_for_images(gltf):
 
 def main():
     if len(sys.argv) < 4:
-        sys.exit("用法: glb_externalize.py <输入.glb> <输出.glb> <贴图输出目录>")
+        sys.exit("用法: glb_externalize.py <输入.glb> <输出.glb> <贴图输出目录> [uri前缀]")
     src_path, dst_path, tex_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+    # 第 4 个参数：写进 GLB 的 uri 前缀。
+    # 贴图放在 GLB 同级的 textures/ 子目录时传 "textures/" —— Godot 按 GLB 所在目录
+    # 解析相对 uri，不传的话它会在模型旁边再生成一份 model_*.png（等于双份）。
+    uri_prefix = sys.argv[4] if len(sys.argv) > 4 else ""
 
     gltf, binary = read_glb(src_path)
     os.makedirs(tex_dir, exist_ok=True)
@@ -105,6 +109,7 @@ def main():
     images = gltf.get("images", [])
     new_images = []
     drop_bv = set()
+    used_names = {}
     for idx, img in enumerate(images):
         bv_index = img.get("bufferView")
         if bv_index is None:
@@ -116,35 +121,51 @@ def main():
         mime = img.get("mimeType", "application/octet-stream")
         ext = MIME_EXT.get(mime, ".bin")
         base = slot.get(idx) or os.path.splitext(img.get("name") or "image_%d" % idx)[0]
+        # 多套材质共用同一槽位时，语义名会撞（三个材质都叫 base_color）。
+        # 撞了就用 image 自己的名字做前缀，避免后写的把先写的覆盖掉。
+        if base in used_names:
+            own = os.path.splitext(img.get("name") or "")[0]
+            base = "%s_%s" % (own, base) if own else "%s_%d" % (base, idx)
+            # 再撞就加序号兜底
+            suffix = 2
+            unique = base
+            while unique in used_names:
+                unique = "%s_%d" % (base, suffix)
+                suffix += 1
+            base = unique
+        used_names[base] = idx
         fname = base + ext
         with open(os.path.join(tex_dir, fname), "wb") as f:
             f.write(raw)
         print("  image[%d] %-12s %-12s %9d 字节 -> %s" % (
             idx, img.get("name") or "-", mime, len(raw), fname))
-        new_images.append({"uri": fname, "name": base})
+        new_images.append({"uri": uri_prefix + fname, "name": base})
         drop_bv.add(bv_index)
 
-    # --- 2. 重建 BIN：挖掉被丢弃的 bufferView，其余紧凑重排 ---
+    # --- 2. 重建 BIN ---
+    #
+    # ⚠ 历史教训（2026-11-10，两次翻车）：
+    #   ① 早期版本照抄 byteLength，Godot 报「buffer view size was smaller than
+    #      the minimum required size」—— 因为几何 bufferView 常常是**多个 accessor
+    #      共用一块连续区间**，单个 bufferView 的 byteLength 只覆盖它自己那份；
+    #   ② 后来想「挖掉贴图区间、其余紧凑重排」，但重排时必须同步改所有
+    #      bufferView 的 byteOffset —— 漏改就整片数据错位。
+    #
+    #   现在改成**不重排**：几何 bufferView 一律原样保留（byteOffset / byteLength /
+    #   byteStride / target 全部照抄），只把贴图占的那几段字节**原地清零**。
+    #   贴图数据因此不再占体积（Godot 读的是外链文件），而几何偏移完全不动，
+    #   不可能错位。代价是 BIN 里留了点零，可以被 gzip 压掉。
     old_bvs = gltf.get("bufferViews", [])
-    keep = [i for i in range(len(old_bvs)) if i not in drop_bv]
-    new_binary = bytearray()
-    remap = {}
-    keep_entries = []
-    for new_i, old_i in enumerate(keep):
-        bv = old_bvs[old_i]
+    new_binary = bytearray(binary)
+    for bv_index in drop_bv:
+        bv = old_bvs[bv_index]
         off = bv.get("byteOffset", 0)
         length = bv.get("byteLength", 0)
-        remap[old_i] = new_i
-        entry = dict(bv)
-        entry["byteOffset"] = len(new_binary)
-        entry["byteLength"] = length
-        new_binary += binary[off:off + length]
-        keep_entries.append(entry)
-    if keep:
-        gltf["bufferViews"] = keep_entries
-    else:
-        gltf["bufferViews"] = []
-        new_binary = bytearray()
+        new_binary[off:off + length] = b"\x00" * length
+    keep_entries = [dict(bv) for bv in old_bvs]
+    remap = {i: i for i in range(len(old_bvs))}
+    # 不重排：所有 bufferView 原样保留（贴图那几段已被清零）。
+    gltf["bufferViews"] = keep_entries
 
     # --- 3. 访问器 / 稀疏访问 / 镜像器 的 bufferView 索引重映射 ---
     for acc in gltf.get("accessors", []):
