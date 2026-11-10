@@ -153,12 +153,27 @@ const VELOCITY_ALIGN_RATE := 1.2
 ##   basis = Ry(yaw) * Rx(pitch)
 ## 这样 yaw 永远是绕世界 Y 转（可以转一整天），pitch 只在机身坐标系里点头，
 ## 两者不打架。
+## 从 aim_yaw / aim_pitch 算出**机头指向**。
+##
+## ⚠ 2026-11-10 重要修正（用户：「为什么我鼠标往右，有时候飞船往右转，
+##   有时候却往左转，我一旦按了 ad，整个飞船的鼠标转视角就完全反了方向」）：
+##
+##   旧版把滚转也乘进了这个函数：
+##       b = Ry(yaw) * Rx(pitch) * Rz(roll)
+##   这是**错的**，而且错得很隐蔽：
+##     · Roll 让机身绕自身 Z 轴翻，于是「机身的上下左右」全转了
+##     · 但鼠标的横向输入仍然映射成**绕世界 Y 的 yaw**
+##     · 两者参考系不一致 → 玩家滚转 180° 后，鼠标往右实际看起来是往左
+##     · 滚转 90° 时更糟：鼠标横向输入变成绕世界 Y，画面上却像在绕机身的轴，
+##       于是「有时候右、有时候左」，取决于当前滚转角
+##
+##   正确做法：**aim_basis 只描述机头指向，不包含滚转**。
+##   滚转由 _roll_angle 单独保存，只在**渲染姿态**里叠加（见 _apply_attitude）。
+##   这样鼠标永远绕世界 Y 偏航、绕机身右轴俯仰，与机身怎么翻无关 ——
+##   无论滚成什么样，鼠标往右永远往右。
 func get_aim_basis() -> Basis:
 	var b := Basis(Vector3.UP, aim_yaw)
 	b = b * Basis(Vector3.RIGHT, aim_pitch)
-	# 最后叠一层**绕机头轴（-Z）**的滚转。
-	# 滚转不改变机头指向，只让机身上下左右翻 —— 这是战斗机压坡度的动作。
-	b = b * Basis(Vector3.FORWARD, _roll_angle)
 	return b.orthonormalized()
 
 ## 最大角速度（弧度/秒）。这是「转得多快」的上限。
@@ -878,17 +893,23 @@ func _build_model() -> void:
 ## 所以这个返回值必须真实反映转动量，而不是固定值。
 func _apply_attitude(delta: float) -> float:
 	var cur := global_transform.basis.orthonormalized()
+	# ⚠ 目标朝向**不含滚转**（见 get_aim_basis 的注释）：
+	#   机头怎么指由 aim_yaw/aim_pitch 决定，滚转是独立自由度。
+	#
+	#   比较时要把当前朝向的「滚转分量」剥掉 —— 否则飞船滚了 90° 时，
+	#   会误认为「自己和目标差 90°」而疯狂转圈。
+	var cur_no_roll := _strip_roll(cur)
 	var target := get_aim_basis()
 
 	# 当前朝向到目标朝向的「差旋转」
-	var diff := target * cur.inverse()
+	var diff := target * cur_no_roll.inverse()
 	var q := diff.get_rotation_quaternion()
 	# 四元数的角度（0..PI）
 	var angle := q.get_angle()
 	var axis := q.get_axis()
 
 	if angle < 0.0005 or absf(axis.length()) < 0.0001:
-		# 基本对齐了：角速度衰减到 0
+		# 机头已对准：角速度衰减到 0
 		_turn_velocity = _turn_velocity.lerp(Vector3.ZERO, clampf(delta * 12.0, 0.0, 1.0))
 		return 0.0
 
@@ -916,12 +937,50 @@ func _apply_attitude(delta: float) -> float:
 		if step_angle > angle:
 			step_angle = angle
 		var step := Basis(step_axis, step_angle)
+		# ⚠ 在**当前实际姿态**上叠加这次转动（不是从无滚转基重建）。
+		#   这样已有的滚转会被自然保留 —— 转动的轴是世界空间的，
+		#   绕世界轴转不会把绕机头轴的滚转抹掉。
 		var new_basis := (step * cur).orthonormalized()
 		var t := global_transform
 		t.basis = new_basis
 		global_transform = t
-		return step_angle
-	return 0.0
+	return step_angle
+
+
+## 滚转：绕当前机头轴增量转动 actual basis。
+##
+## ⚠ 不能像第一版那样「用 _roll_angle 重建整个姿态」——
+##   重建会以「世界上方向」为基准重算 up，等于每帧把机身扶正再滚一遍，
+##   结果 A/D 完全没反应（实测转了 0.0°）。
+##   增量式才是对的：只在当前姿态上多转一点点。
+func _roll_by_angle(angle: float) -> void:
+	if absf(angle) < 0.000001:
+		return
+	var t := global_transform
+	var basis := t.basis.orthonormalized()
+	# 绕机头轴（局部 -Z 就是 forward 的反向，这里用局部 Z 即可）
+	basis = (basis * Basis(Vector3.FORWARD, angle)).orthonormalized()
+	t.basis = basis
+	global_transform = t
+
+
+## 把一个 basis 的「滚转分量」剥掉，只保留机头指向。
+##
+## 做法：用 forward 与世界上方向重建一个「无滚转」的正交基。
+## 这样 _apply_attitude 比较的是「机头指向」而不是「完整姿态」，
+## 飞船滚成什么样都不会被误判成「和目标差很多」。
+func _strip_roll(b: Basis) -> Basis:
+	var fwd := -b.z.normalized()
+	var up_ref := Vector3.UP
+	if absf(fwd.dot(up_ref)) > 0.99:
+		up_ref = Vector3.FORWARD
+	var right := fwd.cross(up_ref).normalized()
+	if right.length() < 0.001:
+		right = Vector3.RIGHT
+	var up := right.cross(fwd).normalized()
+	return Basis(right, up, -fwd).orthonormalized()
+
+
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1188,6 +1247,8 @@ func _physics_process(delta: float) -> void:
 			# aim_yaw/aim_pitch 描述的是「机头指向」，滚转不该动它。
 			var roll_step: float = roll_input * ROLL_RATE * delta
 			_roll_angle = wrapf(_roll_angle + roll_step, -PI, PI)
+			# 增量式应用：只转「这一帧新增的滚转量」，不重建姿态
+			_roll_by_angle(roll_step)
 			fuel = maxf(0.0, fuel - absf(roll_step) * RCS_FUEL_PER_RAD)
 
 		if thrust.length_squared() > 0.01 and fuel > 0.0:
