@@ -75,6 +75,33 @@ const BH_ESCAPE_FROM := 0.55
 const SHIP_THRUST := 72.0
 const SHIP_BOOST_THRUST := 150.0
 const SHIP_BRAKE_DECEL := 260.0
+
+## ── 战斗机手感（2026-11-10 用户反馈「飞船还是在平移」）──
+##
+## 旧实现是纯牛顿漂移：`velocity += basis * thrust * accel * delta`，
+## **没有任何阻尼**。松开按键后飞船永远匀速直线飘，方向也不跟机头走 ——
+## 玩家感觉就是在拖一个方块平移，不像开飞机。
+##
+## 改成「有飞行辅助的战斗机」：
+##   1. **松开油门自动减速**（IDLE_DRAG），像有空气阻力
+##   2. **速度矢量向机头方向对齐**（ALIGN_RATE），转向时速度跟着转
+##   3. **侧向速度额外阻尼**（SIDE_GRIP），横向漂移会被迅速吃掉
+##
+## 注意：这不是把太空改成大气层 —— 这些是「飞行辅助系统」，
+## 数值调得比较强是为了手感，不是因为物理。想恢复纯牛顿可以全调 0。
+
+## 松开油门时的自然减速率（每秒衰减比例）。
+## 0.55 大约是「松开后 1 秒掉到 45% 速度」，有明显减速感但不至于急刹。
+const IDLE_DRAG := 0.55
+## 速度矢量与机头方向的每秒对齐率。
+## 越高越「有抓地感」（像 F-16），越低越「飘」（像太空模拟）。
+const ALIGN_RATE := 2.6
+## 侧滑（速度垂直于机头方向的分量）的额外衰减率。
+## 有这个才能做出「转弯时尾巴甩一下马上咬住」的战斗机感。
+const SIDE_GRIP := 3.4
+## 同时按前后推进时的最大速度（米/秒）。原来只有全局 1600 上限，太飘。
+const SHIP_MAX_SPEED := 420.0
+const SHIP_BOOST_MAX_SPEED := 700.0
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
 const BH_TANGENT_RATIO := 0.5
 ## ── 防「擦边逃逸」────────────────────────────────────────────────
@@ -924,22 +951,52 @@ func _physics_process(delta: float) -> void:
 		thrust.y = Input.get_axis("thrust_down", "jump")
 		thrust = thrust.limit_length(1.0)
 		var boosting := Input.is_action_pressed("jetpack") and fuel > 0.0
-		if thrust.length_squared() > 0.01 and fuel > 0.0:
-			var acceleration := 150.0 if boosting else 72.0
+		var has_input := thrust.length_squared() > 0.01
+
+		if has_input and fuel > 0.0:
+			var acceleration := SHIP_BOOST_THRUST if boosting else SHIP_THRUST
 			velocity += global_transform.basis * thrust * acceleration * delta
 			fuel = maxf(0.0, fuel - delta * (1.6 if boosting else 0.45) * bh_fuel_multiplier)
 			thrusting = true
 			thrust_level = 1.0 if boosting else 0.5
 		else:
+			# 没有输入：尾焰**完全熄灭**（用户要求「没开的时候不要尾焰」）
+			thrusting = false
 			thrust_level = 0.0
+
+		# ── 战斗机手感：飞行辅助系统 ──
+		# 1) 速度矢量向机头对齐：转向时速度跟着转，而不是笔直飘
+		#
+		# ⚠ 只在**玩家没有输入**时才做强对齐。
+		#   一旦有输入（哪怕是 Space 上升），强行对齐会把垂直/横向推力
+		#   立刻当成「侧滑」阻尼掉 —— 实测表现是「按 Space 不上升」，
+		#   冒烟测试里 "Space applies upward thrust" 直接红。
+		#   所以：有输入 → 几乎不对齐（0.12），让玩家想怎么飞就怎么飞；
+		#         没输入 → 强对齐 + 自然减速，做出「松油门就顺着机头滑行减速」的手感。
+		var forward := -global_transform.basis.z.normalized()
+		if not has_input:
+			# 没输入：速度向机头对齐 + 自然减速
+			var speed := velocity.length()
+			if speed > 0.5:
+				var aligned := forward * speed
+				velocity = velocity.lerp(aligned, clampf(delta * ALIGN_RATE, 0.0, 1.0))
+			velocity *= maxf(0.0, 1.0 - IDLE_DRAG * delta)
+		# 有输入时不碰 velocity —— 手动推进原样生效
+
 		if Input.is_action_pressed("brake") and fuel > 0.0:
 			var before_brake := velocity
-			velocity = velocity.move_toward(Vector3.ZERO, delta * 260.0)
+			velocity = velocity.move_toward(Vector3.ZERO, delta * SHIP_BRAKE_DECEL)
 			var brake_dv := velocity.distance_to(before_brake)
 			if brake_dv > 0.0001:
 				fuel = maxf(0.0, fuel - brake_dv * MANUAL_FUEL_PER_DV * bh_fuel_multiplier)
 				thrusting = true
 				thrust_level = 0.35
+
+		# 3) 速度上限：按是否加力区分，别让飞船无限加速
+		var max_speed := SHIP_BOOST_MAX_SPEED if boosting else SHIP_MAX_SPEED
+		if velocity.length() > max_speed:
+			velocity = velocity.normalized() * max_speed
+
 		velocity += gravity * delta
 
 	if velocity.length() > 1600.0:
@@ -1388,18 +1445,60 @@ func land(planet) -> void:
 	game.hud.show_toast("已着陆 · " + planet.display_name + " · E 离船", 3.0)
 
 
+## 尾焰与引擎光效。
+##
+## 2026-11-10 用户反馈两条，这里一起解决：
+##   1. 「没开的时候不要尾焰」—— 旧版无论有没有推力，尾焰都常亮着
+##      （`0.35 + thrust_level * 3.5`，推力为 0 时基线是 0.35，一直有微光）。
+##      现在改成：thrust_level 接近 0 就**整束隐藏**，只有真的在推进时才有火。
+##   2. 「尾焰要动态特效」—— 旧版只是把锥体沿 Z 拉伸，形状是死的。
+##      现在叠加三层动态：
+##        · 每帧随机抖动（flicker），火焰不会是一个静止的锥
+##        · 横向轻微摆动（sway），像被气流吹
+##        · 长度跟随推力平滑变化
+##      全部走 `_plume_phase` 累加，不依赖 delta 之外的随机源，
+##      所以帧率变化时观感一致。
+var _plume_phase := 0.0
+var _plume_sway_seed := [0.0, 0.0, 0.0]
+
+
 func _update_engine(delta: float) -> void:
+	_plume_phase += delta
+
+	# 推力趋近 0 就算「没开」：尾焰整体隐藏，不留基线微光。
+	var firing: bool = thrust_level > 0.06
+
 	for material in engine_materials:
-		material.emission_energy_multiplier = lerpf(material.emission_energy_multiplier, 0.35 + thrust_level * 3.5, delta * 8.0)
+		var mat_target := 0.0 if not firing else (1.2 + thrust_level * 4.2)
+		material.emission_energy_multiplier = lerpf(
+			material.emission_energy_multiplier, mat_target, delta * 10.0)
 	for light in engine_lights:
-		light.light_energy = lerpf(light.light_energy, 0.15 + thrust_level * 1.8, delta * 8.0)
-	# 尾焰：推力越大越长。缩的是 Z 轴（锥体已经绕 X 转 90°，长轴落在 Z 上）。
-	# 同时让整束往后伸，不然缩短时喷口处会露出一截空隙。
-	for plume in engine_plumes:
-		var node := plume as Node3D
-		var t: float = 0.35 + thrust_level * 1.15
-		var target_scale := Vector3(1.0, 1.0, t)
-		node.scale = node.scale.lerp(target_scale, 1.0 - exp(-delta * 10.0))
+		var light_target := 0.0 if not firing else (0.4 + thrust_level * 2.2)
+		light.light_energy = lerpf(light.light_energy, light_target, delta * 10.0)
+
+	# 尾焰本体
+	for i in range(engine_plumes.size()):
+		var node := engine_plumes[i] as Node3D
+		if not firing:
+			# 直接藏起来，不是缩到 0 —— 缩到 0 仍然会渲染退化三角形
+			node.visible = false
+			continue
+		node.visible = true
+
+		# 每束火有自己的相位偏移，三束不会同步闪烁（同步会像呼吸灯）
+		var phase: float = _plume_phase * 18.0 + float(i) * 2.1
+
+		# 长度：跟随推力，叠一层高频抖动做出「燃烧不稳」的感觉
+		var base_len: float = 0.45 + thrust_level * 1.25
+		var flicker: float = 1.0 + sin(phase) * 0.13 + sin(phase * 2.7) * 0.06
+		var target_len: float = base_len * flicker
+
+		# 横向摆动：低频，让火焰略微左右飘
+		var sway: float = sin(_plume_phase * 6.0 + float(i) * 1.7) * 0.035
+
+		node.scale = node.scale.lerp(
+			Vector3(1.0 + sway, 1.0 + sway, target_len),
+			1.0 - exp(-delta * 14.0))
 
 
 ## 把一个盒体塞进按材质分组的 SurfaceTool 批次，用于铆钉 / 格栅 / 防滑条这类重复小件。
