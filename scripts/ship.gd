@@ -28,6 +28,14 @@ const HULL_Z := 3.25
 const AUTOPILOT_ACCEL := 230.0
 const AUTOPILOT_FUEL_PER_DV := 0.008
 const MANUAL_FUEL_PER_DV := 0.00625
+## RCS 姿态控制：每转过 1 弧度消耗多少推进剂。
+##
+## 用户：「我没有施力，无法转动飞船」+「没燃料就转不了」——
+## 现实里飞船靠 RCS 喷口喷气来转向，喷气就要烧推进剂。
+## 这里给一个比平移便宜的系数：转向一整个 180° 大约等效于
+## 平移速度变化 (PI * 0.008 / 0.00625) ≈ 4 m/s 的代价 ——
+## 不至于「转两下就没油」，但也不是免费。
+const RCS_FUEL_PER_RAD := 0.008
 ## 卡冈图雅引力场里的最大油耗倍率（贴着视界时）。外圈从 1.0 平缓往上涨，
 ## 进场越深越明显，到内圈是 3 倍 —— 也就是说「想靠推力和它硬顶」几乎一定会烧干。
 const BH_FUEL_MULTIPLIER := 3.0
@@ -863,9 +871,12 @@ func _build_model() -> void:
 ##   3. 按这个角速度转一帧
 ## 效果：飞船像有惯性一样慢慢起转、慢慢停，最高不超过 MAX_TURN_RATE。
 ##
-## ⚠ 这是姿态控制（喷口在做功），不是凭空改速度 —— 速度矢量完全不受影响，
-##   符合「不受外力不改变运动状态」。
-func _apply_attitude(delta: float) -> void:
+## ⚠ 这是姿态控制（喷口在做功），不是凭空改速度 —— 速度矢量完全不受影响。
+##
+## 返回本帧实际转过的角度（弧度），供调用方按「转了多少」扣 RCS 燃料。
+## 用户要求：「我没有施力，无法转动飞船」+「没燃料就转不了」——
+## 所以这个返回值必须真实反映转动量，而不是固定值。
+func _apply_attitude(delta: float) -> float:
 	var cur := global_transform.basis.orthonormalized()
 	var target := get_aim_basis()
 
@@ -879,7 +890,7 @@ func _apply_attitude(delta: float) -> void:
 	if angle < 0.0005 or absf(axis.length()) < 0.0001:
 		# 基本对齐了：角速度衰减到 0
 		_turn_velocity = _turn_velocity.lerp(Vector3.ZERO, clampf(delta * 12.0, 0.0, 1.0))
-		return
+		return 0.0
 
 	# 目标角速度 = 轴 × 差角（单位：弧度/秒），并限制大小
 	var desired := axis.normalized() * angle
@@ -909,6 +920,8 @@ func _apply_attitude(delta: float) -> void:
 		var t := global_transform
 		t.basis = new_basis
 		global_transform = t
+		return step_angle
+	return 0.0
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1137,7 +1150,17 @@ func _physics_process(delta: float) -> void:
 		thrust_level = 0.8 if thrusting else 0.0
 	else:
 		# ── 姿态：飞船缓慢转向期望朝向，机头始终对着屏幕中心 ──
-		_apply_attitude(delta)
+		#
+		# ⚠ 转向要烧 RCS 推进剂（用户：「我没有施力，无法转动飞船」）。
+		#   没有燃料时 _apply_attitude 不会被调用，飞船姿态锁死 ——
+		#   这是「没燃料就转不了」的实现方式。
+		if fuel > 0.0:
+			var turned := _apply_attitude(delta)
+			if turned > 0.0001:
+				fuel = maxf(0.0, fuel - turned * RCS_FUEL_PER_RAD)
+		else:
+			# 没燃料：角速度归零，飞船保持当前姿态（转不动了）
+			_turn_velocity = Vector3.ZERO
 
 		var thrust := Vector3.ZERO
 		# ⚠ 只有**向前**推进（机头方向），没有倒车。
@@ -1158,11 +1181,14 @@ func _physics_process(delta: float) -> void:
 		var has_input := thrust.length_squared() > 0.01 or absf(Input.get_axis("move_left", "move_right")) > 0.1
 
 		# 滚转：绕着机头轴转机身（不影响前进方向）
+		# 滚转同样要烧 RCS 燃料（没燃料滚不了）
 		var roll_input := Input.get_axis("move_right", "move_left")
 		if absf(roll_input) > 0.05 and fuel > 0.0:
 			# 滚转不改变机头方向，所以直接转机身姿态；
 			# aim_yaw/aim_pitch 描述的是「机头指向」，滚转不该动它。
-			_roll_angle = wrapf(_roll_angle + roll_input * ROLL_RATE * delta, -PI, PI)
+			var roll_step: float = roll_input * ROLL_RATE * delta
+			_roll_angle = wrapf(_roll_angle + roll_step, -PI, PI)
+			fuel = maxf(0.0, fuel - absf(roll_step) * RCS_FUEL_PER_RAD)
 
 		if thrust.length_squared() > 0.01 and fuel > 0.0:
 			var acceleration := SHIP_BOOST_THRUST if boosting else SHIP_THRUST
