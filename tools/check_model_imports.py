@@ -91,17 +91,51 @@ def image_size(path):
 
 
 def triangles(gltf):
+    """统计三角面数。**POINTS 图元不算三角面。**
+
+    ⚠ glTF 的 primitive.mode 决定图元类型：
+        0=POINTS  1=LINES  2=LINE_LOOP  3=LINE_STRIP  4=TRIANGLES
+        5=TRIANGLE_STRIP  6=TRIANGLE_FAN
+      一维星（A Windy Day）是 **150 个 mode=0 的 POINTS 图元、205 万个点、零三角面**。
+      旧版把「没有 indices」的 primitive 一律按 (count-2) 算三角形，
+      于是 205 万个点被当成 205 万三角面 → 报「超出预算 13 倍」，
+      而实际上它对 GPU 的光栅化开销远小于同数量的三角面。
+      这里按 mode 分开算：只有三角形类图元才计入面数。
+    """
     total = 0
     for mesh in gltf.get("meshes", []):
         for prim in mesh.get("primitives", []):
-            if "indices" in prim:
-                total += gltf["accessors"][prim["indices"]]["count"] // 3
-            else:
-                pos = prim.get("attributes", {}).get("POSITION")
-                count = gltf["accessors"][pos]["count"] if pos is not None else 0
-                mode = prim.get("mode", 4)
-                total += count // 3 if mode == 4 else max(count - 2, 0)
+            mode = prim.get("mode", 4)
+            pos = prim.get("attributes", {}).get("POSITION")
+            vcount = gltf["accessors"][pos]["count"] if pos is not None else 0
+            idx = prim.get("indices")
+            icount = gltf["accessors"][idx]["count"] if idx is not None else vcount
+            if mode == 4:            # TRIANGLES
+                total += icount // 3
+            elif mode == 5:          # TRIANGLE_STRIP
+                total += max(icount - 2, 0)
+            elif mode == 6:          # TRIANGLE_FAN
+                total += max(icount - 2, 0)
+            # POINTS / LINES / LINE_LOOP / LINE_STRIP 不计入三角面
     return total
+
+
+def primitive_stats(gltf):
+    """返回 {mode: 图元数} 和 {mode: 顶点数}，用来在报告里区分点云/线/三角面。"""
+    prim_count = {}
+    vert_count = {}
+    for mesh in gltf.get("meshes", []):
+        for prim in mesh.get("primitives", []):
+            mode = prim.get("mode", 4)
+            pos = prim.get("attributes", {}).get("POSITION")
+            vcount = gltf["accessors"][pos]["count"] if pos is not None else 0
+            prim_count[mode] = prim_count.get(mode, 0) + 1
+            vert_count[mode] = vert_count.get(mode, 0) + vcount
+    return prim_count, vert_count
+
+
+MODE_NAMES = {0: "POINTS", 1: "LINES", 2: "LINE_LOOP", 3: "LINE_STRIP",
+              4: "TRIANGLES", 5: "TRIANGLE_STRIP", 6: "TRIANGLE_FAN"}
 
 
 def collect_textures(gltf, binary, model_dir):
@@ -170,6 +204,13 @@ def main(argv):
         is_master = slug in excluded_slugs
         tag = "  【母版·不进包】" if is_master else ""
         print("== %s%s" % (slug, tag))
+        # 点云/线这类非三角面图元要单独报，否则「0 三角面」看起来像空模型
+        prim_count, vert_count = primitive_stats(gltf)
+        non_tri = {m: n for m, n in prim_count.items() if m != 4}
+        if non_tri:
+            parts = ["%s×%d（%d 顶点）" % (MODE_NAMES.get(m, str(m)), n, vert_count.get(m, 0))
+                     for m, n in sorted(non_tri.items())]
+            print("   图元   %s  ← 非三角面图元，不计入三角面预算" % "、".join(parts))
         print("   三角面 %d / 预算 %d" % (tris, BUDGET["triangles"]))
         print("   节点   %d / 预算 %d" % (nodes, BUDGET["nodes"]))
         print("   材质   %d / 预算 %d" % (mats, BUDGET["materials"]))
