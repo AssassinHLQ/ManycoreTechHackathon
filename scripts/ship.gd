@@ -72,9 +72,6 @@ const BH_ESCAPE_BOOST := 3.2
 ## 逃逸层从多近开始生效（closeness，0~1）。
 const BH_ESCAPE_FROM := 0.55
 ## 飞船的三档推力。用来算「推力余量」：余量 = 推力 - 引力。
-const SHIP_THRUST := 72.0
-const SHIP_BOOST_THRUST := 150.0
-const SHIP_BRAKE_DECEL := 260.0
 
 ## ── 飞行手感（2026-11-10 第三次修正，这次是真正的目标方案）──
 ##
@@ -145,13 +142,26 @@ const MAX_TURN_RATE := 2.4
 const TURN_ACCEL := 9.0
 ## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
 var _turn_velocity := Vector3.ZERO
+## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
+var forward_input := 0.0
 
 ## 滚转速率（弧度/秒），A/D 控制。
 const ROLL_RATE := 2.0
 
-## 推进速度上限（米/秒）。只限制推力能加速到多快，不拦惯性。
-const SHIP_MAX_SPEED := 420.0
-const SHIP_BOOST_MAX_SPEED := 700.0
+## 推进加速度（米/秒²）。**没有速度上限** ——
+## 真空中持续加速就是理论上无限加速（用户：「加速到了 700 后我继续按 shift+W
+## 加速，是理论无限加速的」）。
+## 旧版有 SHIP_MAX_SPEED=420 / SHIP_BOOST_MAX_SPEED=700 两个人造上限，
+## 那是错的：太空里没有阻力，推力一直在就该一直加速。
+const SHIP_THRUST := 72.0
+const SHIP_BOOST_THRUST := 150.0
+const SHIP_BRAKE_DECEL := 260.0
+
+## 全局速度硬上限（米/秒）。**只防浮点爆炸**，不是玩法上限。
+## 1600 是从旧版沿用下来的「安全值」—— 到这个速度时飞船一帧移动 26 米，
+## 站点碰撞检测的 32 步子步长还能覆盖。真要更快就得同时调碰撞检测。
+## 这不是「设计上的最高速」，而是「再快物理会出问题」的工程边界。
+const SHIP_SPEED_SAFETY_CAP := 1600.0
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
 const BH_TANGENT_RATIO := 0.5
 ## ── 防「擦边逃逸」────────────────────────────────────────────────
@@ -1095,9 +1105,18 @@ func _physics_process(delta: float) -> void:
 		_apply_attitude(delta)
 
 		var thrust := Vector3.ZERO
-		# 前后推进照旧；**左右改成滚转**，不再横移。
-		# 这是这次改动的关键之一：A/D 横移正是「平移感」的来源。
-		thrust.z = Input.get_axis("move_forward", "move_back")
+		# ⚠ 只有**向前**推进（机头方向），没有倒车。
+		#   用户：「按照物理，飞船不能朝后飞」——
+		#   太空里的发动机装在船尾，只能往机头方向推。
+		#   W 前进，S 现在是**制动**（见下面 brake），不是倒车。
+		#
+		# ⚠ get_axis() 的语义是「第一个动作为负、第二个为正」。
+		#   本喵第一版写成 get_axis("move_forward", "brake")，
+		#   结果按住 W 拿到的是 **-1**（因为 move_forward 被当成负轴），
+		#   推力被 maxf(v, 0) 削成 0，飞船根本不动。
+		#   现在只读 move_forward 自己，方向靠下面取反。
+		forward_input = Input.get_action_strength("move_forward")
+		thrust.z = -forward_input          # 机头朝 -Z，所以向前的推力是负 z
 		thrust.y = Input.get_axis("thrust_down", "jump")
 		thrust = thrust.limit_length(1.0)
 		var boosting := Input.is_action_pressed("jetpack") and fuel > 0.0
@@ -1121,6 +1140,7 @@ func _physics_process(delta: float) -> void:
 			thrusting = false
 			thrust_level = 0.0
 
+		# 制动：S 键（原来是 X）。沿速度反方向施加减速推力，按 Δv 烧燃料。
 		if Input.is_action_pressed("brake") and fuel > 0.0:
 			var before_brake := velocity
 			velocity = velocity.move_toward(Vector3.ZERO, delta * SHIP_BRAKE_DECEL)
@@ -1130,15 +1150,16 @@ func _physics_process(delta: float) -> void:
 				thrusting = true
 				thrust_level = 0.35
 
-		# 推进上限：超速时这一帧不加速（不硬压，保留惯性）
-		var max_speed: float = SHIP_BOOST_MAX_SPEED if boosting else SHIP_MAX_SPEED
-		if thrust.length_squared() > 0.01 and velocity.length() > max_speed:
-			velocity -= global_transform.basis * thrust * (SHIP_BOOST_THRUST if boosting else SHIP_THRUST) * delta
+		# ⚠ **没有速度上限**：真空中持续加速就是理论上无限加速。
+		#   旧版有 SHIP_MAX_SPEED=420 / SHIP_BOOST_MAX_SPEED=700 两个人造上限，
+		#   用户明确要求去掉（「到了 700 后继续按 shift+W，理论无限加速」）。
+		#   唯一的界限是下面的 SHIP_SPEED_SAFETY_CAP（防浮点/碰撞穿透的工程值）。
 
 		velocity += gravity * delta
 
-	if velocity.length() > 1600.0:
-		velocity = velocity.normalized() * 1600.0
+	# 全局限速：**这不是玩法上限**，只是防「一帧位移超过碰撞检测步长」。
+	if velocity.length() > SHIP_SPEED_SAFETY_CAP:
+		velocity = velocity.normalized() * SHIP_SPEED_SAFETY_CAP
 	_move_with_station_collision(delta)
 	if _apply_black_hole_capture(delta):
 		return

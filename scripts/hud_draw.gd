@@ -65,6 +65,33 @@ func _draw_crosshair() -> void:
 	draw_circle(center, 1.4, Color("f2d59b"))
 
 
+## 射线遮挡检测：从相机到目标之间有没有东西挡住。
+##
+## 为什么需要它（2026-11-10 用户：「这些字要能被飞船挡住」）：
+##   `_draw_markers()` 画在 2D CanvasLayer 上，**永远浮在 3D 场景之上** ——
+##   飞船挡在相机和星球之间时，星球标签照样画在飞船身上，看起来像贴纸。
+##   Canvas 层没法参与深度测试，所以只能**手动做一次射线检测**：
+##   如果相机到目标之间被几何体挡住，就不画这个标签。
+##
+## 用 `intersect_ray` 打在 layer 1（场景里所有实体都在 layer 1）。
+## 射线终点比目标略近一点（目标本身可能也是碰撞体），避免「自己挡自己」。
+func _is_occluded(camera: Camera3D, target: Vector3, self_radius: float) -> bool:
+	if game == null:
+		return false
+	var from: Vector3 = camera.global_position
+	var to: Vector3 = target
+	var dist: float = from.distance_to(to)
+	if dist < self_radius + 1.0:
+		return false
+	# 终点收回到目标表面之前，避免命中目标自身
+	var dir := (to - from).normalized()
+	var end: Vector3 = to - dir * (self_radius + 0.5)
+	var query := PhysicsRayQueryParameters3D.create(from, end, 1)
+	query.hit_from_inside = false
+	var hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(query)
+	return not hit.is_empty()
+
+
 func _draw_markers() -> void:
 	if game.in_station:
 		return
@@ -82,6 +109,9 @@ func _draw_markers() -> void:
 		var screen := camera.unproject_position(point)
 		if not Rect2(Vector2(45, 75), size - Vector2(90, 170)).has_point(screen):
 			continue
+		# 被飞船/星球挡住就不画（用户要求：字要能被飞船挡）
+		if _is_occluded(camera, point, planet.radius):
+			continue
 		var color: Color = planet.accent_color
 		color.a = 0.82
 		draw_arc(screen, 10.0, 0, TAU, 32, color, 1.3, true)
@@ -93,7 +123,8 @@ func _draw_markers() -> void:
 		var comet_point: Vector3 = game.comet.global_position
 		if not camera.is_position_behind(comet_point):
 			var comet_screen := camera.unproject_position(comet_point)
-			if Rect2(Vector2(45, 75), size - Vector2(90, 170)).has_point(comet_screen):
+			if Rect2(Vector2(45, 75), size - Vector2(90, 170)).has_point(comet_screen) \
+					and not _is_occluded(camera, comet_point, 6.0):
 				var comet_color := Color(0.72, 0.9, 1.0, 0.9)
 				draw_circle(comet_screen, 2.6, comet_color)
 				draw_arc(comet_screen, 9.5, 0, TAU, 24, Color(comet_color, 0.45), 1.0, true)
@@ -103,7 +134,8 @@ func _draw_markers() -> void:
 		var station_point: Vector3 = game.station.global_position
 		if not camera.is_position_behind(station_point):
 			var station_screen := camera.unproject_position(station_point)
-			if Rect2(Vector2(45, 75), size - Vector2(90, 170)).has_point(station_screen):
+			if Rect2(Vector2(45, 75), size - Vector2(90, 170)).has_point(station_screen) \
+					and not _is_occluded(camera, station_point, 60.0):
 				var station_color := Color("ffd59a")
 				draw_arc(station_screen, 11.0, 0, TAU, 32, Color(station_color, 0.9), 1.3, true)
 				draw_arc(station_screen, 6.0, 0, TAU, 24, Color(station_color, 0.5), 1.0, true)
@@ -117,6 +149,8 @@ func _draw_markers() -> void:
 			continue
 		var screen := camera.unproject_position(point)
 		if not Rect2(Vector2(30, 70), size - Vector2(60, 150)).has_point(screen):
+			continue
+		if _is_occluded(camera, point, 3.0):
 			continue
 		var color: Color = anomaly.accent_color
 		var diamond := PackedVector2Array([screen + Vector2(0, -6), screen + Vector2(6, 0), screen + Vector2(0, 6), screen + Vector2(-6, 0), screen + Vector2(0, -6)])

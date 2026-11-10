@@ -306,6 +306,10 @@ func _migrate_legacy_user_data() -> void:
 
 func _build_input_map() -> void:
 	_add_key("move_forward", KEY_W)
+	# ⚠ S 原来是 move_back（倒车），现在改成**制动**。
+	#   物理上飞船的发动机在船尾，只能往机头方向推 —— 没有倒车挡。
+	#   用户：「按照物理，飞船不能朝后飞」「制动改成 S」。
+	#   move_back 仍然保留绑定（避免其它脚本引用时报错），但飞船逻辑不再读它。
 	_add_key("move_back", KEY_S)
 	_add_key("move_left", KEY_A)
 	_add_key("move_right", KEY_D)
@@ -319,6 +323,8 @@ func _build_input_map() -> void:
 	_add_key("journal", KEY_J)
 	_add_key("target", KEY_TAB)
 	_add_key("autopilot", KEY_T)
+	# 制动：S（主键，和 move_back 是同一个物理键）+ X（备用，老玩家习惯）
+	_add_key("brake", KEY_S)
 	_add_key("brake", KEY_X)
 	_add_key("lamp", KEY_L)
 	_add_key("unstuck", KEY_R)

@@ -4,6 +4,8 @@ const DrawScript = preload("res://scripts/hud_draw.gd")
 
 var game
 var font: Font
+## 2D 绘制层（准星/星球标签/座舱框）。测试需要访问，所以存成成员。
+var drawing: Control
 var root: Control
 var hud_root: Control
 var menu: Control
@@ -70,7 +72,8 @@ func _ready() -> void:
 	theme.default_font_size = 18
 	_install_button_theme(theme)
 
-	var drawing := DrawScript.new()
+	# 存成成员变量：测试/调试需要从外部访问它的 _draw_markers 等
+	drawing = DrawScript.new()
 	drawing.game = game
 	drawing.font = font
 	add_child(drawing)
