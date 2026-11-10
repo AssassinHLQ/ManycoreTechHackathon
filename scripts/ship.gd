@@ -859,6 +859,10 @@ func _physics_process(delta: float) -> void:
 		fuel_empty_time = 0.0
 		fuel_warning_cooldown = 0.0
 		game.player.oxygen = 100.0
+		# 对接后跟着站走：远景站会自转，不跟的话船会慢慢「掉」出停靠位。
+		# 归航站是绕星公转（位置在变），同理。做法是每帧重贴到站的停靠点。
+		if docked_station != null and is_instance_valid(docked_station):
+			global_position = docked_station.dock_ship_position()
 		if Input.is_action_just_pressed("jump"):
 			undock()
 		_update_engine(delta)
@@ -944,11 +948,19 @@ func _physics_process(delta: float) -> void:
 	if _apply_black_hole_capture(delta):
 		return
 
-	if game.station != null and not docked and not landed and dock_cooldown <= 0.0:
-		var station_port: Vector3 = game.station.docking_point()
-		if global_position.distance_to(station_port) < 24.0 and (velocity - station_velocity).length() < 18.0:
-			dock_station(game.station)
-			return
+	if not docked and not landed and dock_cooldown <= 0.0:
+		# 归航站与两座远景站统一处理：谁在范围内就对接谁。
+		# 远景站的端口在站顶（自家坐标里），判定半径按它们的体量放大到
+		# DOCK_APPROACH_RADIUS 量级，否则 900 米大的站要贴到 24 米才算数，玩家会以为没反应。
+		for candidate in _dockable_stations():
+			var station_port: Vector3 = candidate.docking_point()
+			var reach: float = 24.0
+			if candidate.has_method("is_distant_station"):
+				reach = candidate.DOCK_SNAP_RADIUS
+			if global_position.distance_to(station_port) < reach \
+					and (velocity - station_velocity).length() < (18.0 if not candidate.has_method("is_distant_station") else candidate.DOCK_SNAP_SPEED):
+				dock_station(candidate)
+				return
 
 	planet = game.nearest_planet(global_position)
 	offset = global_position - planet.global_position
@@ -1267,6 +1279,23 @@ func _autopilot_aim(target_position: Vector3) -> Vector3:
 	return global_position + steer.normalized() * distance
 
 
+## 所有可对接的站：归航站 + 两座远景站。
+## 远景站离得远（6000+ 米），先按距离粗筛，避免每帧对每个站算 to_global。
+func _dockable_stations() -> Array:
+	var out: Array = []
+	if game.station != null:
+		out.append(game.station)
+	var here: Vector3 = global_position
+	for s in game.distant_stations:
+		if s == null:
+			continue
+		# 粗筛：站心距离小于「体量 + 余量」才细算端口距离
+		var reach: float = 1200.0
+		if s.global_position.distance_to(here) < reach:
+			out.append(s)
+	return out
+
+
 func dock_station(station_node) -> void:
 	if docked or landed:
 		return
@@ -1279,7 +1308,13 @@ func dock_station(station_node) -> void:
 	global_position = station_node.dock_ship_position()
 	look_at(station_node.dock_look_target(), station_node.dock_up_direction())
 	game.audio.play_ui(300.0)
-	game.hud.show_toast("磁力对接完成 · 按 E 进入归航站", 4.0)
+	var label := "归航站"
+	if station_node.has_method("is_distant_station"):
+		label = station_node.display_name
+		# 远景站没有内部，所以文案不写「按 E 进入」
+		game.hud.show_toast("磁力对接完成 · %s · 按 Space 脱离" % label, 4.0)
+		return
+	game.hud.show_toast("磁力对接完成 · 按 E 进入%s" % label, 4.0)
 
 
 func undock() -> void:

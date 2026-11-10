@@ -5,12 +5,16 @@ const PlayerScript = preload("res://scripts/player.gd")
 const ShipScript = preload("res://scripts/ship.gd")
 const AnomalyScript = preload("res://scripts/anomaly.gd")
 const QuantumScript = preload("res://scripts/quantum.gd")
+## 一维星：纯点云的装饰星球。单独一个脚本，不进 planet.gd ——
+## 它没有地形/碰撞/信号，塞进行星那套会带一堆死代码。
+const OneDimStarScript = preload("res://scripts/one_dim_star.gd")
 const HudScript = preload("res://scripts/hud.gd")
 const AudioScript = preload("res://scripts/audio.gd")
 const SettingsScript = preload("res://scripts/settings.gd")
 const RoastScript = preload("res://scripts/roast.gd")
 const TouchScript = preload("res://scripts/touch_controls.gd")
 const StationScript = preload("res://scripts/station.gd")
+const DistantStationScript = preload("res://scripts/distant_station.gd")
 
 const LOOP_DURATION := 1020.0
 ## 打印跨帧建场各阶段耗时（排查首屏卡顿时打开）
@@ -48,6 +52,8 @@ var attic: Node3D
 var _sun_was_visible := true
 var comet: Node3D
 var comet_dust: Node3D
+## 一维星：纯点云的装饰星球（远看美、靠近即散）。不进 planets / anomalies / 星图。
+var one_dim_star: Node3D
 var home: Node3D
 var player: CharacterBody3D
 var ship: Node3D
@@ -171,6 +177,10 @@ func _build_world_progressive() -> void:
 	_stage_begin()
 	_build_station()
 	_stage_end("station")
+	await _yield_frame()
+	_stage_begin()
+	_build_distant_stations()
+	_stage_end("distant_stations")
 	await _yield_frame()
 	_stage_begin()
 	_build_attic()
@@ -883,6 +893,22 @@ func _build_planets() -> void:
 	_create_orbit_lines(definitions)
 	_build_extra_anomalies()
 	_build_quantum()
+	_build_one_dim_star()
+
+
+## 一维星：纯点云的装饰星球。**故意不进 planets / anomalies**：
+## 它不能着陆、没有信号、不参与自动航行目标，只是远处好看。
+## 放在最外圈轨道上，从青岚星看出去是一颗暗金色的小点云。
+func _build_one_dim_star() -> void:
+	# 用 preload().new() 而不是 set_script()：
+	# set_script 出来的静态类型仍是 Node3D，赋 game 属性会报
+	# 「Invalid assignment of property 'game' on a base object of type Node3D」。
+	one_dim_star = OneDimStarScript.new()
+	one_dim_star.game = self
+	one_dim_star.name = "OneDimStar"
+	add_child(one_dim_star)
+	# 最外圈：比最远的缄默星（9200）还远，明显是「天边的装饰」
+	one_dim_star.position = Vector3(cos(0.9) * 11400.0, 620.0, sin(0.9) * 11400.0)
 
 
 func _build_quantum() -> void:
@@ -1381,6 +1407,139 @@ func _build_station() -> void:
 	add_child(station)
 
 
+## 两座远景空间站（外部模型，CC BY 4.0，作者 re1monsen）。
+##
+## 与归航站（程序化生成、可进入、有六廊内部）不同，这两座只是**远处可看、可飞近绕行**
+## 的布景站：不进星图、不进自动航行目标表、不许进入内部，所以不影响归航站那 73 项自测。
+##
+## 摆放思路：放在行星轨道外侧、离出生点足够远，抬头或长焦能看到；
+## 两者分处不同方位角，避免和归航站挤在一起。
+## 模型源文件是按 1 单位 = 1 米导出的（见 tools/station_build.py），
+## 包围盒分别约 900 米与 760 米，比归航站（外环 560 米直径）大一圈，远看才压得住。
+const DISTANT_STATIONS := [
+	{
+		"slug": "space-station",
+		"name": "DistantStationAlpha",
+		"label": "远景站 · 环塔",
+		"model": "res://assets/models/space-station/model.glb",
+		"position": Vector3(-6200.0, 1650.0, -5400.0),
+		"yaw": 62.0,
+		"spin": 0.010,
+		"dock_height": 0.42,
+	},
+	{
+		"slug": "space-station-3",
+		"name": "DistantStationBeta",
+		"label": "远景站 · 双环",
+		"model": "res://assets/models/space-station-3/model.glb",
+		"position": Vector3(5400.0, 2050.0, 6800.0),
+		"yaw": -37.0,
+		"spin": 0.014,
+		"dock_height": 0.40,
+	},
+]
+var distant_stations: Array[Node3D] = []
+
+
+func _build_distant_stations() -> void:
+	for entry in DISTANT_STATIONS:
+		var path: String = entry["model"]
+		var packed: PackedScene = load(path)
+		if packed == null:
+			push_warning("远景空间站缺失：%s" % path)
+			continue
+		var holder: Node3D = DistantStationScript.new()
+		holder.name = entry["name"]
+		holder.display_name = entry["label"]
+		holder.spin_rate = float(entry["spin"])
+		holder.position = entry["position"]
+		holder.rotation = Vector3(0.0, deg_to_rad(float(entry["yaw"])), 0.0)
+		add_child(holder)
+
+		var model: Node3D = packed.instantiate()
+		holder.add_child(model)
+		# 材质统一：关掉模型自带的 PBR 极端值，双面渲染避免薄壳穿透。
+		for node in holder.find_children("*", "MeshInstance3D", true, false):
+			var mi := node as MeshInstance3D
+			for surface in range(mi.mesh.get_surface_count()):
+				var mat: Material = mi.get_active_material(surface)
+				if mat is StandardMaterial3D:
+					var std := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+					std.cull_mode = BaseMaterial3D.CULL_DISABLED
+					std.metallic = clampf(std.metallic, 0.0, 0.85)
+					std.roughness = clampf(std.roughness, 0.28, 1.0)
+					mi.set_surface_override_material(surface, std)
+
+		# 量包围盒 -> 告诉站脚本「圆盘半径 / 厚度 / 对接点在哪」。
+		#
+		# ⚠ 坑：MeshInstance3D.get_aabb() 是网格自身局部空间的盒子，
+		#   不含节点链上的缩放。外部模型常带 100 倍以上的节点缩放，
+		#   直接 merge 出来的尺寸是假的（实测 Alpha 报半高 450，真站体只有 450）。
+		#   所以这里先把 8 个角变换到 holder 空间再求包围盒。
+		var aabb: AABB = _station_local_aabb(holder)
+		var radius: float = maxf(aabb.size.x, aabb.size.z) * 0.5
+		var half_h: float = aabb.size.y * 0.5
+		holder.half_extent = Vector3(radius, half_h, radius)
+		holder.disk_radius = radius
+		holder.disk_thickness = maxf(half_h * 0.34, 2.0)
+		# 对接端口放在**站体正上方**：包围盒顶 + 一小段余量，
+		# 保证飞船停靠时不会嵌进模型里（之前放在盒子内部，截图里船就看不见了）。
+		var clearance: float = maxf(half_h * 0.06, 6.0)
+		holder.dock_offset = Vector3(aabb.position.x + aabb.size.x * 0.5,
+			aabb.position.y + aabb.size.y + clearance,
+			aabb.position.z + aabb.size.z * 0.5)
+		distant_stations.append(holder)
+		print("  远景站 %s：半径 %.0f 米，半高 %.0f 米，包围盒 %s，对接点 %s" % [
+			entry["label"], radius, half_h, str(aabb), str(holder.dock_offset)])
+
+
+## 量一个节点下所有网格的包围盒（**换算到 holder 的局部空间**）。
+##
+## 坑：MeshInstance3D.get_aabb() 返回的是**网格自身局部空间**的盒子，
+##     不含节点链条上的缩放/旋转。外部模型常带 100 倍以上的节点缩放
+##     （Blender 导出时 1 单位当作厘米那种），直接 merge 出来的数字是假的 ——
+##     实测报了「半径 358 米、半高 450 米」，而真实站体只有约 450 米宽、200 米高。
+##     这里把每个节点相对 root 的变换乘进去。
+func _station_local_aabb(root: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var box: AABB = mi.get_aabb()
+		# 把网格盒子八个角变换到 root 空间，再求新的包围盒
+		var to_root: Transform3D = root.global_transform.affine_inverse() * mi.global_transform
+		var world_box := Transform3D(Basis(), Vector3.ZERO)
+		# 用 AABB 的 8 个角手动变换
+		var lo := Vector3(INF, INF, INF)
+		var hi := Vector3(-INF, -INF, -INF)
+		for i in range(8):
+			var corner := box.position + Vector3(
+				box.size.x if (i & 1) else 0.0,
+				box.size.y if (i & 2) else 0.0,
+				box.size.z if (i & 4) else 0.0)
+			var p: Vector3 = to_root * corner
+			lo = Vector3(minf(lo.x, p.x), minf(lo.y, p.y), minf(lo.z, p.z))
+			hi = Vector3(maxf(hi.x, p.x), maxf(hi.y, p.y), maxf(hi.z, p.z))
+		var local_box := AABB(lo, hi - lo)
+		if first:
+			out = local_box
+			first = false
+		else:
+			out = out.merge(local_box)
+	if first:
+		return AABB(Vector3(-50, -50, -50), Vector3(100, 100, 100))
+	return out
+
+
+## 远景空间站缓慢自转（只是布景，没有物理）。
+func _update_distant_stations(delta: float) -> void:
+	for holder in distant_stations:
+		if holder != null and holder.has_method("update_spin"):
+			holder.update_spin(delta)
+
+
 func _update_comet() -> void:
 	if comet == null:
 		return
@@ -1481,6 +1640,7 @@ func _process(delta: float) -> void:
 	_animate_fire()
 	_update_comet()
 	_update_gargantua(delta)
+	_update_distant_stations(delta)
 	_update_sun_detail()
 	if state == "menu":
 		var center := home.global_position
@@ -2061,7 +2221,12 @@ func _interact() -> void:
 			audio.play_ui(520.0)
 	elif state == "ship":
 		if ship.docked:
-			enter_station()
+			# 远景站没有内部通道，按 E 直接脱离（当「离开」用），别让玩家卡在
+			# 「对接了但按 E 什么都没发生」的状态里。
+			if ship.docked_station != null and ship.docked_station.has_method("is_distant_station"):
+				ship.undock()
+			else:
+				enter_station()
 		elif ship.landed:
 			exit_ship()
 		else:
