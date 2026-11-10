@@ -46,16 +46,14 @@ func _run() -> void:
 	ship.landed = false
 	ship.docked = false
 	ship.autopilot = false
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
-	ship._roll_angle = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 
 	# ── 1. 横推能不能转过 180° ──
 	print("\n=== 1. 偏航能转多远 ===")
 	# 每帧推 40px，推 100 次 = 4000px
 	for i in range(100):
 		ship.apply_look(Vector2(40.0, 0.0))
-	var yaw_deg := rad_to_deg(ship.aim_yaw)
+	var yaw_deg := rad_to_deg(ship.intent_quat.get_euler().y)
 	print("   横推 4000px 后 aim_yaw = %.1f°" % yaw_deg)
 	# 断言用「转过的绝对角度」：yaw 会 wrap 到 ±180，所以 -144° 意味着实际转了 144°。
 	# 4000px 能转 144° 说明灵敏度合理（约 28px/度），且**没有上限卡住**——
@@ -65,45 +63,44 @@ func _run() -> void:
 	# 继续推，应该能绕一整圈（wrap 到负值）
 	for i in range(100):
 		ship.apply_look(Vector2(40.0, 0.0))
-	var yaw_deg2 := rad_to_deg(ship.aim_yaw)
+	var yaw_deg2 := rad_to_deg(ship.intent_quat.get_euler().y)
 	print("   再推 4000px 后 aim_yaw = %.1f°（已越过 180° 继续绕）" % yaw_deg2)
 	_check(absf(yaw_deg2) <= 180.0, "yaw wraps within [-180, 180] after a full circle")
 
 	# ── 2. 俯仰能到多高 ──
 	print("\n=== 2. 俯仰范围 ===")
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	for i in range(100):
 		ship.apply_look(Vector2(0.0, -40.0))   # 往上推
-	var pitch_up := rad_to_deg(ship.aim_pitch)
-	print("   上推到底 aim_pitch = %.1f°" % pitch_up)
-	_check(pitch_up > 80.0, "pitch reaches near the vertical limit (%.0f deg)" % pitch_up)
-	_check(pitch_up <= 89.1, "pitch does not exceed 89 degrees (%.0f deg)" % pitch_up)
+	var pitch_up := rad_to_deg(ship.intent_quat.get_euler().x)
+	print("   上推到底 euler.x = %.1f°" % pitch_up)
+	# ⚠ 四元数方案**不做俯仰限制**（局部轴旋转本来就不会万向节死锁，
+	#   限制反而会造成「转不出去」）。所以这里只验证「真的能大幅俯仰」，
+	#   euler 反解在越过 90° 后会落到其他象限，用绝对值判断。
+	_check(absf(pitch_up) > 80.0, "pitch can move a lot (|%.0f| deg)" % absf(pitch_up))
 
 	# ── 3. 到顶后继续推，偏航不被带歪 ──
 	print("\n=== 3. 俯仰到顶后偏航不被带歪 ===")
-	var yaw_before: float = ship.aim_yaw
+	var yaw_before: float = ship.intent_quat.get_euler().y
 	for i in range(50):
 		ship.apply_look(Vector2(0.0, -40.0))
-	var yaw_after: float = ship.aim_yaw
+	var yaw_after: float = ship.intent_quat.get_euler().y
 	print("   继续上推 50 次：yaw %.4f -> %.4f" % [yaw_before, yaw_after])
 	_check(absf(yaw_after - yaw_before) < 0.001, "pushing past the pitch limit does not skew yaw")
 
 	# ── 4. 可逆性：左右各推同样多，应该回到原处 ──
 	print("\n=== 4. 左右等量推动可逆 ===")
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	for i in range(30):
 		ship.apply_look(Vector2(25.0, 0.0))
 	for i in range(30):
 		ship.apply_look(Vector2(-25.0, 0.0))
-	print("   左右各推 750px 后 aim_yaw = %.6f（应约等于 0）" % ship.aim_yaw)
-	_check(absf(ship.aim_yaw) < 0.0005, "equal opposite mouse input returns to the start yaw")
+	print("   左右各推 750px 后 yaw = %.6f（应约等于 0）" % ship.intent_quat.get_euler().y)
+	_check(absf(ship.intent_quat.get_euler().y) < 0.0005, "equal opposite mouse input returns to the start yaw")
 
 	# ── 5. 机头仍对准 aim ──
 	print("\n=== 5. 飞船追上后机头对准 aim ===")
-	ship.aim_yaw = 1.2
-	ship.aim_pitch = 0.3
+	ship.intent_quat = (Quaternion(Vector3.UP, 1.2) * Quaternion(Vector3.RIGHT, 0.3)).normalized()
 	ship._turn_velocity = Vector3.ZERO
 	for i in range(180):
 		ship._physics_process(1.0 / 60.0)

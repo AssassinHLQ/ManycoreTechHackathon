@@ -46,15 +46,13 @@ func _run() -> void:
 	ship.global_position = Vector3(50000, 0, 0)
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
-	ship._roll_angle = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 
 	# ── 1. 转向消耗燃料 ──
 	print("\n=== 1. 转个弯要烧油 ===")
 	ship.fuel = 100.0
-	ship.aim_yaw = PI * 0.5      # 要求转 90°
+	ship.intent_quat = Quaternion(Vector3.UP, PI * 0.5)   # 要求转 90°
 	var fuel_before: float = ship.fuel
 	for i in range(120):          # 2 秒
 		ship.global_position = Vector3(50000, 0, 0)
@@ -67,7 +65,7 @@ func _run() -> void:
 	# ── 2. 转得越多消耗越多 ──
 	print("\n=== 2. 转角越大越费油 ===")
 	ship.fuel = 100.0
-	ship.aim_yaw = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	for i in range(120):
 		ship.global_position = Vector3(50000, 0, 0)
@@ -75,7 +73,7 @@ func _run() -> void:
 	var used_small: float = 100.0 - ship.fuel
 
 	ship.fuel = 100.0
-	ship.aim_yaw = PI * 0.9      # 更大的转角
+	ship.intent_quat = Quaternion(Vector3.UP, PI * 0.9)   # 更大的转角
 	ship._turn_velocity = Vector3.ZERO
 	for i in range(120):
 		ship.global_position = Vector3(50000, 0, 0)
@@ -87,11 +85,10 @@ func _run() -> void:
 	# ── 3. 没燃料转不了 ──
 	print("\n=== 3. 没燃料就转不动 ===")
 	ship.fuel = 0.0
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	ship.global_transform.basis = Basis.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
-	ship.aim_yaw = PI * 0.8       # 要求转一大圈
+	ship.intent_quat = Quaternion(Vector3.UP, PI * 0.8)    # 要求转一大圈
 	var basis_before: Basis = ship.global_transform.basis
 	for i in range(120):
 		ship.global_position = Vector3(50000, 0, 0)
@@ -105,7 +102,7 @@ func _run() -> void:
 	# ── 4. 滚转也烧油 ──
 	print("\n=== 4. 滚转也要烧油 ===")
 	ship.fuel = 100.0
-	ship.aim_yaw = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	var f0: float = ship.fuel
 	Input.action_press("move_left")
@@ -119,9 +116,7 @@ func _run() -> void:
 	# ── 5. 完全静止时零消耗 ──
 	print("\n=== 5. 完全不动时零消耗 ===")
 	ship.fuel = 100.0
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
-	ship._roll_angle = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	ship.global_transform.basis = Basis.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.velocity = -ship.global_transform.basis.z * 120.0

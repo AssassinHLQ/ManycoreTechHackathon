@@ -45,9 +45,7 @@ func _run() -> void:
 	ship.global_position = Vector3(30000, 0, 0)
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
-	ship._roll_angle = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 
 	# ── 1. S 不再倒车 ──

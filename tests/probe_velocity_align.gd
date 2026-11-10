@@ -45,9 +45,7 @@ func _run() -> void:
 	ship.global_position = Vector3(40000, 0, 0)
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
-	ship._roll_angle = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 
 	# ── 1. 掉头后速度会转到机头 ──
@@ -63,7 +61,7 @@ func _run() -> void:
 	print("   加速后速度 = %.1f m/s" % speed_before)
 
 	# 鼠标掉头 180°（不放加速）
-	ship.aim_yaw = PI
+	ship.intent_quat = Quaternion(Vector3.UP, PI)
 	# 只设 aim 不会让飞船转，要跑几帧姿态控制
 	for i in range(60):
 		ship.global_position = Vector3(40000, 0, 0)

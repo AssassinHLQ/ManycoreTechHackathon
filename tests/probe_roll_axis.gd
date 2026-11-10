@@ -6,15 +6,10 @@ extends SceneTree
 #   「为什么我鼠标往右, 有时候飞船往右转, 有时候却往左转,
 #     我一旦按了 ad, 整个飞船的鼠标转视角就完全反了方向」
 #
-# 根因：旧版 get_aim_basis() = Ry(yaw) * Rx(pitch) * Rz(roll) ——
-#   滚转乘进去了，于是：
-#     · roll = 180° 时，机身的「右」变成世界「左」
-#     · 但鼠标横向输入仍然映射成绕世界 Y 的 yaw
-#     · 两者参考系不一致 → 鼠标往右、飞船往左
-#     · roll = 90° 时更严重（横向输入变成「绕机身轴」，方向取决于滚转角）
-#
-# 修法：aim_basis 不再含滚转，滚转单独一个自由度。
-# 这个探针在**不同滚转角**下推同样的鼠标，验证飞船都往同一个世界方向转。
+# 历史：
+#   · 第三版用欧拉角，滚转乘进了 get_aim_basis()，导致参考系混用
+#   · 第四版改成四元数 + 局部轴旋转，滚转作用在 intent_quat 上
+# 这个探针在**不同滚转角**下推同样的鼠标，验证机头都往同一个世界方向转。
 
 var game
 var failures := 0
@@ -53,50 +48,41 @@ func _run() -> void:
 	ship.global_position = Vector3(60000, 0, 0)
 	ship.velocity = Vector3.ZERO
 
-	# ── 核心测试：不同滚转角下，鼠标往右都应该让机头往「世界 +右」转 ──
 	print("\n=== 不同滚转角下，鼠标向右的转向方向 ===")
 	var results: Array = []
 	for roll_deg in [0.0, 90.0, 180.0, 270.0]:
-		# 重置
 		ship.fuel = 100.0
-		ship.aim_yaw = 0.0
-		ship.aim_pitch = 0.0
-		ship._roll_angle = deg_to_rad(roll_deg)
+		ship.intent_quat = Quaternion(Vector3.FORWARD, deg_to_rad(roll_deg))
 		ship._turn_velocity = Vector3.ZERO
-		ship.global_transform.basis = Basis(Vector3.FORWARD, ship._roll_angle)
+		ship.global_transform.basis = Basis(ship.intent_quat).orthonormalized()
 		ship.global_position = Vector3(60000, 0, 0)
 		ship.velocity = Vector3.ZERO
 
 		var nose_before: Vector3 = -ship.global_transform.basis.z.normalized()
-		# 鼠标向右推
 		for i in range(40):
 			ship.apply_look(Vector2(30.0, 0.0))
-		# 跑几帧让机头转过去
 		for i in range(90):
 			ship.fuel = 100.0
 			ship.global_position = Vector3(60000, 0, 0)
 			ship._physics_process(1.0 / 60.0)
 
 		var nose_after: Vector3 = -ship.global_transform.basis.z.normalized()
-		# 机头绕世界 Y 转了多少（带符号）
 		var cross_y: float = nose_before.cross(nose_after).y
 		var dir_sign: float = signf(cross_y)
 		results.append(dir_sign)
-		print("   滚转 %5.0f°：鼠标右推 → 机头转向 y 分量符号 = %+.0f" % [roll_deg, dir_sign])
+		print("   roll %5.0f deg : mouse-right -> nose turn sign = %+.0f" % [roll_deg, dir_sign])
 
-	# 所有滚转角下的转向方向必须一致
-	var all_same := true
-	for s in results:
-		if s != results[0]:
-			all_same = false
-	_check(all_same, "mouse-right turns the nose the same world direction at every roll angle")
+	# ⚠ 这里**不断言「世界方向一致」**。
+	#   四元数 + 局部轴方案下，不同滚转角推同样的鼠标，机头在世界里
+	#   转的方向本来就不同（因为「机身的右」在世界里指向不同）。
+	#   正确与否要看**屏幕方向**是否一致 —— 那是 probe_upside_down.gd 的职责，
+	#   它已验证滚转 0/90/180/270 及完全倒转时投影全部 +0.8820。
+	#   这里只记录数值，供人工参考。
+	print("   （世界方向不一致是正常的：局部轴随机身翻，见 probe_upside_down）")
 
-	# ── 滚转本身仍然生效 ──
 	print("\n=== 滚转仍然生效 ===")
 	ship.fuel = 100.0
-	ship.aim_yaw = 0.0
-	ship.aim_pitch = 0.0
-	ship._roll_angle = 0.0
+	ship.intent_quat = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 	var up_before: Vector3 = ship.global_transform.basis.y.normalized()
@@ -108,16 +94,15 @@ func _run() -> void:
 	Input.action_release("move_left")
 	var up_after: Vector3 = ship.global_transform.basis.y.normalized()
 	var up_rotated: float = rad_to_deg(up_before.angle_to(up_after))
-	print("   A/D 一秒：机身上方向转了 %.1f°" % up_rotated)
+	print("   A/D one second: hull-up rotated %.1f deg" % up_rotated)
 	_check(up_rotated > 10.0, "rolling still visually rolls the hull (%.1f deg)" % up_rotated)
 
-	# ── 滚转不改变机头指向 ──
 	print("\n=== 滚转不改变机头指向 ===")
 	var nose_b: Vector3 = -ship.global_transform.basis.z.normalized()
 	ship._roll_by_angle(deg_to_rad(90.0))
-	var nose_a: Vector3 = -ship.global_transform.basis.z.normalized()
+	var nose_a: Vector3 = -Basis(ship.intent_quat).z.normalized()
 	var nose_drift: float = rad_to_deg(nose_b.angle_to(nose_a))
-	print("   改滚转 90°：机头偏移 %.3f°（应约 0）" % nose_drift)
+	print("   roll intent by 90 deg: nose drift %.3f deg (should be ~0)" % nose_drift)
 	_check(nose_drift < 1.0, "rolling does not move the nose direction (%.3f deg)" % nose_drift)
 
 	print("\nROLL AXIS PROBE: %d failure(s)" % failures)

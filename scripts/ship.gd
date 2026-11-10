@@ -103,36 +103,34 @@ const BH_ESCAPE_FROM := 0.55
 ##   · 速度只由推力/引力改变，飞船转向不直接改速度矢量
 ##     （但推力方向随机头，所以转向后推进自然改变速度方向）
 
-## 期望朝向的偏航/俯仰角（欧拉角，单位弧度）。
+## 期望朝向：用**完整四元数**存，不用欧拉角。
 ##
-## ⚠ 2026-11-10 重写（用户：「鼠标被局限在一个圆内根本转不出去」）：
-##   上一版用「每次鼠标位移去旋转一个 aim_basis」，有三个致命问题：
-##     1. `relative.limit_length(120.0)` —— 鼠标快速移动被截断，
-##        推得再快也只转 120px 对应的角度，累积起来转不动
-##     2. 俯仰被夹在 ±85° —— 上下永远出不去
-##     3. 绕「世界 Y」做偏航 + 绕「自身右轴」做俯仰混着算，
-##        飞船压了坡度之后这两个轴会打架，越推越乱
-##   结果就是玩家感觉「鼠标被限制在一个小圆圈里」。
+## ⚠ 2026-11-10 第四次重写（用户：「不行,飞船倒转过来,还是不能鼠标左右自由滑动」）：
 ##
-##   现在改成最标准的飞行控制做法：**直接累加欧拉角**。
-##     aim_yaw   += 鼠标横向位移   （绕世界 Y，可以无限转，会 wrap）
-##     aim_pitch += 鼠标纵向位移   （绕机身右轴，夹在 ±89° 防止翻过来）
-##   灵敏度是直接的乘数，不再有那套除以再乘以 mouse_sensitivity 的折腾。
-var aim_yaw := 0.0
-var aim_pitch := 0.0
-## 机身滚转角（弧度）。A/D 控制，独立于机头指向。
-## 机头方向由 aim_yaw/aim_pitch 决定，滚转只让机身绕自己的机头轴转。
-var _roll_angle := 0.0
+##   之前三版都用欧拉角（yaw 绕世界 Y + pitch 绕机身右轴），全都不行，因为：
+##     · 欧拉角**无法表达「倒转后的上方向」** —— 它默认世界 Y 就是上
+##     · 飞船倒转 180° 后，玩家眼里的「左」变成世界的「右」，
+##       但 yaw 仍然绕世界 Y 转 → 鼠标往右，画面里往左
+##     · 滚转 90° 时同样错乱
+##   欧拉角这条路走不通，本质是它选了固定的世界参考系。
+##
+##   现在改成**四元数 + 局部轴增量旋转**（intent_quat）：
+##     鼠标横向 → 绕**当前朝向的局部 UP 轴**转
+##     鼠标纵向 → 绕**当前朝向的局部 RIGHT 轴**转
+##   局部轴会随着飞船怎么翻而翻，所以：
+##     · 飞船倒过来 → 局部 UP 也倒过来 → 鼠标往右仍然是画面里的右
+##     · 无论滚成什么角度，鼠标方向始终和屏幕一致
+##   这才是「鼠标左右自由滑动」的正确实现。
+##
+##   ⚠ 不做俯仰限制：局部轴旋转不会万向节死锁（四元数没这个问题），
+##   而限制反而会造成「转不出去」。
+var intent_quat := Quaternion.IDENTITY
 ## 鼠标灵敏度（弧度/像素）。0.0022 约合「推 700 像素转 90°」。
 ##
 ## ⚠ 2026-11-10 用户：「鼠标转向太灵活了，晕」→ 从 0.0022 降到 0.0009。
 ##   现在是「推 1750 像素转 90°」，比之前慢 2.4 倍。
 ##   如果还是晕，继续往下调；嫌慢就往上调。
 const AIM_SENSITIVITY := 0.0009
-## 俯仰极限（弧度）。89° 是为了防止万向节死锁 —— 但**偏航不限**，
-## 所以玩家可以原地转一整圈。
-const PITCH_LIMIT := deg_to_rad(89.0)
-
 ## 速度矢量向机头方向对齐的角速度（弧度/秒）。
 ##
 ## 用户：「往前飞, 鼠标掉头但不加速, 为什么还是往后飞」——
@@ -147,34 +145,15 @@ const PITCH_LIMIT := deg_to_rad(89.0)
 ##   调小 → 更飘，惯性更强，更像纯太空
 const VELOCITY_ALIGN_RATE := 1.2
 
-## 从 aim_yaw / aim_pitch 算出期望朝向。
+## 期望朝向（从四元数直接取）。
 ##
 ## 顺序很重要：**先俯仰、再偏航**（Yaw-Pitch，标准航空顺序）。
 ##   basis = Ry(yaw) * Rx(pitch)
 ## 这样 yaw 永远是绕世界 Y 转（可以转一整天），pitch 只在机身坐标系里点头，
 ## 两者不打架。
-## 从 aim_yaw / aim_pitch 算出**机头指向**。
-##
-## ⚠ 2026-11-10 重要修正（用户：「为什么我鼠标往右，有时候飞船往右转，
-##   有时候却往左转，我一旦按了 ad，整个飞船的鼠标转视角就完全反了方向」）：
-##
-##   旧版把滚转也乘进了这个函数：
-##       b = Ry(yaw) * Rx(pitch) * Rz(roll)
-##   这是**错的**，而且错得很隐蔽：
-##     · Roll 让机身绕自身 Z 轴翻，于是「机身的上下左右」全转了
-##     · 但鼠标的横向输入仍然映射成**绕世界 Y 的 yaw**
-##     · 两者参考系不一致 → 玩家滚转 180° 后，鼠标往右实际看起来是往左
-##     · 滚转 90° 时更糟：鼠标横向输入变成绕世界 Y，画面上却像在绕机身的轴，
-##       于是「有时候右、有时候左」，取决于当前滚转角
-##
-##   正确做法：**aim_basis 只描述机头指向，不包含滚转**。
-##   滚转由 _roll_angle 单独保存，只在**渲染姿态**里叠加（见 _apply_attitude）。
-##   这样鼠标永远绕世界 Y 偏航、绕机身右轴俯仰，与机身怎么翻无关 ——
-##   无论滚成什么样，鼠标往右永远往右。
+## 期望朝向（从四元数直接取）。
 func get_aim_basis() -> Basis:
-	var b := Basis(Vector3.UP, aim_yaw)
-	b = b * Basis(Vector3.RIGHT, aim_pitch)
-	return b.orthonormalized()
+	return Basis(intent_quat).orthonormalized()
 
 ## 最大角速度（弧度/秒）。这是「转得多快」的上限。
 ## ⚠ 2026-11-10 用户：「鼠标转向太灵活了，晕」→ 2.4 → 1.1（约 63°/秒）。
@@ -893,16 +872,12 @@ func _build_model() -> void:
 ## 所以这个返回值必须真实反映转动量，而不是固定值。
 func _apply_attitude(delta: float) -> float:
 	var cur := global_transform.basis.orthonormalized()
-	# ⚠ 目标朝向**不含滚转**（见 get_aim_basis 的注释）：
-	#   机头怎么指由 aim_yaw/aim_pitch 决定，滚转是独立自由度。
-	#
-	#   比较时要把当前朝向的「滚转分量」剥掉 —— 否则飞船滚了 90° 时，
-	#   会误认为「自己和目标差 90°」而疯狂转圈。
-	var cur_no_roll := _strip_roll(cur)
+	# ⚠ 四元数方案下滚转就是朝向的一部分（intent_quat 里包含了），
+	#   不需要再「剥掉滚转」——那套是欧拉角时期的补丁，现在多余了。
 	var target := get_aim_basis()
 
 	# 当前朝向到目标朝向的「差旋转」
-	var diff := target * cur_no_roll.inverse()
+	var diff := target * cur.inverse()
 	var q := diff.get_rotation_quaternion()
 	# 四元数的角度（0..PI）
 	var angle := q.get_angle()
@@ -949,36 +924,17 @@ func _apply_attitude(delta: float) -> float:
 
 ## 滚转：绕当前机头轴增量转动 actual basis。
 ##
-## ⚠ 不能像第一版那样「用 _roll_angle 重建整个姿态」——
-##   重建会以「世界上方向」为基准重算 up，等于每帧把机身扶正再滚一遍，
-##   结果 A/D 完全没反应（实测转了 0.0°）。
-##   增量式才是对的：只在当前姿态上多转一点点。
+## 滚转作用在 intent_quat 上（不是 actual transform）：
+## 因为滚转本身就是「期望朝向」的一部分，由姿态控制系统追过去。
+## 右乘 = 在自身参考系里绕机头轴转，不受当前朝向影响。
 func _roll_by_angle(angle: float) -> void:
 	if absf(angle) < 0.000001:
 		return
-	var t := global_transform
-	var basis := t.basis.orthonormalized()
-	# 绕机头轴（局部 -Z 就是 forward 的反向，这里用局部 Z 即可）
-	basis = (basis * Basis(Vector3.FORWARD, angle)).orthonormalized()
-	t.basis = basis
-	global_transform = t
+	# 滚转 = 绕**自身机头轴**（局部 -Z）转。右乘作用在自身参考系里，
+	# 所以不管朝向如何，都是绕着机头滚。
+	intent_quat = (intent_quat * Quaternion(Vector3.FORWARD, angle)).normalized()
 
 
-## 把一个 basis 的「滚转分量」剥掉，只保留机头指向。
-##
-## 做法：用 forward 与世界上方向重建一个「无滚转」的正交基。
-## 这样 _apply_attitude 比较的是「机头指向」而不是「完整姿态」，
-## 飞船滚成什么样都不会被误判成「和目标差很多」。
-func _strip_roll(b: Basis) -> Basis:
-	var fwd := -b.z.normalized()
-	var up_ref := Vector3.UP
-	if absf(fwd.dot(up_ref)) > 0.99:
-		up_ref = Vector3.FORWARD
-	var right := fwd.cross(up_ref).normalized()
-	if right.length() < 0.001:
-		right = Vector3.RIGHT
-	var up := right.cross(fwd).normalized()
-	return Basis(right, up, -fwd).orthonormalized()
 
 
 
@@ -1022,32 +978,35 @@ func apply_look(relative: Vector2) -> void:
 	if landed or docked or autopilot:
 		return
 
-	# ── 鼠标直接累加期望的偏航/俯仰角 ──
+	# ── 鼠标：绕**期望朝向自身的局部轴**增量旋转 ──
 	#
-	# ⚠ 2026-11-10 重写（用户：「鼠标被局限在一个圆内根本转不出去」）：
+	# ⚠ 2026-11-10 第四次改（用户：「不行,飞船倒转过来,还是不能鼠标左右自由滑动」）
 	#
-	#   上一版有三个致命问题，合起来就是「困在圆圈里」：
-	#     1. `relative.limit_length(120.0)` —— 鼠标快速移动被截断，
-	#        推得再快也只转 120px 对应的角度，怎么推都转不动
-	#     2. 俯仰被夹在 ±85°，而且夹的方式是「把方向向量压回去」，
-	#        压回去之后偏航也跟着乱
-	#     3. 用「每次位移去旋转一个 basis」的迭代方式，误差会累积，
-	#        压了坡度之后越推越歪
+	#   前三版都失败，根子在于用欧拉角 + 世界轴：
+	#     · yaw 绕**世界 Y** → 飞船倒转 180° 后，世界 Y 在玩家眼里是「下」，
+	#       于是鼠标往右，画面里往左
+	#     · 滚转 90° 时，横向输入变成「绕机身轴」，方向取决于滚转角
+	#   欧拉角默认「世界 Y 就是上」，这是它表达不了倒转姿态的根本原因。
 	#
-	#   现在是最标准的飞行控制做法 —— **直接累加欧拉角**：
-	#     aim_yaw   += 鼠标横向   （绕世界 Y，无上限，会 wrap 到 ±PI）
-	#     aim_pitch += 鼠标纵向   （绕机身右轴，夹在 ±89° 防万向节死锁）
-	#   灵敏度是**直接乘数**，不再有「除以 mouse_sensitivity 再乘回来」的折腾。
-	#   偏航**完全不限制**，所以可以原地转一整圈甚至更多。
+	#   现在改成**绕当前朝向的局部轴**旋转：
+	#     横向 → 绕局部 UP（Y 轴）
+	#     纵向 → 绕局部 RIGHT（X 轴）
+	#   局部轴随飞船怎么翻而翻，所以无论倒转、滚转多少度，
+	#   鼠标往右永远是画面里的右。这也正是「鼠标自由滑动」的含义。
+	#
+	#   intent_quat 是右乘（local space）：
+	#     intent = intent * Q(局部UP, -x) * Q(局部RIGHT, -y)
+	#   右乘 = 在自身参考系里转，不会受世界朝向影响。
 	var sens: float = mouse_sensitivity * (game.settings.sensitivity_multiplier() if game.settings != null else 1.0)
-	# 用固定倍率把「机身灵敏度」换算到「转向灵敏度」，
-	# 让玩家在设置里调鼠标灵敏度时，转向跟着一起变。
 	var turn_scale := AIM_SENSITIVITY / 0.0018     # 0.0018 是 mouse_sensitivity 的默认值
 	var yaw_step := -relative.x * sens * turn_scale
 	var pitch_step := -relative.y * sens * turn_scale
 
-	aim_yaw = wrapf(aim_yaw + yaw_step, -PI, PI)
-	aim_pitch = clampf(aim_pitch + pitch_step, -PITCH_LIMIT, PITCH_LIMIT)
+	# 先偏航（绕自身 UP），再俯仰（绕自身 RIGHT）。
+	# 顺序固定，且两者都在**更新后的自身坐标系**里，所以不会互相干扰。
+	var q_yaw := Quaternion(Vector3.UP, yaw_step)
+	var q_pitch := Quaternion(Vector3.RIGHT, pitch_step)
+	intent_quat = (intent_quat * q_yaw * q_pitch).normalized()
 
 
 ## 第三人称相机：**始终在机头正后方**，跟着机头走。
@@ -1125,11 +1084,8 @@ func _physics_process(delta: float) -> void:
 	# 着陆 / 对接时：姿态锁定在当前朝向，并把 aim 同步过来，
 	# 否则下次起飞会因为 aim 停在旧方向而突然甩头。
 	if landed or docked:
-		# 把当前朝向反解成 yaw/pitch 同步给 aim，
-		# 否则下次起飞会因为 aim 停在旧方向而突然甩头。
-		var fwd := -global_transform.basis.z.normalized()
-		aim_yaw = atan2(-fwd.x, -fwd.z)
-		aim_pitch = clampf(asin(clampf(fwd.y, -1.0, 1.0)), -PITCH_LIMIT, PITCH_LIMIT)
+		# 把当前朝向同步给 intent，否则下次起飞会因为 intent 停在旧方向而突然甩头。
+		intent_quat = global_transform.basis.orthonormalized().get_rotation_quaternion()
 		_turn_velocity = Vector3.ZERO
 	if game.station != null:
 		var port_now: Vector3 = game.station.docking_point()
@@ -1243,11 +1199,8 @@ func _physics_process(delta: float) -> void:
 		# 滚转同样要烧 RCS 燃料（没燃料滚不了）
 		var roll_input := Input.get_axis("move_right", "move_left")
 		if absf(roll_input) > 0.05 and fuel > 0.0:
-			# 滚转不改变机头方向，所以直接转机身姿态；
-			# aim_yaw/aim_pitch 描述的是「机头指向」，滚转不该动它。
+			# 滚转：绕自身机头轴转（作用在 intent_quat 上，见 _roll_by_angle）
 			var roll_step: float = roll_input * ROLL_RATE * delta
-			_roll_angle = wrapf(_roll_angle + roll_step, -PI, PI)
-			# 增量式应用：只转「这一帧新增的滚转量」，不重建姿态
 			_roll_by_angle(roll_step)
 			fuel = maxf(0.0, fuel - absf(roll_step) * RCS_FUEL_PER_RAD)
 
