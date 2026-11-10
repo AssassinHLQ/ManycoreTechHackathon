@@ -76,30 +76,32 @@ const SHIP_THRUST := 72.0
 const SHIP_BOOST_THRUST := 150.0
 const SHIP_BRAKE_DECEL := 260.0
 
-## ── 战斗机手感（2026-11-10 用户反馈「飞船还是在平移」）──
+## ── 飞行手感（2026-11-10 二次修正）──
 ##
-## 旧实现是纯牛顿漂移：`velocity += basis * thrust * accel * delta`，
-## **没有任何阻尼**。松开按键后飞船永远匀速直线飘，方向也不跟机头走 ——
-## 玩家感觉就是在拖一个方块平移，不像开飞机。
+## 历史：
+##   第一版是纯牛顿漂移 —— `velocity += basis * thrust * accel * delta`，
+##   没有阻尼，也没有方向对齐。
+##   第二版本喵加了 `IDLE_DRAG`（松油门自动减速），**这是错的**：
+##   太空没有介质、没有空气阻力，不受外力就永远匀速直线运动（用户当场指出）。
+##   那是凭手感拍的数，不是物理。
 ##
-## 改成「有飞行辅助的战斗机」：
-##   1. **松开油门自动减速**（IDLE_DRAG），像有空气阻力
-##   2. **速度矢量向机头方向对齐**（ALIGN_RATE），转向时速度跟着转
-##   3. **侧向速度额外阻尼**（SIDE_GRIP），横向漂移会被迅速吃掉
-##
-## 注意：这不是把太空改成大气层 —— 这些是「飞行辅助系统」，
-## 数值调得比较强是为了手感，不是因为物理。想恢复纯牛顿可以全调 0。
+## 现在（第三版）：**只保留「速度矢量向机头对齐」这一条**。
+##   它既是「战斗机手感」的真正来源（转向时速度跟着机头转，
+##   而不是笔直飘出画面），也**不违反**太空物理 ——
+##   对齐是飞船自己的姿态控制系统在施加外力，不是凭空减速。
+##   速度不会因为「松开油门」而消失，只有：
+##     · 玩家按 X 制动（主动施加反向推力）
+##     · 行星/黑洞引力
+##     · 撞击
+##   才会改变。
 
-## 松开油门时的自然减速率（每秒衰减比例）。
-## 0.55 大约是「松开后 1 秒掉到 45% 速度」，有明显减速感但不至于急刹。
-const IDLE_DRAG := 0.55
 ## 速度矢量与机头方向的每秒对齐率。
-## 越高越「有抓地感」（像 F-16），越低越「飘」（像太空模拟）。
+## 越高越「有抓地感」（像战斗机），越低越「飘」（像纯太空模拟）。
+## 0 = 完全不做对齐（纯牛顿，转向后机头转了但速度方向不变）。
 const ALIGN_RATE := 2.6
-## 侧滑（速度垂直于机头方向的分量）的额外衰减率。
-## 有这个才能做出「转弯时尾巴甩一下马上咬住」的战斗机感。
-const SIDE_GRIP := 3.4
-## 同时按前后推进时的最大速度（米/秒）。原来只有全局 1600 上限，太飘。
+## 推进速度上限（米/秒）。加力时另算。
+## 注意：这是**推力能加速到的上限**，不是「速度上限」——
+## 借引力或惯性超过它不拦。
 const SHIP_MAX_SPEED := 420.0
 const SHIP_BOOST_MAX_SPEED := 700.0
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
@@ -964,24 +966,25 @@ func _physics_process(delta: float) -> void:
 			thrusting = false
 			thrust_level = 0.0
 
-		# ── 战斗机手感：飞行辅助系统 ──
-		# 1) 速度矢量向机头对齐：转向时速度跟着转，而不是笔直飘
+		# ── 飞行手感：速度矢量向机头对齐 ──
+		# 转向时机头转了，速度方向也跟着转 —— 这是「战斗机感」的来源，
+		# 但它**不是减速**：对齐的是**方向**，速度大小不变。
 		#
-		# ⚠ 只在**玩家没有输入**时才做强对齐。
+		# ⚠ 只在没有推力输入时才对齐。
 		#   一旦有输入（哪怕是 Space 上升），强行对齐会把垂直/横向推力
-		#   立刻当成「侧滑」阻尼掉 —— 实测表现是「按 Space 不上升」，
-		#   冒烟测试里 "Space applies upward thrust" 直接红。
-		#   所以：有输入 → 几乎不对齐（0.12），让玩家想怎么飞就怎么飞；
-		#         没输入 → 强对齐 + 自然减速，做出「松油门就顺着机头滑行减速」的手感。
+		#   立刻当成侧滑吃掉 —— 实测表现是「按 Space 不上升」，
+		#   冒烟里的 "Space applies upward thrust" 直接红。
+		#   有输入时完全不碰 velocity，玩家想怎么飞就怎么飞。
+		#
+		# ⚠ 这里**没有任何阻尼**：松开油门后速度大小保持不变，
+		#   飞船会永远匀速直线飘下去（真实太空）。
+		#   想减速只能按 X 制动（主动施加反向推力）。
 		var forward := -global_transform.basis.z.normalized()
 		if not has_input:
-			# 没输入：速度向机头对齐 + 自然减速
 			var speed := velocity.length()
 			if speed > 0.5:
 				var aligned := forward * speed
 				velocity = velocity.lerp(aligned, clampf(delta * ALIGN_RATE, 0.0, 1.0))
-			velocity *= maxf(0.0, 1.0 - IDLE_DRAG * delta)
-		# 有输入时不碰 velocity —— 手动推进原样生效
 
 		if Input.is_action_pressed("brake") and fuel > 0.0:
 			var before_brake := velocity
@@ -992,10 +995,13 @@ func _physics_process(delta: float) -> void:
 				thrusting = true
 				thrust_level = 0.35
 
-		# 3) 速度上限：按是否加力区分，别让飞船无限加速
-		var max_speed := SHIP_BOOST_MAX_SPEED if boosting else SHIP_MAX_SPEED
-		if velocity.length() > max_speed:
-			velocity = velocity.normalized() * max_speed
+		# 推进上限：**只限制推力能加速到多快**，不拦惯性。
+		# 做法是「超速时这一帧不加速」，而不是把速度硬压回上限 ——
+		# 后者会把引力弹弓、俯冲加速也一起削平，那就又不像太空了。
+		var max_speed: float = SHIP_BOOST_MAX_SPEED if boosting else SHIP_MAX_SPEED
+		if has_input and velocity.length() > max_speed:
+			# 撤销这一帧的推进增量（只保留引力的部分）
+			velocity -= global_transform.basis * thrust * (SHIP_BOOST_THRUST if boosting else SHIP_THRUST) * delta
 
 		velocity += gravity * delta
 

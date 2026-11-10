@@ -50,15 +50,15 @@ func _run() -> void:
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 
-	# ── 1. 松开油门后减速 ──
-	print("\n=== 1. 松油门减速 ===")
+	# ── 1. 松开油门后**不减速**（真实太空：不受外力就匀速直线运动）──
+	print("\n=== 1. 松油门后保持匀速 ===")
 	ship.velocity = -ship.global_transform.basis.z * 200.0
 	var v0: float = ship.velocity.length()
-	for i in range(60):                     # 1 秒（60 帧 @60fps 近似）
+	for i in range(60):                     # 1 秒
 		ship._physics_process(1.0 / 60.0)
 	var v1: float = ship.velocity.length()
-	print("   1 秒后速度 %.1f → %.1f m/s" % [v0, v1])
-	_check(v1 < v0 * 0.75, "releasing throttle slows the ship down (was %.0f, now %.0f)" % [v0, v1])
+	print("   1 秒后速度 %.2f → %.2f m/s（应当几乎不变）" % [v0, v1])
+	_check(absf(v1 - v0) < 2.0, "releasing throttle keeps the speed constant in vacuum (%.1f -> %.1f)" % [v0, v1])
 
 	# ── 2. 转向后速度跟着机头 ──
 	print("\n=== 2. 转向后速度对齐机头 ===")
