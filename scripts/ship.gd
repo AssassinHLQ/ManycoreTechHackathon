@@ -245,7 +245,9 @@ const SHIP_BRAKE_DECEL := 260.0
 ##   · 浮点精度：速度极高时位置抖动会变大
 ##   · 站点碰撞子步长：已改成自适应（见 _move_with_station_collision）
 ##   · 黑洞参数按较低速度标定，极高速度可能一帧跨过判定圈
-##     （BH_ESCAPE_SPEED / BH_FORCE_CAPTURE 未随上限调整，需要时再标定）
+##   · 黑洞：径向引力与速度无关（物理正确），「越快越狠」做在吸积盘阻力上
+##     （见 BH_DRAG_HALF / BH_DRAG_MAX）。BH_FORCE_CAPTURE 兜底圈仍是
+##     按旧速度量级标定的，速度上限移除后如需更强约束可再调。
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
 const BH_TANGENT_RATIO := 0.5
 ## ── 防「擦边逃逸」────────────────────────────────────────────────
@@ -253,22 +255,34 @@ const BH_TANGENT_RATIO := 0.5
 ## 不改速度大小，速度够快就能走双曲线轨道溜掉。
 ## 下面三个参数在近黑洞区域强行吃掉切向速度，让高速飞船也逃不掉。
 ##
-## 从多近开始吃切向速度（closeness，0~1）。0.62 约合离黑洞 4100。
+## 从多近开始吃切向速度（closeness，0~1）。0.62 约合离黑洞 2810。
 const BH_CAPTURE_FROM := 0.62
-## 「逃逸速度」参考值：切向速度超过它的倍数会影响吞噬强度（但有上限）。
-const BH_ESCAPE_SPEED := 520.0
-## 切向速度的吞噬速率：**每秒最多砍掉多少 m/s 的切向速度**（不是比例）。
+
+## ── 吸积盘阻力（动力学摩擦）──────────────────────────────────────
 ##
-## ⚠ 2026-11-10 用户实测：「3200m/s 和 1000m/s 都是靠近后 3 秒左右失去速度」。
-##   原因是这里（和下面的 BH_FORCE_BRAKE）原本按**比例**砍速度：
-##       velocity -= tx * (grab * overspeed * BH_TANGENT_SINK * delta)
-##   每帧砍固定百分比，于是刹停耗时与初速度无关 —— 快慢感觉一样，很假。
-##   真实的黑洞拖曳是**固定减速度**：速度越快，要花越久才被拖停。
-##   改成按「每秒最多砍 X m/s」之后：
-##       1000 m/s 约 1.1 秒停；3200 m/s 约 3.5 秒停。
+## 用户：「我觉得现实黑洞应该是，你速度越快，他吸引你的加速度越快」
 ##
-## 2026-11-10 二次调整 900 -> 620：用户要求「调小点」，让高速挣扎更久。
-const BH_TANGENT_DECEL := 620.0
+## 作为**引力**这句话不成立：
+##   · 牛顿        a = GM/r²
+##   · 史瓦西径向  d²r/dτ² = −M/r²
+##   两者都**只跟距离有关**，速度不在公式里。
+##   速度真正影响的是离心势垒 +L²/r³，那是个**排斥**项 ——
+##   横向越快**越难**被捕获（这正是引力弹弓的原理，和直觉相反）。
+##
+## 但作为**穿过吸积盘的动力学摩擦**它完全成立：
+## 超声速穿过介质时阻力 F ∝ ρv²，「越快阻力越大」是真物理。
+## 所以把「越快越狠」做在**阻力**上，引力保持物理正确的纯距离函数。
+##
+## 只作用于**切向分量**：径向留给引力做自由落体（这样是螺旋落入而不是悬停），
+## 而切向正是擦边逃逸依赖的分量、也是吸积盘里相对速度最大的方向。
+##
+## 曲线用饱和形式而不是裸 v²：
+##     a = BH_DRAG_MAX · v² / (v² + BH_DRAG_HALF²)
+##   · v << BH_DRAG_HALF  → a ≈ (BH_DRAG_MAX/HALF²)·v²   严格 ∝ v²
+##   · v >> BH_DRAG_HALF  → a → BH_DRAG_MAX              封顶
+## 封顶是为了避免「速度极高时一帧被砍到 0」——那看起来像 bug 而不是阻力。
+const BH_DRAG_HALF := 900.0
+const BH_DRAG_MAX := 6000.0
 ## 被吃掉的切向动量有多少转成向心加速度（让它真的被卷进去，而不是单纯刹停）。
 const BH_SINK_TO_INWARD := 0.9
 
@@ -1475,16 +1489,21 @@ func _black_hole_pull(delta: float) -> Vector3:
 		var tx := velocity - direction * velocity.dot(direction)
 		var tx_speed := tx.length()
 		if tx_speed > 0.1:
-			# 砍掉的量：**固定减速量**（m/s），不再按比例。
-			# 近黑洞系数 grab 决定减速度有多接近满值；超速只要略微加成，
-			# 但仍然是有上限的固定量 —— 速度快就得多花几秒，不会瞬停。
+			# ── 吸积盘阻力：a ∝ v²（超声速动力学摩擦），并封顶 ──
+			# 见 BH_DRAG_HALF / BH_DRAG_MAX 的注释。
+			# 用户要的「越快拽得越狠」就体现在这里：
+			# 1000 m/s 被砍约 1200 m/s²，4000 m/s 被砍约 5700 m/s²。
 			var grab := smoothstep(BH_CAPTURE_FROM, 1.0, closeness)
-			var over := clampf(tx_speed / BH_ESCAPE_SPEED, 0.5, 2.0)
-			var cut := minf(tx_speed, BH_TANGENT_DECEL * grab * over * delta)
+			var v2 := tx_speed * tx_speed
+			var drag_a := BH_DRAG_MAX * (v2 / (v2 + BH_DRAG_HALF * BH_DRAG_HALF)) * grab
+			var cut := minf(tx_speed, drag_a * delta)
 			velocity -= tx / tx_speed * cut
-			# 速度被吃掉后，这部分动量转成一点向心加速度，
-			# 让飞船是真的「被卷进去」，而不是单纯停下。
-			pull += direction * minf(tx_speed, BH_ESCAPE_SPEED) * grab * BH_SINK_TO_INWARD * delta
+			# 被吃掉的切向动量有一部分转成**向心速度**，让飞船真的被卷进去，
+			# 而不是单纯刹停在天上。
+			# ⚠ 旧版把这句写进 `pull`（那是加速度），还乘了一个 delta，
+			#   量纲不对（实际效果被 delta² 削到可忽略）。这里直接按 Δv 加，
+			#   与上面的 cut 同量纲。
+			velocity += direction * cut * BH_SINK_TO_INWARD
 	if tangential_weight > 0.001:
 		var drift := velocity - direction * velocity.dot(direction)
 		var tangent: Vector3
