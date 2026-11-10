@@ -103,28 +103,35 @@ const BH_ESCAPE_FROM := 0.55
 ##   · 速度只由推力/引力改变，飞船转向不直接改速度矢量
 ##     （但推力方向随机头，所以转向后推进自然改变速度方向）
 
-## 期望朝向：用**完整四元数**存，不用欧拉角。
+## 待执行的转向量（**飞船本体系**里的四元数）。
 ##
-## ⚠ 2026-11-10 第四次重写（用户：「不行,飞船倒转过来,还是不能鼠标左右自由滑动」）：
+## ⚠ 2026-11-10 第五次重写（用户：「拖动很长一大段还是会突然回弹」）
 ##
-##   之前三版都用欧拉角（yaw 绕世界 Y + pitch 绕机身右轴），全都不行，因为：
-##     · 欧拉角**无法表达「倒转后的上方向」** —— 它默认世界 Y 就是上
-##     · 飞船倒转 180° 后，玩家眼里的「左」变成世界的「右」，
-##       但 yaw 仍然绕世界 Y 转 → 鼠标往右，画面里往左
-##     · 滚转 90° 时同样错乱
-##   欧拉角这条路走不通，本质是它选了固定的世界参考系。
+##   前四版的演化：
+##     1~3 版：欧拉角 + 世界轴 → 倒转后鼠标方向反了（欧拉角默认世界 Y 是上）
+##     4 版：`intent_quat` 存**绝对目标朝向**，飞船用「四元数最短路径」追它。
+##          倒转问题解决了，但长拖动会**突然回弹**，根因是：
+##            · 持续拖动时 intent 会累积到离飞船很远（可能超过 180°）
+##            · 而四元数最短路径在超过 180° 时会**翻到反方向**
+##            · 于是飞船突然朝相反方向转 —— 这就是「突然回弹」
+##          实测（tests/diag_longdrag.gd）：拖动 3200px 时 lead 到 23°，
+##          姿态本身单调收敛没有过冲，所以问题只可能出在 lead 太大这一侧。
 ##
-##   现在改成**四元数 + 局部轴增量旋转**（intent_quat）：
-##     鼠标横向 → 绕**当前朝向的局部 UP 轴**转
-##     鼠标纵向 → 绕**当前朝向的局部 RIGHT 轴**转
-##   局部轴会随着飞船怎么翻而翻，所以：
-##     · 飞船倒过来 → 局部 UP 也倒过来 → 鼠标往右仍然是画面里的右
-##     · 无论滚成什么角度，鼠标方向始终和屏幕一致
-##   这才是「鼠标左右自由滑动」的正确实现。
+##   ✅ 现在改成**本体系待转量**（turn_budget），彻底消除最短路径歧义：
+##     · 鼠标增量**右乘**进来（本体系），和飞船当前姿态无关
+##     · 上限截断在 TURN_BUDGET_MAX（< 180°）→ 轴向永远唯一
+##     · 每帧按 √ 曲线消费一部分，**消费量永远不超过待转量**
+##       → 结构上不可能过冲、不可能回弹
+##     · 待转量排空 = 飞船精确停在鼠标要求的位置，不多不少
 ##
-##   ⚠ 不做俯仰限制：局部轴旋转不会万向节死锁（四元数没这个问题），
-##   而限制反而会造成「转不出去」。
-var intent_quat := Quaternion.IDENTITY
+##   为什么局部轴是对的（第 4 版已验证）：
+##     鼠标横向 → 绕**本体系 UP**；纵向 → 绕**本体系 RIGHT**。
+##     局部轴随飞船怎么翻而翻，所以倒转、滚转后鼠标方向依然和屏幕一致。
+var turn_budget := Quaternion.IDENTITY
+## 滚转的缓起缓停包络（0..1）。A/D 按下时升、松开时降，
+## 让滚转也有惯性而不是「一下子就停」。
+var _roll_ramp := 0.0
+var _roll_dir := 0.0
 ## 鼠标灵敏度（弧度/像素）。0.0022 约合「推 700 像素转 90°」。
 ##
 ## ⚠ 2026-11-10 用户两次要求调低（「太灵活了，晕」→「还是太灵活」）：
@@ -146,37 +153,76 @@ const AIM_SENSITIVITY := 0.00045
 ##   调小 → 更飘，惯性更强，更像纯太空
 const VELOCITY_ALIGN_RATE := 1.2
 
-## 期望朝向（从四元数直接取）。
+## 机头**将要指向**的朝向 = 当前姿态 × 待转量。
 ##
-## 顺序很重要：**先俯仰、再偏航**（Yaw-Pitch，标准航空顺序）。
-##   basis = Ry(yaw) * Rx(pitch)
-## 这样 yaw 永远是绕世界 Y 转（可以转一整天），pitch 只在机身坐标系里点头，
-## 两者不打架。
-## 期望朝向（从四元数直接取）。
+## 只读视图，给测试和 HUD 用（旧版的 intent_quat 就是这个语义）。
 func get_aim_basis() -> Basis:
-	return Basis(intent_quat).orthonormalized()
+	return (global_transform.basis.orthonormalized() * Basis(turn_budget)).orthonormalized()
 
-## 最大角速度（弧度/秒）。角差足够大时的转速上限。
+
+## 直接设定「目标朝向」（绝对朝向）。测试用 —— 内部换算成本体系待转量。
+func set_aim(q: Quaternion) -> void:
+	var cur := global_transform.basis.orthonormalized()
+	turn_budget = (cur.inverse() * Basis(q)).get_rotation_quaternion().normalized()
+
+
+## 取四元数的**单位**旋转轴。
+##
+## ⚠ 2026-11-10 关键 bug 修复（用户：「鼠标转不动」的根因）：
+##   Godot 的 `Quaternion.get_axis()` 在小角度时**返回的不是单位向量**：
+##     if abs(w) > 1 - CMP_EPSILON:   return Vector3(x, y, z)   // 原样返回！
+##     else:                          归一化后返回
+##   CMP_EPSILON = 1e-5，所以只要旋转角小于约 0.009 rad（0.5°），
+##   `abs(w) > 1 - 1e-5` 成立 → 返回的是模长 ≈ 半个角度的微小向量。
+##
+##   后果（实测 diag_turn.gd）：
+##     · `Basis(axis, step)` 因为 axis 不是单位向量，实际旋转被乘以 0.003，
+##       飞船「几乎不转」（每帧 0.0000°，玩家感受就是「鼠标转不动」）
+##     · `Quaternion(axis, budget - step)` 同理，把待转量错误地算成接近 0，
+##       于是一帧就把待转量清零 —— 小的鼠标修正全部丢失
+##
+##   这里统一自己算：直接取四元数的向量部分并归一化。
+func _quat_axis(q: Quaternion) -> Vector3:
+	var v := Vector3(q.x, q.y, q.z)
+	if v.length() < 1e-8:
+		return Vector3.ZERO
+	return v.normalized()
+
+
+## 最大角速度（弧度/秒）。待转量足够大时的转速上限。
 ## 1.4 rad/s ≈ 80°/秒。
 const MAX_TURN_RATE := 1.4
 
-## 「满速角差」（弧度）。角差达到这个值时速度封顶，更小则按 √ 曲线衰减。
+## 「满速待转量」（弧度）。待转量达到这个值时速度封顶，更小则按 √ 曲线衰减。
 ##
-## 取 0.9 rad（约 52°）：转 90° 这样的大动作基本满速，
-## 小角度微调时明显更慢更细腻。
-## 调大 → 整体更慢更细腻；调小 → 更容易到满速。
-const TURN_FULL_ANGLE := 0.9
+## 这个值同时决定「起转的柔和度」：
+##   · 刚推鼠标时待转量很小 → 速度低 → **先慢**
+##   · 持续拖动待转量变大 → 速度上升 → **后快**
+##   · 松手后待转量被消耗变小 → 速度下降 → **缓停**
+## 正是用户要的「先慢后快再慢」。
+##
+## 取 0.35 rad（约 20°）：常见的小幅微调就已经接近满速，
+## 跟手但两端仍有平滑过渡。调大 → 更柔更慢。
+const TURN_FULL_ANGLE := 0.35
+
+## 待转量上限（弧度）。**必须小于 180°** —— 否则四元数「最短路径」会出现
+## 方向歧义，飞船就会突然往回弹（这正是第 4 版的 bug）。
+## 120° 既留足余量，又能在快速拖动时不过度堆积。
+const TURN_BUDGET_MAX := deg_to_rad(120.0)
 
 ## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
 var _turn_velocity := Vector3.ZERO
 ## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
 var forward_input := 0.0
 
-## 滚转速率（弧度/秒），A/D 控制。
-## ⚠ 2026-11-10 用户：「ad 转动还是很快要减慢」→ 2.4 → **1.3**（约 74°/秒）。
-##   （上一版为了缩短停下来的延迟调到了 2.4，但滚转现在已经是即时生效的，
-##    不需要那么快；1.3 手感更沉稳。）
+## 滚转速率（弧度/秒），A/D 控制。这是**包络满值**时的峰值转速。
+## ⚠ 2026-11-10 用户：「ad 转动还是很快要减慢」→ 2.4 → 1.3（约 74°/秒）。
 const ROLL_RATE := 1.3
+
+## 滚转包络从 0 升到 1（或降回 0）所需时间（秒）。
+## 这就是滚转的「惯性」：按下后约 ROLL_RAMP_TIME 到达满速，
+## 松开后同样用这么久平滑停下。0.45 秒有明显的重量感但不迟钝。
+const ROLL_RAMP_TIME := 0.45
 
 ## 推进加速度（米/秒²）。**没有速度上限** ——
 ## 真空中持续加速就是理论上无限加速（用户：「加速到了 700 后我继续按 shift+W
@@ -187,20 +233,19 @@ const SHIP_THRUST := 72.0
 const SHIP_BOOST_THRUST := 150.0
 const SHIP_BRAKE_DECEL := 260.0
 
-## 全局速度硬上限（米/秒）。**只防「一帧位移超过碰撞步长」**，不是玩法上限。
+## ⚠ 速度上限**已彻底移除**（2026-11-10 用户：「为什么现在上限速度还是有, 3200」）
 ##
-## ⚠ 2026-11-10 用户问「为什么到 1600 就不加速了」：
-##   因为旧代码是 `if speed > CAP: velocity = velocity.normalized() * CAP`，
-##   **直接把速度压回上限** —— 表现就是「撞到一堵看不见的墙」。
+## 演化过程：
+##   · 最初 420 / 加力 700（人造玩法上限）→ 删除
+##   · 改成 1600「防碰撞穿透」→ 被质问为什么到 1600 就不加速
+##   · 改成 3200「温和限制」→ 用户再次质问为什么还有上限
 ##
-##   现在改成**温和的限制**：超速时不再加速，但**也不会被硬压回去**。
-##   而且上限提高，让它更像「工程边界」而不是「玩法天花板」：
-##     · 3200 m/s 时一帧位移 53 米，`_move_with_station_collision` 的
-##       子步长 = 3 米/步、最多 32 步 = 96 米，仍然覆盖得住
-##     · 再高就要子步长溢出，会穿模
-##   代价：超速时**保留**超出的速度（不做衰减），所以玩家能维持在 3200 飞，
-##   而不是被弹回去。
-const SHIP_SPEED_SAFETY_CAP := 3200.0
+## 现在：**真空中持续加速就是无限加速**，没有任何速度钳制。
+## 剩下的唯一约束是工程性的、不是玩法限制：
+##   · 浮点精度：速度极高时位置抖动会变大
+##   · 站点碰撞子步长：已改成自适应（见 _move_with_station_collision）
+##   · 黑洞参数按较低速度标定，极高速度可能一帧跨过判定圈
+##     （BH_ESCAPE_SPEED / BH_FORCE_CAPTURE 未随上限调整，需要时再标定）
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
 const BH_TANGENT_RATIO := 0.5
 ## ── 防「擦边逃逸」────────────────────────────────────────────────
@@ -221,7 +266,9 @@ const BH_ESCAPE_SPEED := 520.0
 ##   真实的黑洞拖曳是**固定减速度**：速度越快，要花越久才被拖停。
 ##   改成按「每秒最多砍 X m/s」之后：
 ##       1000 m/s 约 1.1 秒停；3200 m/s 约 3.5 秒停。
-const BH_TANGENT_DECEL := 900.0
+##
+## 2026-11-10 二次调整 900 -> 620：用户要求「调小点」，让高速挣扎更久。
+const BH_TANGENT_DECEL := 620.0
 ## 被吃掉的切向动量有多少转成向心加速度（让它真的被卷进去，而不是单纯刹停）。
 const BH_SINK_TO_INWARD := 0.9
 
@@ -242,9 +289,11 @@ const BH_FORCE_CAPTURE := 2400.0
 ##   这里原来写着 `velocity -= tangential_v * clampf(3.0 * delta, 0, 1)`，
 ##   即每帧砍 5% —— 3 秒 180 帧之后剩 0.95^180 ≈ 0.006%，几乎归零。
 ##   **与初速度完全无关**，所以快慢感觉一模一样。
-##   改成固定减速度 1500 m/s² 之后：1000 m/s 约 0.7 秒停、3200 m/s 约 2.1 秒停，
+##   改成固定减速度之后：1000 m/s 约 1.25 秒停、3200 m/s 约 4.0 秒停，
 ##   高速明显「撑得更久」。
-const BH_FORCE_BRAKE_DECEL := 1500.0
+##
+## 2026-11-10 二次调整 1500 -> 800：用户要求「调小点」。
+const BH_FORCE_BRAKE_DECEL := 800.0
 ## 强制捕获时保持的最小向心速度。
 const BH_FORCE_INWARD := 180.0
 ## 捕获锁存：一旦进过 BH_FORCE_CAPTURE 就记住，直到退出这个倍数的外圈才解锁。
@@ -878,118 +927,67 @@ func _build_model() -> void:
 ##   差角小时磨磨蹭蹭，既不像飞机，也没法做「转得慢」的体感。
 ##   玩家看到的就是「鼠标一动船就歪过去了」。
 ##
-## 现在用 **√ 曲线直接映射**（用户要求「y=根号x 平滑转向」）：
-##   speed = MAX_TURN_RATE * sqrt(angle / RAMP_ANGLE)
-## 角差大 → 快，角差小 → 慢，角差归零 → 速度归零（**结构上不可能过冲**）。
-## 起转和停转是同一条曲线，所以两端都平滑。
+## 现在用 **√ 曲线消费「待转量」**：
+##   rate = MAX_TURN_RATE * sqrt(clamp(budget / TURN_FULL_ANGLE, 0, 1))
+##   step = min(rate * delta, budget)
+##   · 待转量小（刚推鼠标）→ rate 小 → **先慢**
+##   · 待转量堆积（持续拖）→ rate 升到上限 → **后快**
+##   · 待转量被消耗变小 → rate 降 → **缓停**
+##   · step 永远 ≤ budget → **结构上不可能过冲或回弹**
 ##
 ## ⚠ 这是姿态控制（喷口在做功），不是凭空改速度 —— 速度矢量完全不受影响。
 ##
 ## 返回本帧实际转过的角度（弧度），供调用方按「转了多少」扣 RCS 燃料。
-## 用户要求：「我没有施力，无法转动飞船」+「没燃料就转不了」——
-## 所以这个返回值必须真实反映转动量，而不是固定值。
 func _apply_attitude(delta: float) -> float:
-	var cur := global_transform.basis.orthonormalized()
-	var target := get_aim_basis()
-
-	# 当前朝向到目标朝向的「差旋转」
-	var diff := target * cur.inverse()
-	var q := diff.get_rotation_quaternion()
-	var angle := q.get_angle()
-	var axis := q.get_axis()
-
-	if angle < 0.0005 or absf(axis.length()) < 0.0001:
-		# 机头已对准：角速度**立即**归零（不衰减）。
-		# ⚠ 旧版是 lerp 到 0，会拖好几帧 —— 用户报的「松开鼠标飞船还在转」
-		#   就是这个。已对准就必须停，不要有残留角速度。
+	var budget := turn_budget.get_angle()
+	if budget < 0.0002:
+		# 待转量排空：飞船精确停在鼠标要求的位置，没有任何余速
+		turn_budget = Quaternion.IDENTITY
 		_turn_velocity = Vector3.ZERO
 		return 0.0
 
-	# ── 目标角速度：**与角差成正比**，而不是恒定最大速度 ──
-	#
-	# ⚠ 2026-11-10 修 bug（用户：「我往右滑鼠标, 然后鼠标拿开了没动,
-	#   结果飞船还在往右滑, 滑完突然又往反方向滑回来了」）：
-	#
-	#   旧代码：
-	#     desired_len = minf(angle / maxf(delta, 0.0001), MAX_TURN_RATE)
-	#   `angle / delta` 是「一帧转到位需要多快」，除完几乎总大于上限，
-	#   于是**永远取 MAX_TURN_RATE** —— 角度只剩 0.5° 也用满速转，
-	#   必然冲过头，然后反向追，来回振荡。这就是「滑过去又滑回来」。
-	#
-	#   正确做法：角速度 = 角差 × 增益（指数逼近），快到目标时自然减速。
-	#   再加一个下限，避免最后一点点角度转得极慢（观感像卡住）。
-	# ── 目标角速度：**无状态的平滑曲线** ──
-	#
-	# ⚠ 2026-11-10 第三次重写（用户：「鼠标转不动了, 而且还是回弹」）
-	#
-	#   前两版都失败，教训：
-	#   ❌ 第一版 speed = MAX * sqrt(angle / RAMP_ANGLE)
-	#      √ 作用在角差上 → 角差一变小速度立刻掉，**一开始最快**，
-	#      和用户要的「越来越快」相反。
-	#   ❌ 第二版 speed = MAX * sqrt(进度)  (进度 = 已转/总需转)
-	#      进度要跨帧累计，而且**每帧角差都在变**，重置判定永远成立
-	#      → 进度永远停在 0 → speed 只有 0.10*MAX → **飞船转不动**。
-	#
-	#   ✅ 现在：**无状态，只用当前角差**，但曲线用「相对满速角」归一化：
-	#
-	#        u = clamp(angle / TURN_FULL_ANGLE, 0, 1)
-	#        speed = MAX * sqrt(u)
-	#
-	#      这就是用户要的 y=√x：
-	#        · 角差大时 u 接近 1 → 接近满速
-	#        · 角差小时 u 小 → speed 按 √u 平滑趋近 0
-	#      因为 √ 的斜率在 0 附近**无穷大**，所以最后那一点点角度
-	#      仍然转得动（不会像线性那样卡住），同时整体平滑收敛。
-	#
-	#   为什么这样**不会过冲**：speed 只依赖 angle，angle 单调递减，
-	#   speed 也单调递减，到 angle→0 时 speed→0。没有任何余速状态。
-	#
-	#   「先慢后快」的感觉来自：起转瞬间玩家刚推鼠标，角差还很小（u≈0），
-	#   速度低；随着玩家继续推，intent 走得更远、angle 变大，速度才上来。
-	#   松手后 angle 只减不增，速度自然一路平滑降下来。
-	var u := clampf(angle / TURN_FULL_ANGLE, 0.0, 1.0)
+	var axis := _quat_axis(turn_budget)
+	if axis == Vector3.ZERO:
+		turn_budget = Quaternion.IDENTITY
+		return 0.0
+	var u := clampf(budget / TURN_FULL_ANGLE, 0.0, 1.0)
 	var speed := MAX_TURN_RATE * sqrt(u)
+	var step_angle := minf(speed * delta, budget)
 
-	_turn_velocity = axis.normalized() * speed
+	_turn_velocity = axis * speed
 
-	# 按角速度转一帧
-	var step_angle := speed * delta
-	if step_angle > 0.0001:
-		# 不要转过头
-		if step_angle > angle:
-			step_angle = angle
-		var step := Basis(axis.normalized(), step_angle)
-		var new_basis := (step * cur).orthonormalized()
-		var t2 := global_transform
-		t2.basis = new_basis
-		global_transform = t2
+	# 绕**本体系**轴右乘 —— 与 turn_budget 的累积方式一致。
+	# 因为旋转轴就是待转量自己的轴，两者可交换，所以消费时直接缩短角度即可。
+	var t := global_transform
+	t.basis = (t.basis.orthonormalized() * Basis(axis, step_angle)).orthonormalized()
+	global_transform = t
+	turn_budget = Quaternion(axis, maxf(0.0, budget - step_angle))
 	return step_angle
 
 
-## 滚转：绕当前机头轴增量转动 actual basis。
+## 滚转：绕**本体系机头轴**增量转动飞船（右乘 = 在自己的参考系里转）。
 ##
-## 滚转作用在 intent_quat 上（不是 actual transform）：
-## 因为滚转本身就是「期望朝向」的一部分，由姿态控制系统追过去。
-## 右乘 = 在自身参考系里绕机头轴转，不受当前朝向影响。
+## 不碰 turn_budget —— 待转量描述「机头还要转多少」，
+## 而滚转绕机头轴、不改变机头指向，混进去会让姿态系统去追一个不该追的量。
+## 缓起缓停由调用方的 smoothstep 包络负责（见 _physics_process 的滚转段）。
 func _roll_by_angle(angle: float) -> void:
 	if absf(angle) < 0.000001:
 		return
 	# ⚠ 2026-11-10 修（用户：「我都没有按 ad 了, 飞船还在翻转很久才停止」）：
 	#
-	#   旧版把滚转只加到 intent_quat 上，让姿态控制系统去「追」——
-	#   实测按 1 秒 A/D 会累积 71° 的意图差角，松手后机身还要匀速追
+	#   旧版把滚转只加到「目标朝向」上，让姿态控制系统去「追」——
+	#   实测按 1 秒 A/D 会累积 71° 的目标差角，松手后机身还要匀速追
 	#   84 帧（1.4 秒）才停，主观上就是「松了键还在翻」。
 	#
-	#   滚转本来就该是**即时的机身动作**（它不改变机头指向，不涉及
-	#   「转向需要时间」的物理），所以现在直接转 actual transform，
-	#   同时把 intent_quat 同步成新姿态，避免姿态系统又把它追回去。
-	var delta_q := Quaternion(Vector3.FORWARD, angle)
-	# 1) 直接转机身（用局部轴，所以绕的是自己的机头）
+	#   滚转不改变机头指向、不涉及「转向需要时间」的物理，
+	#   所以**直接转机身**。缓起缓停由调用方的 √ 包络（_roll_ramp）负责，
+	#   而不是靠姿态系统去追。
+	#
+	#   滚转**不改 turn_budget** —— 待转量描述的是「机头还要转多少」，
+	#   而滚转绕机头轴、不改变机头指向，所以不该混进去。
 	var t := global_transform
-	t.basis = (t.basis.orthonormalized() * Basis(delta_q)).orthonormalized()
+	t.basis = (t.basis.orthonormalized() * Basis(Vector3.FORWARD, angle)).orthonormalized()
 	global_transform = t
-	# 2) intent 同步成「当前机头指向 + 同样的滚转」，两者保持一致
-	intent_quat = (intent_quat * delta_q).normalized()
 
 
 
@@ -1051,19 +1049,28 @@ func apply_look(relative: Vector2) -> void:
 	#   局部轴随飞船怎么翻而翻，所以无论倒转、滚转多少度，
 	#   鼠标往右永远是画面里的右。这也正是「鼠标自由滑动」的含义。
 	#
-	#   intent_quat 是右乘（local space）：
-	#     intent = intent * Q(局部UP, -x) * Q(局部RIGHT, -y)
-	#   右乘 = 在自身参考系里转，不会受世界朝向影响。
+	#   turn_budget 是右乘累积（本体系）：
+	#     budget = budget * Q(本体系 UP, -x) * Q(本体系 RIGHT, -y)
+	#   右乘 = 在自己的参考系里转，不受飞船当前朝哪影响。
 	var sens: float = mouse_sensitivity * (game.settings.sensitivity_multiplier() if game.settings != null else 1.0)
 	var turn_scale := AIM_SENSITIVITY / 0.0018     # 0.0018 是 mouse_sensitivity 的默认值
 	var yaw_step := -relative.x * sens * turn_scale
 	var pitch_step := -relative.y * sens * turn_scale
 
-	# 先偏航（绕自身 UP），再俯仰（绕自身 RIGHT）。
+	# 先偏航（绕本体系 UP），再俯仰（绕本体系 RIGHT）。
 	# 顺序固定，且两者都在**更新后的自身坐标系**里，所以不会互相干扰。
 	var q_yaw := Quaternion(Vector3.UP, yaw_step)
 	var q_pitch := Quaternion(Vector3.RIGHT, pitch_step)
-	intent_quat = (intent_quat * q_yaw * q_pitch).normalized()
+	turn_budget = (turn_budget * q_yaw * q_pitch).normalized()
+
+	# ⚠ 上限截断：待转量绝不允许达到 180°。
+	#   否则四元数的「最短路径」会出现方向歧义 —— 飞船会突然朝反方向转，
+	#   表现就是「拖动很长一大段会突然回弹」（第 4 版的 bug）。
+	#   截断会丢弃超出部分的鼠标输入，但因为有 MAX_TURN_RATE 追赶，
+	#   正常拖动下待转量很难堆到 120°，所以实际几乎不会丢输入。
+	var budget_angle := turn_budget.get_angle()
+	if budget_angle > TURN_BUDGET_MAX:
+		turn_budget = Quaternion(_quat_axis(turn_budget), TURN_BUDGET_MAX)
 
 
 ## 第三人称相机：**始终在机头正后方**，跟着机头走。
@@ -1138,12 +1145,12 @@ func _physics_process(delta: float) -> void:
 		return
 	impact_cooldown = maxf(0.0, impact_cooldown - delta)
 	dock_cooldown = maxf(0.0, dock_cooldown - delta)
-	# 着陆 / 对接时：姿态锁定在当前朝向，并把 aim 同步过来，
-	# 否则下次起飞会因为 aim 停在旧方向而突然甩头。
+	# 着陆 / 对接时：清空待转量与滚转包络，姿态锁死在当前朝向。
+	# 不清空的话下次起飞会因为待转量残留而突然甩头。
 	if landed or docked:
-		# 把当前朝向同步给 intent，否则下次起飞会因为 intent 停在旧方向而突然甩头。
-		intent_quat = global_transform.basis.orthonormalized().get_rotation_quaternion()
+		turn_budget = Quaternion.IDENTITY
 		_turn_velocity = Vector3.ZERO
+		_roll_ramp = 0.0
 	if game.station != null:
 		var port_now: Vector3 = game.station.docking_point()
 		if last_station_port != Vector3.ZERO:
@@ -1252,27 +1259,37 @@ func _physics_process(delta: float) -> void:
 		var boosting := Input.is_action_pressed("jetpack") and fuel > 0.0
 		var has_input := thrust.length_squared() > 0.01 or absf(Input.get_axis("move_left", "move_right")) > 0.1
 
-		# 滚转：绕着机头轴转机身（不影响前进方向）
-		# 滚转同样要烧 RCS 燃料（没燃料滚不了）
+		# ── 滚转：带惯性的缓起缓停 ──
+		#
+		# ⚠ 2026-11-10 用户：「AD 停下来与开始都太快了, 一下子就停止,
+		#   没有惯性[没按照根号x的幅度来]」。
+		#
+		#   上一版为了修「松手还在翻」把滚转改成了**瞬时**生效，结果两端都太硬：
+		#   一按就满速、一松就停。现在改成**包络控制**：
+		#     按下时包络上升 → 转速从 0 平滑加速到 ROLL_RATE
+		#     松开时包络下降 → 转速平滑回落到 0
+		#   包络曲线用 smoothstep（两端导数为 0）：
+		#     env = ramp² × (3 − 2×ramp)
+		#   这就是「先慢 → 越来越快 → 最后缓停」，
+		#   也就是用户要的「起转和停转都按 √ 形状平滑」的严密版本
+		#   （smoothstep 两端斜率都是 0，比 √ 更平滑，且不会在松手瞬间跳变）。
 		var roll_input := Input.get_axis("move_right", "move_left")
-		if absf(roll_input) > 0.05 and fuel > 0.0:
-			# 滚转：绕自身机头轴转（作用在 intent_quat 上，见 _roll_by_angle）
-			# ⚠ 2026-11-10 用户：「我都没有按 ad 了, 飞船还在翻转很久才停止」——
-			#   原因是滚转走的是 intent_quat，而姿态控制系统追它需要时间。
-			#   现在 _apply_attitude 的角速度收敛改快了（gain=9 + 阻尼），
-			#   松手后机身会在 ~0.3 秒内停住，不再拖很久。
-			var roll_step: float = roll_input * ROLL_RATE * delta
+		var rolling := absf(roll_input) > 0.05 and fuel > 0.0
+		if rolling:
+			_roll_dir = signf(roll_input)
+			_roll_ramp = minf(_roll_ramp + delta / ROLL_RAMP_TIME, 1.0)
+		else:
+			_roll_ramp = maxf(_roll_ramp - delta / ROLL_RAMP_TIME, 0.0)
+		if _roll_ramp > 0.0005 and fuel > 0.0:
+			var env := _roll_ramp * _roll_ramp * (3.0 - 2.0 * _roll_ramp)
+			var roll_step: float = _roll_dir * ROLL_RATE * env * delta
 			_roll_by_angle(roll_step)
 			fuel = maxf(0.0, fuel - absf(roll_step) * RCS_FUEL_PER_RAD)
 
 		if thrust.length_squared() > 0.01 and fuel > 0.0:
+			# ⚠ **没有任何速度上限**：真空中持续加速就是无限加速。
 			var acceleration := SHIP_BOOST_THRUST if boosting else SHIP_THRUST
-			# ⚠ 超速时**不再加速**，但也**不把速度压回去**。
-			#   用户：「为什么到 1600 就不加速了」—— 旧代码是硬压回上限，
-			#   像撞上一堵看不见的墙。现在只是「推不动了」，速度保持不变。
-			var speed_now := velocity.length()
-			if speed_now < SHIP_SPEED_SAFETY_CAP:
-				velocity += global_transform.basis * thrust * acceleration * delta
+			velocity += global_transform.basis * thrust * acceleration * delta
 			fuel = maxf(0.0, fuel - delta * (1.6 if boosting else 0.45) * bh_fuel_multiplier)
 			thrusting = true
 			thrust_level = 1.0 if boosting else 0.5
@@ -1602,7 +1619,11 @@ func _move_with_station_collision(delta: float) -> void:
 		return
 	if motion.length_squared() < 0.000001:
 		return
-	var steps := clampi(ceili(motion.length() / 3.0), 1, 32)
+	# ⚠ 子步长自适应：速度上限移除后，一帧位移可能非常大，
+	#   固定 32 步会穿透站点。这里按「每步 3 米」算需要多少步，
+	#   上限 1024 步（覆盖到约 3072 米/帧 ≈ 184 km/s），
+	#   远超正常玩法能达到的速度。
+	var steps := clampi(ceili(motion.length() / 3.0), 1, 1024)
 	var step := motion / float(steps)
 	for _i in range(steps):
 		var next := global_position + step

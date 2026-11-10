@@ -45,7 +45,7 @@ func _run() -> void:
 	ship.global_position = Vector3(40000, 0, 0)
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 
 	# ── 1. 掉头后速度会转到机头 ──
@@ -61,7 +61,7 @@ func _run() -> void:
 	print("   加速后速度 = %.1f m/s" % speed_before)
 
 	# 鼠标掉头 180°（不放加速）
-	ship.intent_quat = Quaternion(Vector3.UP, PI)
+	ship.set_aim(Quaternion(Vector3.UP, PI))
 	# 只设 aim 不会让飞船转，要跑几帧姿态控制
 	for i in range(60):
 		ship.global_position = Vector3(40000, 0, 0)
@@ -97,12 +97,12 @@ func _run() -> void:
 	_check(ship.AIM_SENSITIVITY < 0.0015, "mouse sensitivity was reduced")
 	_check(ship.MAX_TURN_RATE < 1.5, "ship turn rate was reduced")
 
-	# ── 3. 速度上限提高，且不硬压 ──
-	print("\n=== 3. 速度上限 ===")
-	print("   SHIP_SPEED_SAFETY_CAP = %.0f（旧值 1600）" % ship.SHIP_SPEED_SAFETY_CAP)
-	_check(ship.SHIP_SPEED_SAFETY_CAP > 1600.0, "the speed cap was raised above 1600")
+	# ── 3. 速度上限已彻底移除 ──
+	print("\n=== 3. 速度上限已移除 ===")
+	_check(not ("SHIP_SPEED_SAFETY_CAP" in ship),
+		"the speed cap constant is gone entirely")
 
-	# 手动给一个超上限速度，确认不会被硬压回去
+	# 手动给一个很大的速度，确认不会被压回去、也不会衰减
 	ship.velocity = -ship.global_transform.basis.z * 2800.0
 	var before_cap: float = ship.velocity.length()
 	ship._physics_process(1.0 / 60.0)

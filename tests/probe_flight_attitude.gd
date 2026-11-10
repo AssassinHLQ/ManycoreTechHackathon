@@ -52,7 +52,7 @@ func _run() -> void:
 	ship.global_position = Vector3(20000, 0, 0)
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 
 	# ── 1. 鼠标推动 aim，飞船不该当帧就转到位 ──
@@ -94,7 +94,7 @@ func _run() -> void:
 	print("\n=== 4. A/D 不再是横移 ===")
 	ship.velocity = Vector3.ZERO
 	var gf: Vector3 = -ship.global_transform.basis.z.normalized()
-	ship.intent_quat = ship.global_transform.basis.orthonormalized().get_rotation_quaternion()
+	ship.turn_budget = Quaternion.IDENTITY
 	Input.action_press("move_right")
 	for i in range(60):
 		ship.fuel = 100.0

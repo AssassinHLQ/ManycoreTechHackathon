@@ -46,13 +46,13 @@ func _run() -> void:
 	ship.global_position = Vector3(50000, 0, 0)
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 
 	# ── 1. 转向消耗燃料 ──
 	print("\n=== 1. 转个弯要烧油 ===")
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion(Vector3.UP, PI * 0.5)   # 要求转 90°
+	ship.set_aim(Quaternion(Vector3.UP, PI * 0.5))   # 要求转 90°
 	var fuel_before: float = ship.fuel
 	for i in range(120):          # 2 秒
 		ship.global_position = Vector3(50000, 0, 0)
@@ -77,10 +77,10 @@ func _run() -> void:
 	# ── 3. 没燃料转不了 ──
 	print("\n=== 3. 没燃料就转不动 ===")
 	ship.fuel = 0.0
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship.global_transform.basis = Basis.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
-	ship.intent_quat = Quaternion(Vector3.UP, PI * 0.8)    # 要求转一大圈
+	ship.set_aim(Quaternion(Vector3.UP, PI * 0.8))    # 要求转一大圈
 	var basis_before: Basis = ship.global_transform.basis
 	for i in range(120):
 		ship.global_position = Vector3(50000, 0, 0)
@@ -94,7 +94,7 @@ func _run() -> void:
 	# ── 4. 滚转也烧油 ──
 	print("\n=== 4. 滚转也要烧油 ===")
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	var f0: float = ship.fuel
 	Input.action_press("move_left")
@@ -108,7 +108,7 @@ func _run() -> void:
 	# ── 5. 完全静止时零消耗 ──
 	print("\n=== 5. 完全不动时零消耗 ===")
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship.global_transform.basis = Basis.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.velocity = -ship.global_transform.basis.z * 120.0
@@ -165,7 +165,7 @@ func _run() -> void:
 ## 让飞船从零朝向转到指定朝向（转完为止，最多 8 秒），返回消耗的燃料。
 func _turns_fuel(ship, target_q: Quaternion) -> float:
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 	# 先跑几帧让它稳定
@@ -173,7 +173,7 @@ func _turns_fuel(ship, target_q: Quaternion) -> float:
 		ship.global_position = Vector3(50000, 0, 0)
 		ship._physics_process(1.0 / 60.0)
 	ship.fuel = 100.0
-	ship.intent_quat = target_q
+	ship.set_aim(target_q)
 	for i in range(480):
 		ship.global_position = Vector3(50000, 0, 0)
 		ship._physics_process(1.0 / 60.0)

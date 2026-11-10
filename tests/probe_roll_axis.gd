@@ -52,9 +52,9 @@ func _run() -> void:
 	var results: Array = []
 	for roll_deg in [0.0, 90.0, 180.0, 270.0]:
 		ship.fuel = 100.0
-		ship.intent_quat = Quaternion(Vector3.FORWARD, deg_to_rad(roll_deg))
+		ship.turn_budget = Quaternion.IDENTITY
 		ship._turn_velocity = Vector3.ZERO
-		ship.global_transform.basis = Basis(ship.intent_quat).orthonormalized()
+		ship.global_transform.basis = Basis(Vector3.FORWARD, deg_to_rad(roll_deg)).orthonormalized()
 		ship.global_position = Vector3(60000, 0, 0)
 		ship.velocity = Vector3.ZERO
 
@@ -82,7 +82,7 @@ func _run() -> void:
 
 	print("\n=== 滚转仍然生效 ===")
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 	var up_before: Vector3 = ship.global_transform.basis.y.normalized()
@@ -100,7 +100,7 @@ func _run() -> void:
 	print("\n=== 滚转不改变机头指向 ===")
 	var nose_b: Vector3 = -ship.global_transform.basis.z.normalized()
 	ship._roll_by_angle(deg_to_rad(90.0))
-	var nose_a: Vector3 = -Basis(ship.intent_quat).z.normalized()
+	var nose_a: Vector3 = -ship.global_transform.basis.z.normalized()
 	var nose_drift: float = rad_to_deg(nose_b.angle_to(nose_a))
 	print("   roll intent by 90 deg: nose drift %.3f deg (should be ~0)" % nose_drift)
 	_check(nose_drift < 1.0, "rolling does not move the nose direction (%.3f deg)" % nose_drift)

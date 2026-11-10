@@ -53,7 +53,7 @@ func _run() -> void:
 	ship.autopilot = false
 	ship.global_position = Vector3(80000, 0, 0)
 	ship.velocity = Vector3.ZERO
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 
@@ -62,14 +62,14 @@ func _run() -> void:
 	# 推鼠标一小段（模拟玩家划一下）
 	for i in range(10):
 		ship.apply_look(Vector2(25.0, 0.0))
-	var intent_target: Quaternion = ship.intent_quat
+	var intent_target: Quaternion = ship.get_aim_basis().get_rotation_quaternion()
 
 	var yaw_history: Array = []
 	for i in range(180):     # 3 秒
 		ship.fuel = 100.0
 		ship.global_position = Vector3(80000, 0, 0)
 		ship._physics_process(1.0 / 60.0)
-		yaw_history.append(ship.intent_quat.get_euler().y * 0.0 + _nose_yaw(ship))
+		yaw_history.append(_nose_yaw(ship))
 
 	# 找停止帧：之后角度变化 < 0.05°
 	var settled_frame := -1
@@ -108,7 +108,7 @@ func _run() -> void:
 	# ── 2. A/D 松开后多久停 ──
 	print("\n=== 2. 松开 A/D 后是否很快停止滚转 ===")
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 	Input.action_press("move_left")
@@ -152,7 +152,7 @@ func _run() -> void:
 	# 现在速度直接由角差算，结构上不可能过冲。这里专门验证快拖。
 	print("\n=== 4. 快速拖动后是否过冲 ===")
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 	ship.velocity = Vector3.ZERO
@@ -160,7 +160,7 @@ func _run() -> void:
 
 	# 模拟一次**快速大幅拖动**：一帧内推 300px（相当于甩手腕）
 	ship.apply_look(Vector2(300.0, 0.0))
-	var target_q: Quaternion = ship.intent_quat
+	var target_q: Quaternion = ship.get_aim_basis().get_rotation_quaternion()
 
 	var yaw_seq: Array = []
 	for i in range(150):
@@ -187,7 +187,7 @@ func _run() -> void:
 	#   真实操作是玩家**连续推**鼠标，角差随推动逐渐变大，速度才跟着上来。
 	print("\n=== 5. √曲线：连续推鼠标时先慢后快 ===")
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 	ship.velocity = Vector3.ZERO

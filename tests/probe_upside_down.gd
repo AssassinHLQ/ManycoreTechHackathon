@@ -62,13 +62,13 @@ func _run() -> void:
 	print("\n=== 各种翻滚姿态下，鼠标向右 = 屏幕向右？ ===")
 	for roll_deg in roll_angles:
 		ship.fuel = 100.0
-		ship.intent_quat = Quaternion.IDENTITY
+		ship.turn_budget = Quaternion.IDENTITY
 		ship._turn_velocity = Vector3.ZERO
 		ship.global_transform.basis = Basis.IDENTITY
 		# 用 _roll_by_angle 造出翻滚姿态
 		ship._roll_by_angle(deg_to_rad(roll_deg))
 		# 让实际姿态追上 intent
-		var target_q: Quaternion = ship.intent_quat
+		var target_q: Quaternion = ship.turn_budget
 		ship.global_transform.basis = Basis(target_q).orthonormalized()
 		ship._turn_velocity = Vector3.ZERO
 		ship.global_position = Vector3(70000, 0, 0)
@@ -107,8 +107,8 @@ func _run() -> void:
 	# ── 上下颠倒 + 鼠标左右 ──
 	print("\n=== 完全倒过来（绕右轴翻 180°）后，鼠标往右 ===")
 	ship.fuel = 100.0
-	ship.intent_quat = Quaternion(Vector3.RIGHT, PI)   # 翻过来
-	ship.global_transform.basis = Basis(ship.intent_quat)
+	ship.turn_budget = Quaternion.IDENTITY   # 翻过来
+	ship.global_transform.basis = Basis(Quaternion(Vector3.RIGHT, PI))
 	ship._turn_velocity = Vector3.ZERO
 	var nose_b: Vector3 = -ship.global_transform.basis.z.normalized()
 	var cam_right_b: Vector3 = ship.global_transform.basis.x.normalized()

@@ -45,7 +45,7 @@ func _run() -> void:
 	ship.global_position = Vector3(30000, 0, 0)
 	ship.velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship.intent_quat = Quaternion.IDENTITY
+	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 
 	# ── 1. S 不再倒车 ──
@@ -75,9 +75,22 @@ func _run() -> void:
 	Input.action_release("move_forward")
 	Input.action_release("jetpack")
 	var v: float = ship.velocity.length()
-	print("   加力 10 秒后速度 = %.1f m/s（旧上限 700，安全上限 %.0f）" % [v, ship.SHIP_SPEED_SAFETY_CAP])
+	print("   加力 10 秒后速度 = %.1f m/s（无任何速度上限）" % v)
 	_check(v > 700.0, "the ship can accelerate past the old 700 limit (%.0f)" % v)
-	_check(v <= ship.SHIP_SPEED_SAFETY_CAP + 1.0, "but still bounded by the safety cap")
+	# ⚠ 断言改成「没有上限」：连续加力 30 秒速度应继续显著增长。
+	#   旧版这里断言 v <= SHIP_SPEED_SAFETY_CAP —— 但那个上限已被用户要求删除。
+	var v10 := v
+	Input.action_press("move_forward")
+	Input.action_press("jetpack")
+	for i in range(1200):     # 再 20 秒
+		ship.fuel = 100.0
+		ship.global_position = Vector3(30000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+	Input.action_release("move_forward")
+	Input.action_release("jetpack")
+	var v30: float = ship.velocity.length()
+	print("   再加速 20 秒 → %.1f m/s（应继续增长，没有封顶）" % v30)
+	_check(v30 > v10 * 1.5, "there is no speed ceiling at all (%.0f -> %.0f)" % [v10, v30])
 
 	# ── 3. 制动键是 S ──
 	print("\n=== 3. 制动绑到 S ===")
