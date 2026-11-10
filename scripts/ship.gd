@@ -35,7 +35,7 @@ const MANUAL_FUEL_PER_DV := 0.00625
 ## 这里给一个比平移便宜的系数：转向一整个 180° 大约等效于
 ## 平移速度变化 (PI * 0.008 / 0.00625) ≈ 4 m/s 的代价 ——
 ## 不至于「转两下就没油」，但也不是免费。
-const RCS_FUEL_PER_RAD := 0.008
+const RCS_FUEL_PER_RAD := 0.0080
 ## 卡冈图雅引力场里的最大油耗倍率（贴着视界时）。外圈从 1.0 平缓往上涨，
 ## 进场越深越明显，到内圈是 3 倍 —— 也就是说「想靠推力和它硬顶」几乎一定会烧干。
 const BH_FUEL_MULTIPLIER := 3.0
@@ -127,10 +127,11 @@ const BH_ESCAPE_FROM := 0.55
 var intent_quat := Quaternion.IDENTITY
 ## 鼠标灵敏度（弧度/像素）。0.0022 约合「推 700 像素转 90°」。
 ##
-## ⚠ 2026-11-10 用户：「鼠标转向太灵活了，晕」→ 从 0.0022 降到 0.0009。
-##   现在是「推 1750 像素转 90°」，比之前慢 2.4 倍。
+## ⚠ 2026-11-10 用户两次要求调低（「太灵活了，晕」→「还是太灵活」）：
+##   0.0022 -> 0.0009 -> **0.00045**
+##   现在约合「推 3500 像素转 90°」，是初版的 1/5。
 ##   如果还是晕，继续往下调；嫌慢就往上调。
-const AIM_SENSITIVITY := 0.0009
+const AIM_SENSITIVITY := 0.00045
 ## 速度矢量向机头方向对齐的角速度（弧度/秒）。
 ##
 ## 用户：「往前飞, 鼠标掉头但不加速, 为什么还是往后飞」——
@@ -155,20 +156,31 @@ const VELOCITY_ALIGN_RATE := 1.2
 func get_aim_basis() -> Basis:
 	return Basis(intent_quat).orthonormalized()
 
-## 最大角速度（弧度/秒）。这是「转得多快」的上限。
-## ⚠ 2026-11-10 用户：「鼠标转向太灵活了，晕」→ 2.4 → 1.1（约 63°/秒）。
-##   2.4 时飞船几乎瞬间跟上鼠标，画面一晃就晕；1.1 有明显「转过去」的过程。
-const MAX_TURN_RATE := 1.1
-## 角速度的加速度（弧度/秒²）。有它才不是「瞬间到位」，而是慢慢起转、慢慢停。
-## 从 9.0 降到 3.5，起转更缓，不会一推鼠标就「抽」一下。
-const TURN_ACCEL := 3.5
+## 最大角速度（弧度/秒）。「转得多快」的上限。
+## ⚠ 2026-11-10 用户：「鼠标转向太灵活了，晕」→ 2.4 → 1.1 → **1.4**
+##   （1.1 时配合灵敏度降低，整体已经柔和；这里略微放回，
+##    因为「灵敏」的体感主要来自灵敏度，不是上限）
+const MAX_TURN_RATE := 1.4
+## 最小角速度（弧度/秒）。防止最后一点点角度转得极慢、像卡住。
+const MIN_TURN_RATE := 0.12
+## 角速度的加速度（弧度/秒²）。
+## ⚠ 2026-11-10 用户：「感觉延迟高」→ 3.5 → **14.0**
+##   3.5 时加速太缓，推鼠标后要等一会儿飞船才动，体感像「延迟」。
+##   提高到 14 让它起转干脆，但因为有 TURN_DAMP 刹车，不会冲过头。
+const TURN_ACCEL := 14.0
+## 角速度的阻尼（每秒衰减比例）。**这是修「滑过去又滑回来」的关键**：
+## 角速度追上目标后要快速贴住，不能有余速冲过头。
+const TURN_DAMP := 9.0
 ## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
 var _turn_velocity := Vector3.ZERO
 ## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
 var forward_input := 0.0
 
 ## 滚转速率（弧度/秒），A/D 控制。
-const ROLL_RATE := 2.0
+## ⚠ 2026-11-10 用户：「我都没有按 ad 了, 飞船还在翻转很久才停止」——
+##   滚转走的是 intent_quat，机身要追过去，所以停下有延迟。
+##   2.0 -> 2.4 让滚转本身更快到目标，缩短「追」的时间。
+const ROLL_RATE := 2.4
 
 ## 推进加速度（米/秒²）。**没有速度上限** ——
 ## 真空中持续加速就是理论上无限加速（用户：「加速到了 700 后我继续按 shift+W
@@ -872,35 +884,48 @@ func _build_model() -> void:
 ## 所以这个返回值必须真实反映转动量，而不是固定值。
 func _apply_attitude(delta: float) -> float:
 	var cur := global_transform.basis.orthonormalized()
-	# ⚠ 四元数方案下滚转就是朝向的一部分（intent_quat 里包含了），
-	#   不需要再「剥掉滚转」——那套是欧拉角时期的补丁，现在多余了。
 	var target := get_aim_basis()
 
 	# 当前朝向到目标朝向的「差旋转」
 	var diff := target * cur.inverse()
 	var q := diff.get_rotation_quaternion()
-	# 四元数的角度（0..PI）
 	var angle := q.get_angle()
 	var axis := q.get_axis()
 
 	if angle < 0.0005 or absf(axis.length()) < 0.0001:
-		# 机头已对准：角速度衰减到 0
-		_turn_velocity = _turn_velocity.lerp(Vector3.ZERO, clampf(delta * 12.0, 0.0, 1.0))
+		# 机头已对准：角速度**立即**归零（不衰减）。
+		# ⚠ 旧版是 lerp 到 0，会拖好几帧 —— 用户报的「松开鼠标飞船还在转」
+		#   就是这个。已对准就必须停，不要有残留角速度。
+		_turn_velocity = Vector3.ZERO
 		return 0.0
 
-	# 目标角速度 = 轴 × 差角（单位：弧度/秒），并限制大小
-	var desired := axis.normalized() * angle
-	# 差角越大越想转快，但不超过 MAX_TURN_RATE
-	var desired_len := minf(angle / maxf(delta, 0.0001), MAX_TURN_RATE)
-	desired = desired.normalized() * desired_len
+	# ── 目标角速度：**与角差成正比**，而不是恒定最大速度 ──
+	#
+	# ⚠ 2026-11-10 修 bug（用户：「我往右滑鼠标, 然后鼠标拿开了没动,
+	#   结果飞船还在往右滑, 滑完突然又往反方向滑回来了」）：
+	#
+	#   旧代码：
+	#     desired_len = minf(angle / maxf(delta, 0.0001), MAX_TURN_RATE)
+	#   `angle / delta` 是「一帧转到位需要多快」，除完几乎总大于上限，
+	#   于是**永远取 MAX_TURN_RATE** —— 角度只剩 0.5° 也用满速转，
+	#   必然冲过头，然后反向追，来回振荡。这就是「滑过去又滑回来」。
+	#
+	#   正确做法：角速度 = 角差 × 增益（指数逼近），快到目标时自然减速。
+	#   再加一个下限，避免最后一点点角度转得极慢（观感像卡住）。
+	var gain := 9.0                      # 每秒收敛速率，越大越快到位
+	var desired_len := clampf(angle * gain, MIN_TURN_RATE, MAX_TURN_RATE)
+	var desired := axis.normalized() * desired_len
 
-	# 角速度向目标靠拢（受角加速度限制）
+	# 角速度向目标靠拢：加速受 TURN_ACCEL 限制，同时叠一层阻尼，
+	# 让「追上目标后立刻贴住」，而不是带着余速冲过头（那会造成振荡）。
 	var dv := desired - _turn_velocity
+	# 阻尼项：当前角速度按 TURN_DAMP 衰减（与目标无关，纯刹车）
+	_turn_velocity *= maxf(0.0, 1.0 - TURN_DAMP * delta)
+	# 加速项：朝目标方向推进，受角加速度限制
 	var max_dv := TURN_ACCEL * delta
 	if dv.length() > max_dv:
 		dv = dv.normalized() * max_dv
 	_turn_velocity += dv
-	# 再夹一次上限（防止累积超过）
 	if _turn_velocity.length() > MAX_TURN_RATE:
 		_turn_velocity = _turn_velocity.normalized() * MAX_TURN_RATE
 
@@ -930,9 +955,22 @@ func _apply_attitude(delta: float) -> float:
 func _roll_by_angle(angle: float) -> void:
 	if absf(angle) < 0.000001:
 		return
-	# 滚转 = 绕**自身机头轴**（局部 -Z）转。右乘作用在自身参考系里，
-	# 所以不管朝向如何，都是绕着机头滚。
-	intent_quat = (intent_quat * Quaternion(Vector3.FORWARD, angle)).normalized()
+	# ⚠ 2026-11-10 修（用户：「我都没有按 ad 了, 飞船还在翻转很久才停止」）：
+	#
+	#   旧版把滚转只加到 intent_quat 上，让姿态控制系统去「追」——
+	#   实测按 1 秒 A/D 会累积 71° 的意图差角，松手后机身还要匀速追
+	#   84 帧（1.4 秒）才停，主观上就是「松了键还在翻」。
+	#
+	#   滚转本来就该是**即时的机身动作**（它不改变机头指向，不涉及
+	#   「转向需要时间」的物理），所以现在直接转 actual transform，
+	#   同时把 intent_quat 同步成新姿态，避免姿态系统又把它追回去。
+	var delta_q := Quaternion(Vector3.FORWARD, angle)
+	# 1) 直接转机身（用局部轴，所以绕的是自己的机头）
+	var t := global_transform
+	t.basis = (t.basis.orthonormalized() * Basis(delta_q)).orthonormalized()
+	global_transform = t
+	# 2) intent 同步成「当前机头指向 + 同样的滚转」，两者保持一致
+	intent_quat = (intent_quat * delta_q).normalized()
 
 
 
@@ -1200,6 +1238,10 @@ func _physics_process(delta: float) -> void:
 		var roll_input := Input.get_axis("move_right", "move_left")
 		if absf(roll_input) > 0.05 and fuel > 0.0:
 			# 滚转：绕自身机头轴转（作用在 intent_quat 上，见 _roll_by_angle）
+			# ⚠ 2026-11-10 用户：「我都没有按 ad 了, 飞船还在翻转很久才停止」——
+			#   原因是滚转走的是 intent_quat，而姿态控制系统追它需要时间。
+			#   现在 _apply_attitude 的角速度收敛改快了（gain=9 + 阻尼），
+			#   松手后机身会在 ~0.3 秒内停住，不再拖很久。
 			var roll_step: float = roll_input * ROLL_RATE * delta
 			_roll_by_angle(roll_step)
 			fuel = maxf(0.0, fuel - absf(roll_step) * RCS_FUEL_PER_RAD)
