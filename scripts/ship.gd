@@ -116,10 +116,28 @@ var aim_pitch := 0.0
 ## 机头方向由 aim_yaw/aim_pitch 决定，滚转只让机身绕自己的机头轴转。
 var _roll_angle := 0.0
 ## 鼠标灵敏度（弧度/像素）。0.0022 约合「推 700 像素转 90°」。
-const AIM_SENSITIVITY := 0.0022
+##
+## ⚠ 2026-11-10 用户：「鼠标转向太灵活了，晕」→ 从 0.0022 降到 0.0009。
+##   现在是「推 1750 像素转 90°」，比之前慢 2.4 倍。
+##   如果还是晕，继续往下调；嫌慢就往上调。
+const AIM_SENSITIVITY := 0.0009
 ## 俯仰极限（弧度）。89° 是为了防止万向节死锁 —— 但**偏航不限**，
 ## 所以玩家可以原地转一整圈。
 const PITCH_LIMIT := deg_to_rad(89.0)
+
+## 速度矢量向机头方向对齐的角速度（弧度/秒）。
+##
+## 用户：「往前飞, 鼠标掉头但不加速, 为什么还是往后飞」——
+## 纯物理下机头转了速度不变，会「倒着飘」。用户要「保留惯性感」的缓慢对齐。
+##
+## ⚠ 这是**角速度**不是插值比例（第一版写成插值比例，结果机头转得比速度
+##   追得快，角差越来越大，dot 从 1.0 掉到 0.12 —— 越追越远）。
+##
+## 数值：
+##   1.2 rad/s ≈ 69°/秒 → 掉头 180° 约 2.6 秒转过来
+##   调大 → 更快咬住新航向，更像飞机
+##   调小 → 更飘，惯性更强，更像纯太空
+const VELOCITY_ALIGN_RATE := 1.2
 
 ## 从 aim_yaw / aim_pitch 算出期望朝向。
 ##
@@ -135,11 +153,13 @@ func get_aim_basis() -> Basis:
 	b = b * Basis(Vector3.FORWARD, _roll_angle)
 	return b.orthonormalized()
 
-## 最大角速度（弧度/秒）。这是「转得多快」的上限 ——
-## 2.4 约合 137°/秒，像战斗机而不是陀螺。
-const MAX_TURN_RATE := 2.4
+## 最大角速度（弧度/秒）。这是「转得多快」的上限。
+## ⚠ 2026-11-10 用户：「鼠标转向太灵活了，晕」→ 2.4 → 1.1（约 63°/秒）。
+##   2.4 时飞船几乎瞬间跟上鼠标，画面一晃就晕；1.1 有明显「转过去」的过程。
+const MAX_TURN_RATE := 1.1
 ## 角速度的加速度（弧度/秒²）。有它才不是「瞬间到位」，而是慢慢起转、慢慢停。
-const TURN_ACCEL := 9.0
+## 从 9.0 降到 3.5，起转更缓，不会一推鼠标就「抽」一下。
+const TURN_ACCEL := 3.5
 ## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
 var _turn_velocity := Vector3.ZERO
 ## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
@@ -157,11 +177,20 @@ const SHIP_THRUST := 72.0
 const SHIP_BOOST_THRUST := 150.0
 const SHIP_BRAKE_DECEL := 260.0
 
-## 全局速度硬上限（米/秒）。**只防浮点爆炸**，不是玩法上限。
-## 1600 是从旧版沿用下来的「安全值」—— 到这个速度时飞船一帧移动 26 米，
-## 站点碰撞检测的 32 步子步长还能覆盖。真要更快就得同时调碰撞检测。
-## 这不是「设计上的最高速」，而是「再快物理会出问题」的工程边界。
-const SHIP_SPEED_SAFETY_CAP := 1600.0
+## 全局速度硬上限（米/秒）。**只防「一帧位移超过碰撞步长」**，不是玩法上限。
+##
+## ⚠ 2026-11-10 用户问「为什么到 1600 就不加速了」：
+##   因为旧代码是 `if speed > CAP: velocity = velocity.normalized() * CAP`，
+##   **直接把速度压回上限** —— 表现就是「撞到一堵看不见的墙」。
+##
+##   现在改成**温和的限制**：超速时不再加速，但**也不会被硬压回去**。
+##   而且上限提高，让它更像「工程边界」而不是「玩法天花板」：
+##     · 3200 m/s 时一帧位移 53 米，`_move_with_station_collision` 的
+##       子步长 = 3 米/步、最多 32 步 = 96 米，仍然覆盖得住
+##     · 再高就要子步长溢出，会穿模
+##   代价：超速时**保留**超出的速度（不做衰减），所以玩家能维持在 3200 飞，
+##   而不是被弹回去。
+const SHIP_SPEED_SAFETY_CAP := 3200.0
 ## 外圈切向加速度占总牵引的比例。太小会笔直撞进去，太大又几乎不会被吸走。
 const BH_TANGENT_RATIO := 0.5
 ## ── 防「擦边逃逸」────────────────────────────────────────────────
@@ -173,6 +202,12 @@ const BH_TANGENT_RATIO := 0.5
 const BH_CAPTURE_FROM := 0.62
 ## 「逃逸速度」参考值：切向速度超过它的倍数越多，被吃得越快。
 ## 飞船速度上限是 1600，取 520 让高速擦边也躲不过。
+##
+## ⚠ 2026-11-10 注意：SHIP_SPEED_SAFETY_CAP 从 1600 提到 3200 之后，
+##   下面这几个黑洞参数（BH_ESCAPE_SPEED / BH_FORCE_CAPTURE）**还是按 1600 标定的**。
+##   实测过 1600 全速擦边能被拦住，但 2000+ 是否仍能拦住**没有验证**。
+##   本次改动不连带调整（一次只改一个系统，避免两头都出问题），
+##   如果实测发现高速能逃出黑洞，再单独标定这三个数。
 const BH_ESCAPE_SPEED := 520.0
 ## 切向速度的吞噬速率（每秒占切向速度的比例，还会乘超速倍数）。
 const BH_TANGENT_SINK := 1.6
@@ -1131,7 +1166,12 @@ func _physics_process(delta: float) -> void:
 
 		if thrust.length_squared() > 0.01 and fuel > 0.0:
 			var acceleration := SHIP_BOOST_THRUST if boosting else SHIP_THRUST
-			velocity += global_transform.basis * thrust * acceleration * delta
+			# ⚠ 超速时**不再加速**，但也**不把速度压回去**。
+			#   用户：「为什么到 1600 就不加速了」—— 旧代码是硬压回上限，
+			#   像撞上一堵看不见的墙。现在只是「推不动了」，速度保持不变。
+			var speed_now := velocity.length()
+			if speed_now < SHIP_SPEED_SAFETY_CAP:
+				velocity += global_transform.basis * thrust * acceleration * delta
 			fuel = maxf(0.0, fuel - delta * (1.6 if boosting else 0.45) * bh_fuel_multiplier)
 			thrusting = true
 			thrust_level = 1.0 if boosting else 0.5
@@ -1150,16 +1190,42 @@ func _physics_process(delta: float) -> void:
 				thrusting = true
 				thrust_level = 0.35
 
-		# ⚠ **没有速度上限**：真空中持续加速就是理论上无限加速。
-		#   旧版有 SHIP_MAX_SPEED=420 / SHIP_BOOST_MAX_SPEED=700 两个人造上限，
-		#   用户明确要求去掉（「到了 700 后继续按 shift+W，理论无限加速」）。
-		#   唯一的界限是下面的 SHIP_SPEED_SAFETY_CAP（防浮点/碰撞穿透的工程值）。
+		# ── 速度矢量缓慢转向机头 ──
+		#
+		# ⚠ 2026-11-10 用户：「往前飞, 鼠标掉头但不加速, 为什么还是往后飞,
+		#   虽然飞船头朝准星了, 但是还得加规则, 飞船前进方向只能是准星方向」
+		#
+		#   严格纯物理下，机头转了速度矢量不会变（真空中没有力改变它），
+		#   所以会出现「机头朝前、飞船倒着飘」——物理上对，玩起来很怪。
+		#   用户选「速度缓慢转向机头，保留惯性感」。
+		#
+		# 实现要点（第一版做错过，这里记下来）：
+		#   第一版是「每帧 lerp(velocity, nose*speed, delta*0.8)」——
+		#   问题是**机头同时在转**，速度追得比机头慢，角差反而越来越大
+		#   （实测 dot 从 1.000 一路掉到 0.121）。
+		#
+		#   正确的做法是**用角速度而不是插值比例**：
+		#     比较当前速度方向与机头方向的夹角 θ，
+		#     每帧最多转 VELOCITY_ALIGN_RATE * delta 弧度。
+		#   这样：
+		#     · 角差大（掉头 180°）→ 每秒转固定角度，不会越追越远
+		#     · 角差小 → 自然收敛，不会抖动
+		#     · 无论机头转多快，速度总有确定的追赶速率
+		var speed_aligned := velocity.length()
+		if speed_aligned > 0.5:
+			var nose_dir := -global_transform.basis.z.normalized()
+			var vel_dir := velocity / speed_aligned
+			var cos_angle := clampf(vel_dir.dot(nose_dir), -1.0, 1.0)
+			if cos_angle < 0.9999:
+				var angle_between := acos(cos_angle)
+				# 这一帧最多转这么多弧度
+				var max_step := VELOCITY_ALIGN_RATE * delta
+				var t := clampf(max_step / maxf(angle_between, 0.0001), 0.0, 1.0)
+				# 球面线性插值（不是普通 lerp，普通 lerp 在大角度时方向会失真）
+				var new_dir := vel_dir.slerp(nose_dir, t).normalized()
+				velocity = new_dir * speed_aligned
 
 		velocity += gravity * delta
-
-	# 全局限速：**这不是玩法上限**，只是防「一帧位移超过碰撞检测步长」。
-	if velocity.length() > SHIP_SPEED_SAFETY_CAP:
-		velocity = velocity.normalized() * SHIP_SPEED_SAFETY_CAP
 	_move_with_station_collision(delta)
 	if _apply_black_hole_capture(delta):
 		return
