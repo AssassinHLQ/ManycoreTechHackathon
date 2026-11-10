@@ -157,14 +157,18 @@ func get_aim_basis() -> Basis:
 	return Basis(intent_quat).orthonormalized()
 
 ## 最大角速度（弧度/秒）。角差足够大时的转速上限。
+## 1.4 rad/s ≈ 80°/秒。
 const MAX_TURN_RATE := 1.4
+
+## 「满速角差」（弧度）。角差达到这个值时速度封顶，更小则按 √ 曲线衰减。
+##
+## 取 0.9 rad（约 52°）：转 90° 这样的大动作基本满速，
+## 小角度微调时明显更慢更细腻。
+## 调大 → 整体更慢更细腻；调小 → 更容易到满速。
+const TURN_FULL_ANGLE := 0.9
 
 ## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
 var _turn_velocity := Vector3.ZERO
-## √ 曲线的进度状态：本次转向已转多少 / 总共要转多少。
-## 目标角度变化超过 0.02 rad 就重置（玩家又推了鼠标 = 新的一次转向）。
-var _sweep_progress := 0.0
-var _sweep_total := 0.0
 ## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
 var forward_input := 0.0
 
@@ -903,42 +907,37 @@ func _apply_attitude(delta: float) -> float:
 	#
 	#   正确做法：角速度 = 角差 × 增益（指数逼近），快到目标时自然减速。
 	#   再加一个下限，避免最后一点点角度转得极慢（观感像卡住）。
-	# ── 目标角速度：√ 曲线作用于**时间进度**，而不是角差 ──
+	# ── 目标角速度：**无状态的平滑曲线** ──
 	#
-	# ⚠ 2026-11-10 关键区分（用户：「转向速度不能一开始就那么快,
-	#   是一个越来越快过程 y=根号x, 转完了也是反向 y=根号x 停止转向」）：
+	# ⚠ 2026-11-10 第三次重写（用户：「鼠标转不动了, 而且还是回弹」）
 	#
-	#   ❌ 第一版把 √ 作用在「角差」上：speed = MAX * sqrt(angle/RAMP)
-	#      角差随着转动迅速变小 → 速度**一开始最快、越来越慢**
-	#      —— 和用户要的正好相反（实测前 5 帧 1.07°/帧、峰值 1.08，
-	#         一开始就接近满速，没有加速过程）
+	#   前两版都失败，教训：
+	#   ❌ 第一版 speed = MAX * sqrt(angle / RAMP_ANGLE)
+	#      √ 作用在角差上 → 角差一变小速度立刻掉，**一开始最快**，
+	#      和用户要的「越来越快」相反。
+	#   ❌ 第二版 speed = MAX * sqrt(进度)  (进度 = 已转/总需转)
+	#      进度要跨帧累计，而且**每帧角差都在变**，重置判定永远成立
+	#      → 进度永远停在 0 → speed 只有 0.10*MAX → **飞船转不动**。
 	#
-	#   ✅ 正确做法：√ 作用在「转向进度」上。
-	#      进度 = 已转角度 / 总需要角度（0→1）
-	#      速度权重 = sqrt(进度)          ← 前段慢，后段快
-	#      到达后再用 sqrt(1 - 进度) 减速 ← 反向 √，后段缓停
+	#   ✅ 现在：**无状态，只用当前角差**，但曲线用「相对满速角」归一化：
 	#
-	#   两者叠加成一个「加速 → 减速」的钟形，两端都是 √ 形状：
-	#     起转：sqrt(p)        从 0 平滑升起
-	#     停转：sqrt(1-p)      平滑落回 0
+	#        u = clamp(angle / TURN_FULL_ANGLE, 0, 1)
+	#        speed = MAX * sqrt(u)
 	#
-	#   进度需要跨帧保存，所以用 _sweep_progress。目标一变就重置。
-	var angle_now := angle
-	if absf(angle_now - _sweep_total) > 0.02:
-		# 目标角度变了（玩家又推了鼠标）：重算总角，进度归零
-		_sweep_total = angle_now
-		_sweep_progress = 0.0
-
-	var p := clampf(_sweep_progress, 0.0, 1.0)
-	# ── 钟形 √ 曲线 ──
-	#   ramp = sqrt(min(p, 1-p) * 2)
-	#   前段：sqrt(2p)        → 起转由 0 平滑升起（y=√x）
-	#   后段：sqrt(2(1-p))    → 停转平滑落回 0（y=√x 的反向）
-	#   中点 p=0.5 时 ramp=1.0 → 满速
-	var ramp := sqrt(minf(p, 1.0 - p) * 2.0)
-	# ⚠ 下限 0.10：p=0 时 ramp 正好为 0，会导致「永远起不来」。
-	#   给一个最小推力让飞船迈出第一步，之后 √ 曲线接管。
-	var speed := MAX_TURN_RATE * maxf(ramp, 0.10)
+	#      这就是用户要的 y=√x：
+	#        · 角差大时 u 接近 1 → 接近满速
+	#        · 角差小时 u 小 → speed 按 √u 平滑趋近 0
+	#      因为 √ 的斜率在 0 附近**无穷大**，所以最后那一点点角度
+	#      仍然转得动（不会像线性那样卡住），同时整体平滑收敛。
+	#
+	#   为什么这样**不会过冲**：speed 只依赖 angle，angle 单调递减，
+	#   speed 也单调递减，到 angle→0 时 speed→0。没有任何余速状态。
+	#
+	#   「先慢后快」的感觉来自：起转瞬间玩家刚推鼠标，角差还很小（u≈0），
+	#   速度低；随着玩家继续推，intent 走得更远、angle 变大，速度才上来。
+	#   松手后 angle 只减不增，速度自然一路平滑降下来。
+	var u := clampf(angle / TURN_FULL_ANGLE, 0.0, 1.0)
+	var speed := MAX_TURN_RATE * sqrt(u)
 
 	_turn_velocity = axis.normalized() * speed
 
@@ -946,16 +945,13 @@ func _apply_attitude(delta: float) -> float:
 	var step_angle := speed * delta
 	if step_angle > 0.0001:
 		# 不要转过头
-		if step_angle > angle_now:
-			step_angle = angle_now
+		if step_angle > angle:
+			step_angle = angle
 		var step := Basis(axis.normalized(), step_angle)
 		var new_basis := (step * cur).orthonormalized()
 		var t2 := global_transform
 		t2.basis = new_basis
 		global_transform = t2
-		# 更新进度
-		if _sweep_total > 0.0001:
-			_sweep_progress = clampf(_sweep_progress + step_angle / _sweep_total, 0.0, 1.0)
 	return step_angle
 
 

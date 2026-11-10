@@ -168,16 +168,12 @@ func _turns_fuel(ship, target_q: Quaternion) -> float:
 	ship.intent_quat = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
-	ship._sweep_progress = 0.0
-	ship._sweep_total = 0.0
 	# 先跑几帧让它稳定
 	for i in range(10):
 		ship.global_position = Vector3(50000, 0, 0)
 		ship._physics_process(1.0 / 60.0)
 	ship.fuel = 100.0
 	ship.intent_quat = target_q
-	ship._sweep_progress = 0.0
-	ship._sweep_total = 0.0
 	for i in range(480):
 		ship.global_position = Vector3(50000, 0, 0)
 		ship._physics_process(1.0 / 60.0)

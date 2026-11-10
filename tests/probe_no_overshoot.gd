@@ -180,25 +180,38 @@ func _run() -> void:
 	print("   快速拖动 300px：过冲 %.4f°" % rad_to_deg(over))
 	_check(rad_to_deg(over) < 0.5, "fast drag causes no bounce-back (%.4f deg)" % rad_to_deg(over))
 
-	# ── 5. √ 曲线：起转应该由慢到快 ──
-	print("\n=== 5. √曲线：起转由慢到快 ===")
+	# ── 5. √ 曲线：**模拟玩家连续推鼠标**，速度应先升后降 ──
+	#
+	# ⚠ 不能用「一次性给出 90 度目标」来测 —— 那样第一帧角差就有 90 度，
+	#   直接满速，测不出「先慢后快」。
+	#   真实操作是玩家**连续推**鼠标，角差随推动逐渐变大，速度才跟着上来。
+	print("\n=== 5. √曲线：连续推鼠标时先慢后快 ===")
 	ship.fuel = 100.0
 	ship.intent_quat = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 	ship.global_transform.basis = Basis.IDENTITY
 	ship.velocity = Vector3.ZERO
-	# 要求转 90°
-	ship.intent_quat = Quaternion(Vector3.UP, PI * 0.5)
+	ship.global_position = Vector3(80000, 0, 0)
 
 	var per_frame: Array = []
-	var prev_yaw: float = _nose_yaw(ship)
-	for i in range(60):
+	# ⚠ 用「两帧之间机头的夹角」而不是 atan2 差值 ——
+	#   后者在 ±180 度处会跳变 360 度，产生假峰值（实测 359.88°/帧）。
+	var prev_nose: Vector3 = -ship.global_transform.basis.z.normalized()
+	for i in range(20):
+		ship.apply_look(Vector2(15.0, 0.0))
 		ship.fuel = 100.0
 		ship.global_position = Vector3(80000, 0, 0)
 		ship._physics_process(1.0 / 60.0)
-		var now_yaw: float = _nose_yaw(ship)
-		per_frame.append(absf(rad_to_deg(now_yaw - prev_yaw)))
-		prev_yaw = now_yaw
+		var now_nose: Vector3 = -ship.global_transform.basis.z.normalized()
+		per_frame.append(rad_to_deg(prev_nose.angle_to(now_nose)))
+		prev_nose = now_nose
+	for i in range(40):
+		ship.fuel = 100.0
+		ship.global_position = Vector3(80000, 0, 0)
+		ship._physics_process(1.0 / 60.0)
+		var now_nose2: Vector3 = -ship.global_transform.basis.z.normalized()
+		per_frame.append(rad_to_deg(prev_nose.angle_to(now_nose2)))
+		prev_nose = now_nose2
 
 	# 前 5 帧平均 vs 中间最快帧
 	var early: float = 0.0
