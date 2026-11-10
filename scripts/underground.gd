@@ -78,7 +78,7 @@ static func _palette(planet, kind: String) -> Dictionary:
 # -----------------------------------------------------------------------------
 # 洞口：碎石环、门框和两根石柱。
 # -----------------------------------------------------------------------------
-static func _build_rim(root: Node3D, planet, kind: String, shaft_radius: float, palette: Dictionary, body: StaticBody3D) -> void:
+static func _build_rim(root: Node3D, _planet, _kind: String, shaft_radius: float, palette: Dictionary, body: StaticBody3D) -> void:
 	var rock: Material = palette.rock
 	var dark: Material = palette.dark
 	for i in range(22):
@@ -201,7 +201,7 @@ static func _quad(tool: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vect
 # -----------------------------------------------------------------------------
 static func _build_chamber(root: Node3D, body: StaticBody3D, shaft_radius: float, chamber_radius: float, floor_y: float, ceiling_y: float, palette: Dictionary, planet, kind: String) -> void:
 	var wall_height := ceiling_y - floor_y
-	var floor_mesh := _cyl(root, chamber_radius, chamber_radius + 0.6, 0.7, Vector3(0, floor_y - 0.35, 0), palette.rock, 36)
+	var _floor_mesh := _cyl(root, chamber_radius, chamber_radius + 0.6, 0.7, Vector3(0, floor_y - 0.35, 0), palette.rock, 36)
 	_cylinder_collider(body, chamber_radius, 0.7, Vector3(0, floor_y - 0.35, 0))
 	_cyl(root, chamber_radius - 1.2, chamber_radius - 1.2, 0.12, Vector3(0, floor_y + 0.02, 0), palette.dark, 36)
 
@@ -287,7 +287,7 @@ static func _accent_color(kind: String) -> Color:
 # -----------------------------------------------------------------------------
 # 每颗星球的洞内陈设。
 # -----------------------------------------------------------------------------
-static func _build_props(root: Node3D, planet, kind: String, chamber_radius: float, floor_y: float, palette: Dictionary, body: StaticBody3D) -> void:
+static func _build_props(root: Node3D, _planet, kind: String, chamber_radius: float, floor_y: float, palette: Dictionary, body: StaticBody3D) -> void:
 	match kind:
 		"qinglan":
 			var wood: Material = palette.wood
@@ -414,13 +414,13 @@ static func _home_interior(root: Node3D, planet) -> void:
 			_light(root, position + Vector3(-cos(angle), 0.5, -sin(angle)) * 0.7, Color("7fd7e0"), 0.6, 5.0)
 
 	for side in [-1.0, 1.0]:
-		var post := _box(root, Vector3(0.34, 3.6, 0.34), Vector3(side * 1.42, 3.62, 5.52), dark_wood)
+		var _post := _box(root, Vector3(0.34, 3.6, 0.34), Vector3(side * 1.42, 3.62, 5.52), dark_wood)
 		_box_collider(body, Vector3(0.34, 3.6, 0.34), Vector3(side * 1.42, 3.62, 5.52))
 	_box(root, Vector3(3.3, 0.42, 0.4), Vector3(0, 5.36, 5.52), dark_wood)
 	_box(root, Vector3(2.7, 0.2, 0.9), Vector3(0, 1.82, 5.9), pale)
 	_box_collider(body, Vector3(2.7, 0.2, 0.9), Vector3(0, 1.82, 5.9))
 
-	var globe := _sphere(root, 1.05, Vector3(0.4, 3.4, -0.6), planet._material(planet.accent_color, 1.0))
+	var _globe := _sphere(root, 1.05, Vector3(0.4, 3.4, -0.6), planet._material(planet.accent_color, 1.0))
 	_ring(root, 1.35, 1.45, Vector3(0.4, 3.4, -0.6), brass).rotation = Vector3(1.2, 0.2, 0.3)
 	_ring(root, 1.7, 1.78, Vector3(0.4, 3.4, -0.6), brass).rotation = Vector3(0.4, 1.1, 0.5)
 	_cyl(root, 0.5, 0.8, 0.7, Vector3(0.4, 2.4, -0.6), dark_wood, 10)

@@ -541,7 +541,7 @@ func _add_cycle_setting(parent: VBoxContainer, title: String, key: String, optio
 	return row
 
 
-func _cycle_setting(key: String, options: Array, labels: Array, handler: Callable) -> void:
+func _cycle_setting(key: String, options: Array, _labels: Array, handler: Callable) -> void:
 	var current = game.settings.values[key]
 	var index := options.find(current)
 	index = (index + 1) % options.size()

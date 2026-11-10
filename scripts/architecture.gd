@@ -921,7 +921,7 @@ static func _detail_pansha(root: Node3D, planet, accent: Color) -> void:
 
 static func _detail_taiyuan(root: Node3D, planet, accent: Color) -> void:
 	var stone: Material = planet._material(Color("6b7462"))
-	var moss: Material = planet._material(Color("46583f"))
+	var _moss: Material = planet._material(Color("46583f"))
 	var metal: Material = planet._material(Color("5d6656"))
 	var lamp: Material = planet._material(accent.lightened(0.15), 1.7)
 	# 三层环墙的压顶石：沿墙顶均布，宽度与墙体一致

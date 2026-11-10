@@ -234,7 +234,7 @@ func _build_ground_and_bounds(holder: Node3D, ground_material: Material) -> Stat
 
 
 ## 回程门：一道发光门框，靠近按 E 回阁楼。
-func _build_return_portal(holder: Node3D, key: String, color: Color, at: Vector3) -> Node3D:
+func _build_return_portal(holder: Node3D, _key: String, color: Color, at: Vector3) -> Node3D:
 	var frame := Node3D.new()
 	frame.name = "ReturnPortal"
 	frame.position = at
@@ -1171,7 +1171,7 @@ func activate_device(key: String, index: int) -> Dictionary:
 	var values: Array = device_values.get(key, [0, 0, 0])
 	var list: Array = device_nodes[key]
 	var material: StandardMaterial3D = list[index]["material"]
-	var node: Node3D = list[index]["node"]
+	var _node: Node3D = list[index]["node"]
 
 	match key:
 		"snow":

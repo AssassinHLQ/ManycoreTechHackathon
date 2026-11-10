@@ -571,7 +571,7 @@ func _surface_parent(direction: Vector3, altitude: float) -> Node3D:
 	return root
 
 
-func _add_tree(direction: Vector3, collidable := false) -> void:
+func _add_tree(direction: Vector3, _collidable := false) -> void:
 	var size := rng.randf_range(1.0, 2.25)
 	var up := direction.normalized()
 	var origin := surface_position(direction, -0.85)

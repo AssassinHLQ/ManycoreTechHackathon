@@ -115,7 +115,7 @@ func scroll_achievements(step: int) -> bool:
 	return true
 
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	if open:
 		painter.queue_redraw()
 
@@ -437,7 +437,7 @@ func draw_achievements_page(control: Control, panel: Rect2) -> void:
 
 ## 最近远行页：最近 5 次镜牢探索（最新在前）
 func draw_runs_page(control: Control, panel: Rect2) -> void:
-	var data: Dictionary = game.progress.summary()
+	var _data: Dictionary = game.progress.summary()
 	var dungeon: Dictionary = game.progress.dungeon
 	var runs: Array = game.progress.recent_runs
 

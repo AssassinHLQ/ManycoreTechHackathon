@@ -812,7 +812,7 @@ func apply_look(relative: Vector2) -> void:
 ## 座舱相机是**子节点**（挂在飞船下），所以相机坐标是**船的局部坐标**。
 ## 要让它看船心，得用局部空间的 look_at —— Node3D.look_at() 用的是全局坐标，
 ## 直接传局部坐标会转到别的地方去（表现就是「镜头看向太空，看不到船」）。
-func _update_third_person_camera(delta: float) -> void:
+func _update_third_person_camera(_delta: float) -> void:
 	if not third_person:
 		return
 	var target := Vector3(0.0, ship_model_height * 0.5, 0.0)

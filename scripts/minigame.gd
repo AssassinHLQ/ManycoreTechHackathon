@@ -169,7 +169,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 
-func _beep(freq: float, duration := 0.2) -> void:
+func _beep(freq: float, _duration := 0.2) -> void:
 	if game == null or game.audio == null:
 		return
 	var audio = game.audio

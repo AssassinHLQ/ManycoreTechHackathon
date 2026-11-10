@@ -90,7 +90,7 @@ func draw_summary(control: Control) -> void:
 	var border := Color(0.94, 0.82, 0.5, 0.65) if cleared else Color(0.5, 0.6, 0.68, 0.55)
 	control.draw_rect(panel, border, false, 2.0)
 
-	var cx := panel.position.x + panel.size.x * 0.5
+	var _cx := panel.position.x + panel.size.x * 0.5
 	var center_align := HORIZONTAL_ALIGNMENT_CENTER
 
 	# 标题
