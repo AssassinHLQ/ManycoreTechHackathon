@@ -114,6 +114,27 @@ func _run() -> void:
 	_check(absf(ship.velocity.length() - 150.0) < 3.0,
 		"velocity is conserved with no thrust (%.1f)" % ship.velocity.length())
 
+	# ── 6. 第三人称：准星也必须对着机头 ──
+	print("\n=== 6. 第三人称准星 == 机头 ===")
+	ship.toggle_third_person()
+	ship._physics_process(1.0 / 60.0)
+	var cam_fwd: Vector3 = -ship.camera.global_transform.basis.z.normalized()
+	var nose: Vector3 = -ship.global_transform.basis.z.normalized()
+	var d2: float = cam_fwd.dot(nose)
+	print("   相机前向·机头 = %.4f（1.0 = 准星正对机头）" % d2)
+	_check(d2 > 0.99, "third person: the crosshair points along the nose (dot=%.4f)" % d2)
+
+	# 转向后仍然对准
+	ship.apply_look(Vector2(300.0, 60.0))
+	for i in range(90):
+		ship._physics_process(1.0 / 60.0)
+	cam_fwd = -ship.camera.global_transform.basis.z.normalized()
+	nose = -ship.global_transform.basis.z.normalized()
+	d2 = cam_fwd.dot(nose)
+	print("   转向后 相机前向·机头 = %.4f" % d2)
+	_check(d2 > 0.99, "third person: still aligned after turning (dot=%.4f)" % d2)
+	ship.toggle_third_person()
+
 	print("\nFLIGHT ATTITUDE PROBE: %d failure(s)" % failures)
 	game.queue_free()
 	await process_frame

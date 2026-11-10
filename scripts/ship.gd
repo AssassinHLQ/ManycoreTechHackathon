@@ -866,41 +866,32 @@ func _unhandled_input(event: InputEvent) -> void:
 func apply_look(relative: Vector2) -> void:
 	if game.state != "ship" or game.paused or game.map_open:
 		return
-	# 第三人称是「观察模式」：船停着（landed）或对接中也该能绕圈看。
-	if not third_person and (landed or docked or autopilot):
+	# 着陆 / 对接 / 自动驾驶时不接受转向意图（姿态锁定）
+	if landed or docked or autopilot:
 		return
 	relative = relative.limit_length(120.0)
 	var sensitivity: float = mouse_sensitivity * (game.settings.sensitivity_multiplier() if game.settings != null else 1.0)
-	if third_person:
-		# 第三人称：鼠标改成「绕着飞船转视角」，不影响飞船朝向。
-		orbit_yaw = wrapf(orbit_yaw - relative.x * sensitivity * 2.4, -PI, PI)
-		orbit_pitch = clampf(orbit_pitch - relative.y * sensitivity * 1.8, -0.35, 1.15)
-		return
 
-	# ── 座舱视角：鼠标**只推动期望朝向 aim_basis**，不直接转飞船 ──
+	# ── 座舱 / 第三人称**共用同一套逻辑**：鼠标只推动期望朝向 ──
 	#
-	# 这是本次改动的核心。旧版直接 `rotate_object_local()` —— 鼠标一动飞船立刻
-	# 转身，而 A/D 又是横移，于是「鼠标转一点 + 横移一点」看起来就是原地平移。
-	# 现在鼠标推动的是「我想看的方向」，飞船要靠**角速度**慢慢追上来，
-	# 机头最终会精确指向那个方向（也就是屏幕中心）。
-	#
-	# 偏航：绕**世界 Y 轴**转（不是飞船自身的 up）——
-	#   否则飞船压坡度后，鼠标左右会变成滚转，很难控制。
-	# 俯仰：绕**飞船自身的右轴**（pitch 跟随机身，才符合飞行器手感）。
-	var yaw := -relative.x * sensitivity * AIM_SENSITIVITY / mouse_sensitivity
-	var pitch := -relative.y * sensitivity * AIM_SENSITIVITY / mouse_sensitivity
+	# ⚠ 2026-11-10 改（用户：「鼠标也要不能自由转视角，这是控制飞船。
+	#   绝对禁止飞船头不朝向准星」）：
+	#   旧版第三人称里鼠标是「绕着飞船转相机」（orbit_yaw/orbit_pitch），
+	#   相机可以停在任意角度 —— 准星指向船身中心，机头却指着别处，
+	#   于是截图里准星和机头分开。
+	#   现在第三人称相机**永远在机头正后方**（见 _update_third_person_camera），
+	#   鼠标只推动 aim_basis，飞船转过去后机头 = 相机前向 = 准星方向。
+	var yaw := -relative.x * sensitivity * (AIM_SENSITIVITY / mouse_sensitivity)
+	var pitch := -relative.y * sensitivity * (AIM_SENSITIVITY / mouse_sensitivity)
 
-	# 先算当前期望朝向的 forward 与 right，用来构造新的 aim
 	var aim_forward := -aim_basis.z.normalized()
 	var aim_right := aim_basis.x.normalized()
 
 	# 俯仰：绕自身右轴，并夹住上下限（别翻过去）
 	var pitched := Basis(aim_right, pitch) * aim_forward
-	# 限制俯仰角：与世界上方向夹角限制在 [-85°, +85°]
 	var up := Vector3.UP
 	var cos_limit := cos(deg_to_rad(85.0))
 	if pitched.dot(up) > cos_limit:
-		# 太朝上了，压回上限
 		var flat := (pitched - up * pitched.dot(up)).normalized()
 		pitched = (flat * cos_limit + up * sqrt(maxf(0.0, 1.0 - cos_limit * cos_limit))).normalized()
 	elif pitched.dot(-up) > cos_limit:
@@ -912,7 +903,6 @@ func apply_look(relative: Vector2) -> void:
 
 	# 用「新的 forward + 保持机身上方向尽量不变」重建 aim_basis
 	var body_up := aim_basis.y.normalized()
-	# 让 up 与 forward 正交
 	var right_axis := yawed.cross(body_up)
 	if right_axis.length() < 0.001:
 		right_axis = yawed.cross(Vector3.RIGHT)
@@ -921,30 +911,40 @@ func apply_look(relative: Vector2) -> void:
 	aim_basis = Basis(right_axis, final_up, -yawed).orthonormalized()
 
 
-## 第三人称相机：绕着船身转，一直看船。
-## 座舱相机是**子节点**（挂在飞船下），所以相机坐标是**船的局部坐标**。
-## 要让它看船心，得用局部空间的 look_at —— Node3D.look_at() 用的是全局坐标，
-## 直接传局部坐标会转到别的地方去（表现就是「镜头看向太空，看不到船」）。
+## 第三人称相机：**始终在机头正后方**，跟着机头走。
+##
+## ⚠ 2026-11-10 改（用户：「绝对禁止飞船头不朝向准星」）：
+##   旧版第三人称是「绕着船身转」（orbit_yaw / orbit_pitch 自由转），
+##   相机在船外任意角度，准星指向**船身中心**，机头自然和准星分开 ——
+##   用户截图里就是这种情况。
+##
+##   现在改成真正的「跟随机头」：
+##     · 相机永远在机头正后方（沿 -forward 方向后退）
+##     · 相机看向**机头前方的一点**（不是看船身中心）
+##     · 准星 → 相机前向 → 机头前向，三者共线
+##   这样第三人称下准星也始终落在机头指向的方向上。
+##
+##   滚轮仍然调距离，鼠标不再能绕船转（那会破坏对准关系）。
 func _update_third_person_camera(_delta: float) -> void:
 	if not third_person:
 		return
-	var target := Vector3(0.0, ship_model_height * 0.5, 0.0)
-	# 相机在船的局部空间里绕圈：yaw 绕 Y，pitch 抬高/压低。
-	var offset := Vector3(
-		sin(orbit_yaw) * cos(orbit_pitch),
-		sin(orbit_pitch),
-		cos(orbit_yaw) * cos(orbit_pitch)) * orbit_distance
-	camera.position = target + offset
-	# 局部空间的朝向：相机的 -Z 要指向船心。
-	# 用 Basis.looking_at 手工构造，再转成四元数 —— 这样全程在局部空间里算。
-	var dir := (target - camera.position).normalized()
+	# 机头方向（飞船局部坐标里就是 -Z）
+	var forward_local := Vector3(0.0, 0.0, -1.0)
+	# 相机挂在飞船的**局部坐标**里，所以这里全用局部量算
+	# 机身中心略高一点，避免镜头切进机翼
+	var base_y := ship_model_height * 0.55
+	# 相机位置：沿机头反方向后退
+	camera.position = Vector3(0.0, base_y, orbit_distance)
+	# 相机朝向：看向机头前方远处（局部 -Z 方向），不是看船身
+	# 用一个很远的点保证视线几乎水平且沿机头方向
+	var look_target := Vector3(0.0, base_y * 0.6, -orbit_distance * 4.0)
+	var dir := (look_target - camera.position).normalized()
 	if dir.length_squared() > 0.0001:
 		var up := Vector3.UP
 		if absf(dir.dot(up)) > 0.98:
 			up = Vector3.FORWARD
 		camera.basis = Basis.looking_at(dir, up)
-	# 第三人称用固定视场，不再受座舱变焦影响。
-	camera.fov = 55.0
+	camera.fov = 62.0
 
 
 ## 切换第三人称。返回 true 表示这次切换生效了。
