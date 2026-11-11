@@ -8,8 +8,10 @@ extends Control
 ## 这里画的东西全部是**纯代码**，不依赖贴图：
 ##   · 切角面板框（chamfered rect）—— 直线 + 45° 斜角，比圆角更像仪表盘
 ##   · 四角括号（corner brackets）—— 科幻 UI 最标志性的元素
-##   · 扫描线（scanlines）—— 极低透明度的横线，远看是「屏幕感」
 ##   · 刻度（ticks）—— 沿边缘的短竖线，像仪表刻度
+##
+## ⚠ 曾经还有一层「全屏扫描线」，2026-11-11 已按用户要求移除：
+##   见 _draw 里的注释（它会弄脏 3D 画面）。
 ##
 ## 全部用 draw_ 系列，所以任意分辨率都锐利，不需要导入素材。
 
@@ -89,10 +91,7 @@ class RingGauge extends Control:
 			draw_string(font, c + Vector2(-14, 5), txt, HORIZONTAL_ALIGNMENT_CENTER, 28, 15,
 				Color(0.98, 0.88, 0.70, 0.98))
 
-## 扫描线开关（可运行时关，方便截图对比）
-var scanlines := true
-## 扫描线间距（像素）。太密会闪，3~4 比较稳。
-const SCAN_STEP := 3
+## （扫描线相关字段已随功能一起移除，见文件头的注释）
 
 
 func _ready() -> void:
@@ -114,14 +113,16 @@ func clear_frames() -> void:
 func _draw() -> void:
 	if game == null:
 		return
-	var view := get_viewport_rect().size
 
-	# 1) 扫描线：整屏铺一层，透明度极低
-	if scanlines:
-		var y := 0.0
-		while y < view.y:
-			draw_line(Vector2(0, y), Vector2(view.x, y), Color(0, 0.05, 0.08, 0.16), 1.0)
-			y += SCAN_STEP
+	# 1) 扫描线：**已移除**（2026-11-11 用户要求「去掉」）。
+	#
+	# 原实现是每 3 像素一条 alpha 0.16 的深色横线，铺满整屏。
+	# 问题是它盖在 3D 画面上 —— 在黑洞、星球这类精细画面上会让人觉得
+	# 「画面脏 / 有横纹」，而不是「有质感」。放大看更明显：吸积盘上能数出
+	# 一条条横线，还被误认成几何接缝。
+	#
+	# 如果以后想要回那种「屏幕感」，正确做法是**只盖 HUD 面板内部**，
+	# 或者做成 shader 加在 UI 层、不作用于 3D 视口。
 
 	# 2) 每块面板的装饰
 	for item in frames:
