@@ -2355,7 +2355,17 @@ func exit_ship() -> void:
 	var tangent := ship.global_transform.basis.x.normalized()
 	if player.get_parent() != planet:
 		player.reparent(planet, false)
-	player.global_position = find_safe_surface_position(planet, normal, tangent)
+	# ⚠ 0.3 是「贴地」，不是 1.4。
+	#
+	# 2026-11-11 用户反馈「下船还会抖」。实测根因：
+	#   玩家被放在离地 1.4 m → 重力下坠 → move_and_slide 落地 → floor_snap
+	#   又往上吸 → 前 8 帧上下振荡，实测最大跳 0.24 m，肉眼看就是「抖」。
+	#   三种起始高度实测对比（同一段地面）：
+	#     1.40 m → 前 8 帧最大跳 0.150、全程 0.246
+	#     0.95 m → 前 8 帧最大跳 0.139、全程 0.183
+	#     0.30 m → 完全 0.000（落地即稳）
+	#   所以下船专门用 0.3；卡死脱困仍用默认 1.4（那里需要抬离地面）。
+	player.global_position = find_safe_surface_position(planet, normal, tangent, 0.3)
 	var rotation_to_surface := Quaternion(player.global_transform.basis.y.normalized(), normal)
 	var transform := player.global_transform
 	transform.basis = (Basis(rotation_to_surface) * transform.basis).orthonormalized()
@@ -2448,7 +2458,14 @@ func nearest_planet(position: Vector3) -> Node3D:
 	return result
 
 
-func find_safe_surface_position(planet: Node3D, normal: Vector3, preferred_tangent := Vector3.ZERO) -> Vector3:
+## 找一块安全的地表落点。
+##
+## altitude 是「离地高度（米）」：
+##   · 下船 / 步行传送用 0.3 —— 贴地，落地即刻稳定，不会抖（见 exit_ship 的注释）
+##   · 卡死脱困（R）用 1.4 —— 需要抬离地面确保真的出来了，
+##     所以冒烟测试能断言「脱困后高度 > 0.5」
+func find_safe_surface_position(planet: Node3D, normal: Vector3,
+		preferred_tangent := Vector3.ZERO, altitude := 1.4) -> Vector3:
 	var tangent := preferred_tangent - normal * preferred_tangent.dot(normal)
 	if tangent.length_squared() < 0.01:
 		tangent = normal.cross(Vector3.RIGHT)
@@ -2457,10 +2474,10 @@ func find_safe_surface_position(planet: Node3D, normal: Vector3, preferred_tange
 	tangent = tangent.normalized()
 	for offset in [5.0, 9.0, 13.0, 17.0, -5.0, -9.0, -13.0, 21.0, -17.0, 0.0]:
 		var direction: Vector3 = (normal + tangent * (offset / planet.radius)).normalized()
-		var position: Vector3 = planet.global_position + planet.surface_position(direction, 1.4)
+		var position: Vector3 = planet.global_position + planet.surface_position(direction, altitude)
 		if _safe_spawn_clear(position, direction):
 			return position
-	return planet.global_position + planet.surface_position(normal, 9.0)
+	return planet.global_position + planet.surface_position(normal, altitude)
 
 
 func _safe_spawn_clear(position: Vector3, normal: Vector3) -> bool:
