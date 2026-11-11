@@ -1,7 +1,7 @@
 {
   "generated_by": "_合规审查_20261104/build_license_manifest.py",
   "source_table": "ASSET_LICENSE_TABLE.html",
-  "policy": "只收 CC BY 4.0（可商用、需署名）；CC BY-NC* 与授权不明一律不入表；另含本项目 AI 生成的资产（如 Lux3D），这类条目标明「本项目自有（AI 生成内容）」，不需要第三方署名",
+  "policy": "只收 CC BY 4.0（可商用、需署名）；CC BY-NC* 与授权不明一律不入表；另含本项目用 AI 生成（如 Aholo Lux3D）的资产，这类条目不涉及第三方署名，但权属以 Lux3D 平台服务条款与参赛协议为准",
   "assets": [
     {
       "slug": "24-dizzying-space-travel-inktober2019",
@@ -238,8 +238,8 @@
       "original_file": "(AI 生成，无原始下载文件)",
       "title": "青岚星 · 完整星球",
       "author": "AI 生成（Aholo Lux3D，text-to-3D G1-Turbo）",
-      "license": "本项目自有（AI 生成内容，无第三方版权与署名义务）",
-      "attribution": "Aholo Lux3D 生成，本项目自有；不含第三方素材",
+      "license": "Aholo Lux3D 生成，权属以平台服务条款与参赛协议为准",
+      "attribution": "Aholo Lux3D 生成，不含第三方素材；权属以平台服务条款与参赛协议为准",
       "source_url": "https://labs.aholo3d.cn/",
       "imported": true,
       "imported_slug": "qinglan-planet",
@@ -254,8 +254,8 @@
       "original_file": "(AI 生成，无原始下载文件)",
       "title": "青岚星 · 完整星球（v2 单一闭合球面）",
       "author": "AI 生成（Aholo Lux3D，text-to-3D G1-Turbo）",
-      "license": "本项目自有（AI 生成内容，无第三方版权与署名义务）",
-      "attribution": "Aholo Lux3D 生成，本项目自有；不含第三方素材",
+      "license": "Aholo Lux3D 生成，权属以平台服务条款与参赛协议为准",
+      "attribution": "Aholo Lux3D 生成，不含第三方素材；权属以平台服务条款与参赛协议为准",
       "source_url": "https://labs.aholo3d.cn/",
       "imported": true,
       "imported_slug": "qinglan-planet-v2",
