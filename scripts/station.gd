@@ -247,13 +247,18 @@ func _setup_orbit() -> void:
 	if projected.length_squared() < 1.0:
 		projected = orbit_u
 	orbit_phase = atan2(projected.dot(orbit_v), projected.dot(orbit_u))
-	orbit_radius = maxf(float(best.radius) + 2200.0, 2600.0)
+	# ⚠ 2026-11-11 行星半径 ×3、轨道 ×10 之后，环绕半径不能再写死 2200：
+	#   那会让归航站贴着放大后的行星表面（1200 米半径的星球只剩 1000 米余量）。
+	#   偏移量与下限都按「行星半径放大倍数」同步放宽。
+	orbit_radius = maxf(float(best.radius) + 2200.0 * 3.0, 2600.0 * 3.0)
 	orbit_ready = true
 
 
 func _planet_orbit_position(planet: Node3D) -> Vector3:
 	var angle: float = float(planet.orbit_phase) + float(planet.orbit_speed) * float(game.elapsed)
-	return Vector3(cos(angle) * float(planet.orbit_radius), float(planet.orbit_height) + sin(angle * 1.7) * 50.0, sin(angle) * float(planet.orbit_radius))
+	return Vector3(cos(angle) * float(planet.orbit_radius),
+		float(planet.orbit_height) + sin(angle * 1.7) * 500.0,
+		sin(angle) * float(planet.orbit_radius))
 
 
 func _update_orbit() -> void:

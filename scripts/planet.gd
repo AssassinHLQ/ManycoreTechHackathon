@@ -112,6 +112,23 @@ func _near_cave(direction: Vector3, margin: float) -> bool:
 	return direction.angle_to(cave_direction) < cave_hole_angle + margin
 
 
+## 地形起伏幅度的**参考半径**（米）。0 = 用 `radius` 自己。
+##
+## ⚠ 2026-11-11 世界放大后新增。`_raw_terrain_height` 原来是
+##   `radius + continental*radius*amplitude + detail*radius*0.004`，
+##   起伏**绝对值正比于行星半径**。星球半径 ×3 之后，地面起伏也变成 3 倍：
+##   青岚星峰峰值 9.4 米 → 28 米，相邻一步落差 0.52 → 1.56 米。
+##
+##   后果不是「视觉上更崎岖」，而是**贴地行走被判定为瞬移**：
+##   walk_test 里「每帧位移 < 1.5 米」有三条直接翻红（出门、进门、潮汐站台阶）。
+##   观测塔和潮汐站是**人类尺度**的建筑（台阶十几厘米），地面起伏放大 3 倍后
+##   建筑与地面的接缝处就出现了米级的落差。
+##
+##   所以起伏幅度按「设计半径」算、不按放大后的 radius 算 ——
+##   行星变大，但地表的绝对起伏保持原样，建筑、台阶、行走手感都不受影响。
+var terrain_reference_radius := 0.0
+
+
 func terrain_height(direction: Vector3) -> float:
 	var dir := direction.normalized()
 	var raw := _raw_terrain_height(dir)
@@ -127,6 +144,8 @@ func _raw_terrain_height(direction: Vector3) -> float:
 	var dir := direction.normalized()
 	var continental := terrain_noise.get_noise_3d(dir.x * 5.2, dir.y * 5.2, dir.z * 5.2)
 	var detail := detail_noise.get_noise_3d(dir.x * 37.0, dir.y * 37.0, dir.z * 37.0)
+	# 起伏按参考半径算（世界放大后 = 设计半径），球面本身仍按 radius。
+	var ref: float = terrain_reference_radius if terrain_reference_radius > 0.0 else radius
 	var amplitude := 0.026
 	match kind:
 		"zheya": amplitude = 0.030
@@ -138,7 +157,7 @@ func _raw_terrain_height(direction: Vector3) -> float:
 		"taiyuan": amplitude = 0.022
 		"liuwu": amplitude = 0.028
 		"jianmo": amplitude = 0.020
-	return radius + continental * radius * amplitude + detail * radius * 0.004
+	return radius + continental * ref * amplitude + detail * ref * 0.004
 
 
 func surface_position(direction: Vector3, altitude := 0.0) -> Vector3:
@@ -980,17 +999,22 @@ func _process(_delta: float) -> void:
 		clouds.rotation.y += _delta * 0.002
 
 
+## 垂直起伏幅度（米）。⚠ 2026-11-11 轨道 ×10 之后这里也 ×10，
+## 否则星系拉大后这段起伏会缩成几乎一条平线（相对尺度）。
+const ORBIT_WOBBLE := 500.0
+
+
 func _update_orbit() -> void:
 	var t: float = game.elapsed if game != null else 0.0
 	var angle := orbit_phase + orbit_speed * t
-	position = Vector3(cos(angle) * orbit_radius, orbit_height + sin(angle * 1.7) * 50.0, sin(angle) * orbit_radius)
+	position = Vector3(cos(angle) * orbit_radius, orbit_height + sin(angle * 1.7) * ORBIT_WOBBLE, sin(angle) * orbit_radius)
 
 
 ## 行星此刻的公转速度（米/秒，世界坐标）。
 ##
 ## 就是 `_update_orbit` 里那条轨迹对时间的导数：
-##   p = (cos a·R, h + sin(1.7a)·50, sin a·R)，  a = phase + speed·t
-##   v = (−sin a·R·ω, cos(1.7a)·50·1.7·ω, cos a·R·ω)
+##   p = (cos a·R, h + sin(1.7a)·W, sin a·R)，  a = phase + speed·t，W = ORBIT_WOBBLE
+##   v = (−sin a·R·ω, cos(1.7a)·W·1.7·ω, cos a·R·ω)
 ##
 ## 为什么不直接拿两帧位置差去近似：`_process` 的 delta 会抖，
 ## 而且行星每秒只走 10～50 米，差分出来的噪声比信号还大。
@@ -1007,7 +1031,7 @@ func orbital_velocity() -> Vector3:
 	var w := orbit_speed
 	return Vector3(
 		-sin(angle) * orbit_radius * w,
-		cos(angle * 1.7) * 50.0 * 1.7 * w,
+		cos(angle * 1.7) * ORBIT_WOBBLE * 1.7 * w,
 		cos(angle) * orbit_radius * w)
 
 

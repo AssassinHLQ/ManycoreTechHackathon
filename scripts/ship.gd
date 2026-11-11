@@ -26,9 +26,25 @@ const HULL_X := 1.75
 const HULL_Y := 1.0
 const HULL_Z := 3.25
 const AUTOPILOT_ACCEL := 230.0
-const AUTOPILOT_FUEL_PER_DV := 0.008
+## 每改变 1 m/s 速度消耗多少推进剂（自动航行）。
+##
+## ⚠ 2026-11-11 场景放大后从 0.008 降到 0.003：
+##   轨道 ×10 之后一趟单程的速度变化从 ~1800 m/s 涨到 ~7700 m/s，
+##   按原来的系数要烧掉约 62 点油（油箱才 100），远行必然搁浅在半路。
+##   降到 0.003 后同一趟约 23 点，留得住返程。
+const AUTOPILOT_FUEL_PER_DV := 0.003
 ## 自动航行的巡航速度上限（米/秒）。远距离赶路时压在这条线上。
-const AUTOPILOT_CRUISE := 900.0
+##
+## ⚠ 2026-11-11 用户：「自动驾驶锁定一直加速，直到快到星球才像上一个提交一样减速」。
+##
+##   这正是 `_autopilot_desired_speed` 本来的形状（两条剖面取小）：
+##     可行上限 √(2·a·d)  —— 随距离增长，远处报得很大
+##     末端蠕行 d/τ       —— 近了才压下来
+##   所以「一路加速、快到才刹车」**不需要新逻辑**，只要把巡航上限抬够，
+##   让 √(2ad) 在远距离能报到那个量级。轨道 ×10 之后最远 9.2 万米，
+##   取 4000：92000 处 √(2×80×92000) ≈ 3800，刚好不被上限截断，
+##   全速段一直持续到约 1 万米才开始明显收油。
+const AUTOPILOT_CRUISE := 4000.0
 ## 速度剖面按「可用减速度的多少比例」来设计。
 ##
 ## 这个值不能到 0.5，原因见 _autopilot_desired_speed 的注释：
@@ -404,7 +420,8 @@ func _ready() -> void:
 		camera.position = Vector3(0, 1.54, -1.42)
 	camera.fov = 72.0
 	camera.near = 0.09
-	camera.far = 60000.0
+	# ⚠ 2026-11-11 轨道 ×10：最远天体到相机约 20 万米，60000 会把远轨道裁掉。
+	camera.far = 400000.0
 	add_child(camera)
 	var headlight := SpotLight3D.new()
 	headlight.position = Vector3(0, 0.2, -2.5)

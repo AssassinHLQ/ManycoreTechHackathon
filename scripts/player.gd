@@ -35,7 +35,8 @@ func _ready() -> void:
 	camera.position.y = 1.48
 	camera.fov = 74.0
 	camera.near = 0.07
-	camera.far = 60000.0
+	# ⚠ 2026-11-11 轨道 ×10：最远天体到相机约 20 万米，60000 会把远轨道裁掉。
+	camera.far = 400000.0
 	add_child(camera)
 	lamp = SpotLight3D.new()
 	lamp.position = Vector3(0.18, -0.12, 0.0)

@@ -76,9 +76,30 @@ var sun_material: ShaderMaterial
 var corona_shells: Array = []
 var sun_detail: Node3D
 var prominence_materials: Array = []
-var sun_radius := 260.0
-const SUN_DETAIL_RANGE := 2400.0
-const SUN_DETAIL_FADE := 700.0
+## ── 世界尺度 ───────────────────────────────────────────────────────
+##
+## 用户 2026-11-11：「场景做大每个星球距离增加 10 倍 … 星球加大」。
+##
+## 三个尺度分开定，是因为它们该不该等比放大并不一样：
+##   · 轨道距离 ×10   —— 用户要求，星系变空旷，飞行距离感强
+##   · 星球半径 ×3    —— **不能**跟着 ×10：最远轨道 9.2 万米处若有 4300 米半径
+##                       的星球，观感会被吞掉、碰撞子步长也会爆
+##   · 太阳半径 ×10   —— 太阳本来就要撑起整个星系的天光，等比放才不显得渺小
+##
+## ⚠ 改这里之前先看 camera.far：放大后最远天体到相机约 20 万米，
+##   `far = 60000` 会直接把远轨道裁掉（见 player.gd / ship.gd 的 far 注释）。
+const ORBIT_SCALE := 10.0
+const PLANET_RADIUS_SCALE := 3.0
+const SUN_SCALE := 10.0
+## 黑洞整体位置的外移倍率。黑洞不属于行星系统，但要保持在系统外围，
+## 所以位置跟轨道同比例外移（尺寸不动 —— 它的 7200 米引力范围是玩法标定值）。
+const BH_POSITION_SCALE := 10.0
+
+var sun_radius := 260.0 * SUN_SCALE
+## 太阳细节层（米面）的生效范围。太阳放大了 10 倍，这一层也要跟着推远，
+## 否则飞到原来那圈距离上细节就整片消失。
+const SUN_DETAIL_RANGE := 2400.0 * SUN_SCALE
+const SUN_DETAIL_FADE := 700.0 * SUN_SCALE
 
 # ── 卡冈图雅：远处那个黑洞 ──────────────────────────────────────────
 # 外部模型（res://assets/models/black-hole/model.glb）。
@@ -86,8 +107,13 @@ const SUN_DETAIL_FADE := 700.0
 # 它**不是**十颗天体之一：不进星图、不进自动航行目标表，只是可以飞过去看的远景，
 # 所以「十颗天体各有地标」那套断言不受影响。
 const GARGANTUA_MODEL := "res://assets/models/black-hole/model.glb"
-## 放在行星轨道（2640~9200）之外再抬高一点：从母星抬头就能看到它挂在天边
-const GARGANTUA_POSITION := Vector3(-11800.0, 5200.0, 9600.0)
+## 放在行星轨道（26400~92000）之外再抬高一点：从母星抬头就能看到它挂在天边。
+## ⚠ 2026-11-11 轨道 ×10 之后这里也必须同比例外移（BH_POSITION_SCALE），
+##   否则黑洞会落进内圈行星轨道里，变成一颗「路障」而不是远景。
+const GARGANTUA_POSITION := Vector3(
+	-11800.0 * BH_POSITION_SCALE,
+	5200.0 * BH_POSITION_SCALE,
+	9600.0 * BH_POSITION_SCALE)
 const GARGANTUA_SCALE := 4.0
 ## 自转角速度（弧度/秒）。原来 0.012，转一圈要 8.7 分钟，近距离看盘面纹理会一帧帧
 ## 挪动、像在抖；压到 0.004 后约 26 分钟一圈 —— 慢到只能看出「在转」，看不出「在卡」。
@@ -784,65 +810,78 @@ func _update_sky_pixel_angle() -> void:
 
 
 func _build_planets() -> void:
+	# ⚠ 轨道距离统一 ×ORBIT_SCALE、半径统一 ×PLANET_RADIUS_SCALE、
+	#   垂直起伏 ×ORBIT_SCALE（否则星系拉大后起伏会缩成一条平线）。
+	#   数字本身保持「设计值」不变，缩放只在下面几步乘一次，方便回退和再调。
 	var definitions := [
 		{
-			"id": "qinglan", "name": "青岚星", "radius": 400.0, "orbit": 2640.0, "gravity": 20.0,
-			"phase": 0.18, "speed": 0.0025, "height": 0.0, "kind": "qinglan",
+			"id": "qinglan", "name": "青岚星",
+			"radius": 400.0 * PLANET_RADIUS_SCALE, "orbit": 2640.0 * ORBIT_SCALE, "gravity": 20.0,
+			"phase": 0.18, "speed": 0.0025, "height": 0.0 * ORBIT_SCALE, "kind": "qinglan",
 			"color": Color("2b4f52"), "accent": Color("9fe3d8"),
 			"description": "标准重力 · 雾松林、石砌村舍与旧观测塔。"
 		},
 		{
-			"id": "zheya", "name": "赭崖星", "radius": 300.0, "orbit": 4560.0, "gravity": 32.0,
-			"phase": 2.15, "speed": -0.004, "height": 180.0, "kind": "zheya",
+			"id": "zheya", "name": "赭崖星",
+			"radius": 300.0 * PLANET_RADIUS_SCALE, "orbit": 4560.0 * ORBIT_SCALE, "gravity": 32.0,
+			"phase": 2.15, "speed": -0.004, "height": 180.0 * ORBIT_SCALE, "kind": "zheya",
 			"color": Color("9c9384"), "accent": Color("d8c9a3"),
 			"description": "1.6 G · 盐碱裂谷、间歇喷泉与断裂观测环。"
 		},
 		{
-			"id": "cangbo", "name": "沧波星", "radius": 430.0, "orbit": 6520.0, "gravity": 13.0,
-			"phase": 3.75, "speed": 0.0022, "height": -160.0, "kind": "cangbo",
+			"id": "cangbo", "name": "沧波星",
+			"radius": 430.0 * PLANET_RADIUS_SCALE, "orbit": 6520.0 * ORBIT_SCALE, "gravity": 13.0,
+			"phase": 3.75, "speed": 0.0022, "height": -160.0 * ORBIT_SCALE, "kind": "cangbo",
 			"color": Color("8fb6c9"), "accent": Color("cfeef7"),
 			"description": "0.65 G · 冰架、潮汐裂缝与浮冰研究站。"
 		},
 		{
-			"id": "xuanjing", "name": "悬晶星", "radius": 280.0, "orbit": 4160.0, "gravity": 7.0,
-			"phase": 4.95, "speed": 0.0055, "height": 320.0, "kind": "xuanjing",
+			"id": "xuanjing", "name": "悬晶星",
+			"radius": 280.0 * PLANET_RADIUS_SCALE, "orbit": 4160.0 * ORBIT_SCALE, "gravity": 7.0,
+			"phase": 4.95, "speed": 0.0055, "height": 320.0 * ORBIT_SCALE, "kind": "xuanjing",
 			"color": Color("565a60"), "accent": Color("e0a063"),
 			"description": "0.35 G · 环站残骸、磁性矿石与低空碎片。"
 		},
 		{
-			"id": "xuanyuan", "name": "玄渊星", "radius": 170.0, "orbit": 8040.0, "gravity": 25.0,
-			"phase": 5.72, "speed": -0.003, "height": 80.0, "kind": "xuanyuan",
+			"id": "xuanyuan", "name": "玄渊星",
+			"radius": 170.0 * PLANET_RADIUS_SCALE, "orbit": 8040.0 * ORBIT_SCALE, "gravity": 25.0,
+			"phase": 5.72, "speed": -0.003, "height": 80.0 * ORBIT_SCALE, "kind": "xuanyuan",
 			"color": Color("0b0d12"), "accent": Color("ff7a3c"),
 			"description": "1.25 G · 黑金巨门与坍缩前的暗核。"
 		},
 		# ---- 次天体：五颗不承载主线棱镜、但可着陆观测的次级星球 ----
 		{
-			"id": "baiyao", "name": "白曜星", "radius": 240.0, "orbit": 3200.0, "gravity": 9.0,
-			"phase": 1.05, "speed": 0.0031, "height": 240.0, "kind": "baiyao",
+			"id": "baiyao", "name": "白曜星",
+			"radius": 240.0 * PLANET_RADIUS_SCALE, "orbit": 3200.0 * ORBIT_SCALE, "gravity": 9.0,
+			"phase": 1.05, "speed": 0.0031, "height": 240.0 * ORBIT_SCALE, "kind": "baiyao",
 			"color": Color("b9c6cc"), "accent": Color("eaf7ff"),
 			"description": "0.45 G · 白垩冰原、冰棱塔林与霜蚀沟槽。"
 		},
 		{
-			"id": "pansha", "name": "磐砂星", "radius": 330.0, "orbit": 5400.0, "gravity": 22.0,
-			"phase": 2.78, "speed": -0.0026, "height": -240.0, "kind": "pansha",
+			"id": "pansha", "name": "磐砂星",
+			"radius": 330.0 * PLANET_RADIUS_SCALE, "orbit": 5400.0 * ORBIT_SCALE, "gravity": 22.0,
+			"phase": 2.78, "speed": -0.0026, "height": -240.0 * ORBIT_SCALE, "kind": "pansha",
 			"color": Color("a8794a"), "accent": Color("f0d9a8"),
 			"description": "1.1 G · 风蚀沙海、石柱阵与流沙谷。"
 		},
 		{
-			"id": "taiyuan", "name": "苔垣星", "radius": 290.0, "orbit": 6200.0, "gravity": 16.0,
-			"phase": 4.18, "speed": 0.0019, "height": 120.0, "kind": "taiyuan",
+			"id": "taiyuan", "name": "苔垣星",
+			"radius": 290.0 * PLANET_RADIUS_SCALE, "orbit": 6200.0 * ORBIT_SCALE, "gravity": 16.0,
+			"phase": 4.18, "speed": 0.0019, "height": 120.0 * ORBIT_SCALE, "kind": "taiyuan",
 			"color": Color("3f5a45"), "accent": Color("9fd68a"),
 			"description": "0.8 G · 苔原、石垣迷宫与湿雾低地。"
 		},
 		{
-			"id": "liuwu", "name": "硫坞星", "radius": 310.0, "orbit": 7100.0, "gravity": 27.0,
-			"phase": 5.35, "speed": -0.0035, "height": -80.0, "kind": "liuwu",
+			"id": "liuwu", "name": "硫坞星",
+			"radius": 310.0 * PLANET_RADIUS_SCALE, "orbit": 7100.0 * ORBIT_SCALE, "gravity": 27.0,
+			"phase": 5.35, "speed": -0.0035, "height": -80.0 * ORBIT_SCALE, "kind": "liuwu",
 			"color": Color("6d6a3a"), "accent": Color("d8e05a"),
 			"description": "1.35 G · 硫磺喷气孔、废弃船坞与酸雾沟。"
 		},
 		{
-			"id": "jianmo", "name": "缄默星", "radius": 150.0, "orbit": 9200.0, "gravity": 6.0,
-			"phase": 6.42, "speed": 0.0042, "height": 300.0, "kind": "jianmo",
+			"id": "jianmo", "name": "缄默星",
+			"radius": 150.0 * PLANET_RADIUS_SCALE, "orbit": 9200.0 * ORBIT_SCALE, "gravity": 6.0,
+			"phase": 6.42, "speed": 0.0042, "height": 300.0 * ORBIT_SCALE, "kind": "jianmo",
 			"color": Color("1b1620"), "accent": Color("9c7bd0"),
 			"description": "0.3 G · 黑曜石暗面、静默门阵与无声风。"
 		}
@@ -866,10 +905,24 @@ func _build_planets() -> void:
 		planet.planet_id = definition.id
 		planet.display_name = definition.name
 		planet.radius = definition.radius
+		# 地形起伏按「设计半径」算，不按放大后的半径算 ——
+		# 否则行星 ×3 之后地表也 ×3 崎岖，人类尺度的建筑接缝会出现米级落差、
+		# 贴地行走被判成瞬移（walk_test 三条会翻红）。详见 planet.gd 的注释。
+		planet.terrain_reference_radius = definition.radius / PLANET_RADIUS_SCALE
 		planet.gravity_strength = definition.gravity
 		planet.orbit_radius = definition.orbit
 		planet.orbit_phase = definition.phase
-		planet.orbit_speed = definition.speed
+		# ⚠ 角速度必须 ÷ORBIT_SCALE，让**线速度**保持设计值不变。
+		#
+		#   轨道半径 ×10 而角速度不变的话，线速度也 ×10：
+		#   青岚 6.6 → 66 m/s、沧波 14 → 143 m/s、缄默 39 → 386 m/s。
+		#   后果全是坏的：
+		#     · 玩家站在行星上，global_position 每帧被带走 2.4 米 ——
+		#       walk_test 里「每帧位移 < 1.5」三条直接翻红（不是测试错，是真瞬移）
+		#     · 手动着陆要匹配 143 m/s 的地面速度，基本不可能
+		#     · 撞击判定、自动驾驶的 Δv 预算全部要重标定
+		#   除回来之后线速度与放大前完全一致，星系只是「变大」而不是「变快」。
+		planet.orbit_speed = definition.speed / ORBIT_SCALE
 		planet.orbit_height = definition.height
 		planet.kind = definition.kind
 		planet.base_color = definition.color
@@ -1206,7 +1259,9 @@ func _build_menu_camera() -> void:
 	menu_camera = Camera3D.new()
 	menu_camera.fov = 52.0
 	menu_camera.near = 0.2
-	menu_camera.far = 60000.0
+	# ⚠ 2026-11-11 轨道 ×10 之后最远天体到相机约 20 万米：
+	#   原来 60000 会把远轨道整片裁掉（星球凭空消失）。放宽到 40 万米。
+	menu_camera.far = 400000.0
 	add_child(menu_camera)
 	menu_camera.current = true
 
@@ -1411,7 +1466,7 @@ func _build_station() -> void:
 	station = StationScript.new()
 	station.name = "HomecomingStation"
 	station.game = self
-	station.position = Vector3(4300.0, 1180.0, -1500.0)
+	station.position = Vector3(4300.0, 1180.0, -1500.0) * ORBIT_SCALE
 	station.rotation.y = 0.42
 	add_child(station)
 
@@ -1431,7 +1486,7 @@ const DISTANT_STATIONS := [
 		"name": "DistantStationAlpha",
 		"label": "远景站 · 环塔",
 		"model": "res://assets/models/space-station/model.glb",
-		"position": Vector3(-6200.0, 1650.0, -5400.0),
+		"position": Vector3(-6200.0, 1650.0, -5400.0) * ORBIT_SCALE,
 		"yaw": 62.0,
 		"spin": 0.010,
 		"dock_height": 0.42,
@@ -1441,7 +1496,7 @@ const DISTANT_STATIONS := [
 		"name": "DistantStationBeta",
 		"label": "远景站 · 双环",
 		"model": "res://assets/models/space-station-3/model.glb",
-		"position": Vector3(5400.0, 2050.0, 6800.0),
+		"position": Vector3(5400.0, 2050.0, 6800.0) * ORBIT_SCALE,
 		"yaw": -37.0,
 		"spin": 0.014,
 		"dock_height": 0.40,
