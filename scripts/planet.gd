@@ -311,33 +311,54 @@ func _build_lux3d_surface() -> bool:
 	_lux_root.add_child(inst)
 	add_child(_lux_root)
 
-	# ── 收集顶点到 _lux_root 的局部空间 ──
+	# ── 收集顶点 + 法线到 _lux_root 的局部空间 ──
 	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
 	var inv: Transform3D = _lux_root.global_transform.affine_inverse()
 	for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
 		var node := mi as MeshInstance3D
 		if node.mesh == null:
 			continue
 		var rel: Transform3D = inv * node.global_transform
+		# 法线要用法线矩阵变换（非等比缩放时不能直接乘 basis）
+		var nrm_basis: Basis = rel.basis.inverse().transposed()
 		for s in range(node.mesh.get_surface_count()):
 			var arrays: Array = node.mesh.surface_get_arrays(s)
 			var vv: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-			for v in vv:
-				verts.append(rel * v)
+			var nn: Variant = arrays[Mesh.ARRAY_NORMAL]
+			var has_n: bool = nn != null and (nn as PackedVector3Array).size() == vv.size()
+			for i in range(vv.size()):
+				verts.append(rel * vv[i])
+				if has_n:
+					normals.append((nrm_basis * (nn as PackedVector3Array)[i]).normalized())
+				else:
+					normals.append(Vector3.ZERO)
 	if verts.is_empty():
 		push_warning("Lux3D 模型没有顶点：%s" % lux_model_path)
 		return false
 
 	# ── 按方向分格取每格最大的 r（= 最外层表面）──
+	#
+	# ⚠ 两步过滤，针对实测的「diorama 星球」问题：
+	#   ① **法线朝内**的顶点不要 —— 那颗 GLB 有内部壳层（最近顶点 r=0.137，
+	#      半径比 4.56），内部壳的法线多半朝里，剔掉能少一大批干扰。
+	#   ② 逐格取 max 拿外壳（壳外的树叶、岩石会顶上来，交给后面的中值滤波）。
 	var cells := LUX_LAT_BINS * LUX_LON_BINS
 	var map := PackedFloat32Array()
 	map.resize(cells)
 	map.fill(-1.0)
-	for v in verts:
+	var skipped_inward := 0
+	for i in range(verts.size()):
+		var v: Vector3 = verts[i]
 		var r: float = v.length()
 		if r < 0.000001:
 			continue
 		var d: Vector3 = v / r
+		var n: Vector3 = normals[i]
+		# 有法线且明显朝内 → 内部结构，跳过
+		if n != Vector3.ZERO and n.dot(d) < -0.15:
+			skipped_inward += 1
+			continue
 		var li := clampi(int((asin(clampf(d.y, -1.0, 1.0)) / PI + 0.5) * LUX_LAT_BINS),
 			0, LUX_LAT_BINS - 1)
 		var oi := clampi(int((atan2(d.z, d.x) / TAU + 0.5) * LUX_LON_BINS),
@@ -345,6 +366,8 @@ func _build_lux3d_surface() -> bool:
 		var k := li * LUX_LON_BINS + oi
 		if r > map[k]:
 			map[k] = r
+	if skipped_inward > 0:
+		print("[Lux3D] %s：剔除朝内法线顶点 %d 个" % [planet_id, skipped_inward])
 
 	# ── 取中位数当「单位半径」，这样起伏围绕行星半径对称 ──
 	var filled: Array[float] = []
@@ -363,6 +386,17 @@ func _build_lux3d_surface() -> bool:
 		if map[i] > 0.0:
 			map[i] = map[i] * to_world
 	_fill_lux_gaps(map)
+	# ── 中值滤波：压掉树尖 / 岩尖 ──
+	#
+	# 这一步是「diorama 星球」能落地的关键。逐格取 max 之后，凡是格子里
+	# 有树或岩石，取到的就是**树顶**；格子在树之间的，取到的是地面。
+	# 于是高度表就是一片锯齿 —— 走上去等于在树冠之间蹦。
+	#
+	# 中值滤波能把「孤立的尖峰」抹掉而**保留大块平台**：
+	#   · 一棵树在赤道上约占 2 格（格宽 = 2πR/192，R=1200 时约 39 米）
+	#   · 观测台那块平台约占 10 格以上
+	# 半径 2（5×5）、跑 2 遍，正好吃掉树冠、留下平台。
+	map = _median_filter_lux(map, 2, 2)
 	_lux_height_map = map
 	_lux_height_ready = true
 
@@ -373,6 +407,31 @@ func _build_lux3d_surface() -> bool:
 		surface = mi as MeshInstance3D
 		break
 	return true
+
+
+## 对高度表做中值滤波（经度环绕、纬度夹紧）。
+##
+## 为什么用**中值**而不是均值：均值会把树尖的高度「摊」到周围一片，
+## 让整片地面抬高；中值直接丢到中间值，孤立的尖峰不影响邻域。
+func _median_filter_lux(map: PackedFloat32Array, radius: int, passes: int) -> PackedFloat32Array:
+	for _pass in range(passes):
+		var src := map.duplicate()
+		var side := radius * 2 + 1
+		var vals := PackedFloat32Array()
+		vals.resize(side * side)
+		for li in range(LUX_LAT_BINS):
+			for oi in range(LUX_LON_BINS):
+				var w := 0
+				for dy in range(-radius, radius + 1):
+					var yy := clampi(li + dy, 0, LUX_LAT_BINS - 1)
+					for dx in range(-radius, radius + 1):
+						var xx := (oi + dx + LUX_LON_BINS) % LUX_LON_BINS
+						vals[w] = src[yy * LUX_LON_BINS + xx]
+						w += 1
+				var part := vals.slice(0, w)
+				part.sort()
+				map[li * LUX_LON_BINS + oi] = part[part.size() / 2]
+	return map
 
 
 ## 把高度表里的空洞（没有顶点的方向格）用邻格扩散补上。

@@ -15,7 +15,7 @@ extends SceneTree
 #
 #   godot --headless --path . --script res://tests/probe_planet_glb_shape.gd
 
-const GLB := "res://assets/models/qinglan-planet/model.glb"
+const GLB_DEFAULT := "res://assets/models/qinglan-planet/model.glb"
 ## 方向采样粒度：纬度分多少格（经度是它的 2 倍）
 const LAT_BINS := 64
 const LON_BINS := 128
@@ -26,9 +26,14 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var packed: PackedScene = load(GLB)
+	# 允许用命令行覆盖模型路径：
+	#   --script res://tests/probe_planet_glb_shape.gd -- res://assets/models/xxx/model.glb
+	var args := OS.get_cmdline_user_args()
+	var glb: String = args[0] if args.size() > 0 else GLB_DEFAULT
+	print("模型: %s" % glb)
+	var packed: PackedScene = load(glb)
 	if packed == null:
-		print("FAIL: 加载失败 %s" % GLB)
+		print("FAIL: 加载失败 %s" % glb)
 		quit(1)
 		return
 	var root_node := packed.instantiate() as Node3D

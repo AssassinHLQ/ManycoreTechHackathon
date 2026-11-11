@@ -248,6 +248,22 @@
       "modified_by": "tools/glb_externalize.py",
       "generated_by_tool": "Aholo Lux3D OpenAPI（cn 区域）",
       "task_id_note": "生成任务台账在 _lux3d_work/logs/collection.sqlite"
+    },
+    {
+      "slug": "qinglan-planet-v2-ai-generated",
+      "original_file": "(AI 生成，无原始下载文件)",
+      "title": "青岚星 · 完整星球（v2 单一闭合球面）",
+      "author": "AI 生成（Aholo Lux3D，text-to-3D G1-Turbo）",
+      "license": "本项目自有（AI 生成内容，无第三方版权与署名义务）",
+      "attribution": "Aholo Lux3D 生成，本项目自有；不含第三方素材",
+      "source_url": "https://labs.aholo3d.cn/",
+      "imported": true,
+      "imported_slug": "qinglan-planet-v2",
+      "imported_path": "assets/models/qinglan-planet-v2/model.glb",
+      "modifications": "Aholo Lux3D text-to-3D 生成（G1-Turbo，目标 120000 面，实测 108996 面，扣 13 credits）。相比 v1 改为**单一闭合球面**：无独立树木/石块/内部壳层，地表起伏控制在半径 ±2.3% 以内（实测顶点半径比 1.068、方向格填充率 95%、折叠格 0%），以便游戏按方向取高度做可着陆地形。贴图由 Godot 导入器自动提取为 model_0.png / model_1.png；未做其它几何修改",
+      "modified_by": "（未修改几何，仅 Godot 导入）",
+      "generated_by_tool": "Aholo Lux3D OpenAPI（cn 区域）",
+      "task_id_note": "Lux3D taskId 6359517；生成任务台账在 _lux3d_work/logs/collection_v2.sqlite"
     }
   ]
 }

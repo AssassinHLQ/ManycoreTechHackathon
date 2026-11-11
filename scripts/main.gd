@@ -116,6 +116,7 @@ const BH_POSITION_SCALE := 10.0
 ##   到时候只要在这里加一行：
 ##     "qinglan": "res://assets/models/qinglan-planet/model.glb",
 const LUX3D_PLANET_MODELS := {
+	"qinglan": "res://assets/models/qinglan-planet-v2/model.glb",
 }
 
 var sun_radius := 260.0 * SUN_SCALE
