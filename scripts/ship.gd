@@ -27,6 +27,20 @@ const HULL_Y := 1.0
 const HULL_Z := 3.25
 const AUTOPILOT_ACCEL := 230.0
 const AUTOPILOT_FUEL_PER_DV := 0.008
+## 自动航行的巡航速度上限（米/秒）。远距离赶路时压在这条线上。
+const AUTOPILOT_CRUISE := 900.0
+## 速度剖面按「可用减速度的多少比例」来设计。
+##
+## 这个值不能到 0.5，原因见 _autopilot_desired_speed 的注释：
+## sqrt 剖面与蠕行剖面的交点处，减速需求恒等于「2 x 剖面减速度」。
+## 取 0.35 就是「最坏情况下也只用掉 70% 的机动能力」，留 30% 给跟踪误差。
+const AUTOPILOT_BRAKE_FRACTION := 0.35
+## 可用减速度的下限。行星引力最大 32，留个地板免得剖面被压成 0 而卡死。
+const AUTOPILOT_BRAKE_FLOOR := 30.0
+## 末端指数逼近的时间常数（秒）。d/tau 就是最后几米的下降速度。
+const AUTOPILOT_CREEP_TIME := 1.0
+## 期望停在地表上方多高。留 2.6 米，落点判定（< 3.4 米）之前就已经几乎悬停。
+const AUTOPILOT_TOUCHDOWN_ALT := 2.6
 const MANUAL_FUEL_PER_DV := 0.00625
 ## RCS 姿态控制：每转过 1 弧度消耗多少推进剂。
 ##
@@ -212,6 +226,9 @@ const TURN_BUDGET_MAX := deg_to_rad(120.0)
 
 ## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
 var _turn_velocity := Vector3.ZERO
+## 上一帧的待转量（弧度）。用来判断这一帧是「起转/维持」（待转量在涨）
+## 还是「收尾」（待转量在跌）—— 两段走不同曲线，见 _apply_attitude。
+var _attitude_prev_budget := 0.0
 ## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
 var forward_input := 0.0
 
@@ -954,12 +971,22 @@ func _build_model() -> void:
 ##   差角小时磨磨蹭蹭，既不像飞机，也没法做「转得慢」的体感。
 ##   玩家看到的就是「鼠标一动船就歪过去了」。
 ##
-## 现在用 **√ 曲线消费「待转量」**：
-##   rate = MAX_TURN_RATE * sqrt(clamp(budget / TURN_FULL_ANGLE, 0, 1))
+## ⚠ 2026-11-11 用户：「现在还是太灵活了，一开始说的根号 x 改成 y=x 的平方看看，
+##   衰减还是按照根号 x」。
+##
+##   所以现在**起转用平方、收尾用根号**，两段不同曲线：
+##
+##   · 起转段（待转量在增长 / 玩家正在推鼠标）→ `u²`
+##       小输入几乎不动，推到位才猛起来 —— 治「太灵活」。
+##       这正好是用户要的 `y = x²`：x 小时 y 极小。
+##   · 收尾段（待转量在减少 / 玩家已松手）→ `√u`
+##       尾部靠 0 时仍保有一定转速，干脆利落地停住，不拖泥带水。
+##
+##   判据用「待转量这一帧是涨还是跌」：_attitude_prev_budget 记住上一帧的量，
+##   比较即得。第一帧没有历史时按起转处理（保守，偏慢）。
+##
+##   rate = MAX_TURN_RATE * curve(u)
 ##   step = min(rate * delta, budget)
-##   · 待转量小（刚推鼠标）→ rate 小 → **先慢**
-##   · 待转量堆积（持续拖）→ rate 升到上限 → **后快**
-##   · 待转量被消耗变小 → rate 降 → **缓停**
 ##   · step 永远 ≤ budget → **结构上不可能过冲或回弹**
 ##
 ## ⚠ 这是姿态控制（喷口在做功），不是凭空改速度 —— 速度矢量完全不受影响。
@@ -971,6 +998,7 @@ func _apply_attitude(delta: float) -> float:
 		# 待转量排空：飞船精确停在鼠标要求的位置，没有任何余速
 		turn_budget = Quaternion.IDENTITY
 		_turn_velocity = Vector3.ZERO
+		_attitude_prev_budget = 0.0
 		return 0.0
 
 	var axis := _quat_axis(turn_budget)
@@ -978,10 +1006,15 @@ func _apply_attitude(delta: float) -> float:
 		turn_budget = Quaternion.IDENTITY
 		return 0.0
 	var u := clampf(budget / TURN_FULL_ANGLE, 0.0, 1.0)
-	var speed := MAX_TURN_RATE * sqrt(u)
+	# 待转量在减少 = 收尾阶段 → 用根号（尾部有力，停得干脆）
+	# 否则 = 起转 / 维持阶段 → 用平方（小输入几乎不动，治「太灵活」）
+	var winding_down := budget < _attitude_prev_budget - 0.0000001
+	var curve := sqrt(u) if winding_down else u * u
+	var speed := MAX_TURN_RATE * curve
 	var step_angle := minf(speed * delta, budget)
 
 	_turn_velocity = axis * speed
+	_attitude_prev_budget = budget
 
 	# 绕**本体系**轴右乘 —— 与 turn_budget 的累积方式一致。
 	# 因为旋转轴就是待转量自己的轴，两者可交换，所以消费时直接缩短角度即可。
@@ -1227,14 +1260,20 @@ func _physics_process(delta: float) -> void:
 	var thrusting := false
 
 	if autopilot and target != null:
-		var to_target: Vector3 = target.global_position - global_position
-		var target_altitude: float = to_target.length() - target.radius
-		var desired_speed := clampf((target_altitude - 8.0) * 1.25, 18.0, 900.0)
-		if target_altitude < 150.0:
-			desired_speed = clampf((target_altitude - 4.0) * 0.28, 3.0, 42.0)
+		# 自动驾驶也要吃引力。
+		#
+		# 旧版把 `velocity += gravity * delta` 只写在手动分支里，自动航行等于
+		# 在一个没有引力的空间里飞 —— 它算出来的速度剖面根本没考虑自己还在往下掉。
+		# 这里先加引力，紧接着的 move_toward 会立刻把它抵掉，
+		# 所以效果是「自动驾驶知道自己在掉，并主动修正」，而不是被拽偏。
+		velocity += gravity * delta
+		var target_velocity := _target_orbital_velocity()
+		var target_altitude := _target_altitude(target)
+		var desired_speed := _autopilot_desired_speed(target_altitude, gravity)
 		var aim := _autopilot_aim(target.global_position)
 		var desired_direction := (aim - global_position).normalized()
-		var desired_velocity := desired_direction * desired_speed
+		# 期望速度以「地面」为参照系：行星在公转，相对速度才算数。
+		var desired_velocity := desired_direction * desired_speed + target_velocity
 		var before_velocity := velocity
 		velocity = velocity.move_toward(desired_velocity, delta * AUTOPILOT_ACCEL)
 		var delta_v := velocity.distance_to(before_velocity)
@@ -1295,20 +1334,26 @@ func _physics_process(delta: float) -> void:
 		#   一按就满速、一松就停。现在改成**包络控制**：
 		#     按下时包络上升 → 转速从 0 平滑加速到 ROLL_RATE
 		#     松开时包络下降 → 转速平滑回落到 0
-		#   包络曲线用 smoothstep（两端导数为 0）：
-		#     env = ramp² × (3 − 2×ramp)
-		#   这就是「先慢 → 越来越快 → 最后缓停」，
-		#   也就是用户要的「起转和停转都按 √ 形状平滑」的严密版本
-		#   （smoothstep 两端斜率都是 0，比 √ 更平滑，且不会在松手瞬间跳变）。
+		#
+		# ⚠ 2026-11-11 用户：「现在还是太灵活了，一开始说的根号 x 改成 y=x 的平方看看，
+		#   衰减还是按照根号 x」。和鼠标转向同样的处理，起转/收尾分开：
+		#
+		#   · 起转（按住 A/D，包络在涨）→ `ramp²`  小输入几乎不翻，越按越猛
+		#   · 收尾（松开，包络在跌）     → `√ramp`  尾部有力，停得干脆
+		#
+		#   原来的 smoothstep（ramp²(3-2ramp)）两端都很软，按下去和松开都「黏」，
+		#   这正是「太灵活 / 太飘」的来源。平方起转明显更「沉」。
 		var roll_input := Input.get_axis("move_right", "move_left")
 		var rolling := absf(roll_input) > 0.05 and fuel > 0.0
+		var prev_ramp := _roll_ramp
 		if rolling:
 			_roll_dir = signf(roll_input)
 			_roll_ramp = minf(_roll_ramp + delta / ROLL_RAMP_TIME, 1.0)
 		else:
 			_roll_ramp = maxf(_roll_ramp - delta / ROLL_RAMP_TIME, 0.0)
 		if _roll_ramp > 0.0005 and fuel > 0.0:
-			var env := _roll_ramp * _roll_ramp * (3.0 - 2.0 * _roll_ramp)
+			# 包络在跌 = 收尾 → 根号；在涨或持平 = 起转 → 平方
+			var env := sqrt(_roll_ramp) if _roll_ramp < prev_ramp else _roll_ramp * _roll_ramp
 			var roll_step: float = _roll_dir * ROLL_RATE * env * delta
 			_roll_by_angle(roll_step)
 			fuel = maxf(0.0, fuel - absf(roll_step) * RCS_FUEL_PER_RAD)
@@ -1401,12 +1446,37 @@ func _physics_process(delta: float) -> void:
 	normal = offset.normalized()
 	altitude = offset.length() - planet.terrain_height(normal)
 	if altitude < 3.4:
-		var impact_speed := velocity.length()
-		if impact_speed < 14.0 or autopilot:
+		# 撞击严重程度 = 「相对地面、沿地面法线的接近速度」。
+		#
+		# 不能再用 velocity.length()（飞船自己的绝对速度）。行星在以
+		# 10~39 m/s 公转（缄默星 0.0042 rad/s x 9200 m = 38.6），这个速度
+		# 玩家看不见也匹配不了，拿它算伤害等于随机扣血：
+		#   · 跟着行星同步飞行的飞船（新版自动航行就是这样）相对静止，
+		#     却会被判成 38.6 m/s 撞击 —— 自动驾驶每落一次炸一次。
+		#   · 反过来，飞船自己速度为 0 时又完全免责。
+		#
+		# 也不能用「相对速度的模长」。试过，会在反弹上出现刀锋平衡：
+		# 反弹把径向速度置成 12（低于 14 的门槛，本该着陆），但飞船并没有
+		# 拿到行星的切向速度，于是 |相对速度| = sqrt(12^2 + 6.6^2) = 13.7~15.2
+		# 在门槛上来回跳 —— 实测变成「每 1.8 秒扣 6.4 点船体直到解体」。
+		#
+		# 取法线方向的分量就没这个问题：它只回答「撞得有多狠」，
+		# 切向的擦碰不算撞地。行星公转是切向的，也不会把地面「扫」进一艘
+		# 静止的飞船里，所以这样取不会漏掉任何真实的撞击。
+		var ground_velocity: Vector3 = planet.orbital_velocity()
+		var relative_velocity: Vector3 = velocity - ground_velocity
+		var impact_speed := maxf(0.0, -relative_velocity.dot(normal))
+		# 旧版这里写的是 `if impact_speed < 14.0 or autopilot:`。
+		# 那个 `or autopilot` 就是用户说的「毫发无伤」：自动航行哪怕以
+		# 348 m/s 砸到地面，也走 land() 这条路 —— 直接判定为完美着陆。
+		# 当时的用意是「自动航行负责安全降落」，但那是拿豁免掩盖剖面算错，
+		# 所以现在两处一起改：剖面改成动力学可行的（见 _autopilot_desired_speed），
+		# 豁免删掉 —— 自动驾驶要是真撞快了，它也得挨这一下。
+		if impact_speed < 14.0:
 			land(planet)
 		else:
 			global_position = planet.global_position + planet.surface_position(normal, 5.0)
-			velocity = normal * maxf(12.0, impact_speed * 0.42)
+			velocity = ground_velocity + normal * maxf(12.0, impact_speed * 0.42)
 			if impact_cooldown <= 0.0:
 				hull = maxf(0.0, hull - impact_speed * 0.42)
 				impact_cooldown = 1.2

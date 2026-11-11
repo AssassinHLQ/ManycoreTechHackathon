@@ -986,6 +986,31 @@ func _update_orbit() -> void:
 	position = Vector3(cos(angle) * orbit_radius, orbit_height + sin(angle * 1.7) * 50.0, sin(angle) * orbit_radius)
 
 
+## 行星此刻的公转速度（米/秒，世界坐标）。
+##
+## 就是 `_update_orbit` 里那条轨迹对时间的导数：
+##   p = (cos a·R, h + sin(1.7a)·50, sin a·R)，  a = phase + speed·t
+##   v = (−sin a·R·ω, cos(1.7a)·50·1.7·ω, cos a·R·ω)
+##
+## 为什么不直接拿两帧位置差去近似：`_process` 的 delta 会抖，
+## 而且行星每秒只走 10～50 米，差分出来的噪声比信号还大。
+## 解析式既准确又和 `elapsed` 严格同步。
+##
+## 飞船侧要用它的两个地方：
+##   · 自动航行把「期望速度」加上它 —— 否则飞船是在追一个会跑的靶子，
+##     落到地面附近时相对速度全被行星的公转抵掉，剖面就白算了；
+##   · 撞击判定用「相对地面」的速度 —— 一颗以 50 m/s 掠过你的行星
+##     扫过一艘静止的飞船，那是真撞击，不能因为飞船自己没动就免责。
+func orbital_velocity() -> Vector3:
+	var t: float = game.elapsed if game != null else 0.0
+	var angle := orbit_phase + orbit_speed * t
+	var w := orbit_speed
+	return Vector3(
+		-sin(angle) * orbit_radius * w,
+		cos(angle * 1.7) * 50.0 * 1.7 * w,
+		cos(angle) * orbit_radius * w)
+
+
 func _material(color: Color, emission := 0.0) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
