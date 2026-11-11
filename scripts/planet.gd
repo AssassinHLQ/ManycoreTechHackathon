@@ -199,6 +199,8 @@ const LUX_LAT_BINS := 96
 const LUX_LON_BINS := 192
 ## Lux3D 模型的挂载根（缩放后挂在行星下）。
 var _lux_root: Node3D
+## 站点平地高度（Lux3D 分支压平网格后记下来，供 _ready 重算 site_height 对照）。
+var _lux_pad_height := 0.0
 
 
 func _build_surface() -> void:
@@ -253,32 +255,30 @@ func _ensure_terrain_collision() -> void:
 	# 占整场构建的两成）。改成飞船或玩家靠近本星球时再建，落地前早就建好了。
 	if terrain_collision_done:
 		return
-	# ── Lux3D 分支：模型可能拆成多个 MeshInstance3D，逐个建碰撞 ──
+	# ── Lux3D 分支 ──
+	#
+	# ⚠ 碰撞体**不能用** Lux3D 网格，要用按高度表生成的程序化球面，原因：
+	#   Lux3D 网格 15 万面摊在整个球上，顶点间距约 11 米；
+	#   而站点平地半径 46 米只容得下约 4 个顶点 —— 那么粗的网格表达不了
+	#   「一块平地」，玩家走上去会踩在参差的三角面上，洞穴坡道那 12.85 米
+	#   的下沉会被顶穿（实测 walk_test 的 spiral ramp 因此翻红）。
+	#
+	#   程序化球面是 256×128，间距约 30 米但**均匀且与 terrain_height 同源**，
+	#   所以物理表面与地形查询、以及 Lux3D 的可视表面三者一致。
 	if _lux_root != null:
 		terrain_collision_done = true
+		var col_mesh := _build_heightfield_surface_mesh()
+		if col_mesh == null:
+			push_warning("Lux3D 行星建不出碰撞网格：%s" % planet_id)
+			return
 		var body := StaticBody3D.new()
 		body.name = "TerrainCollision"
 		body.collision_layer = 1
 		body.collision_mask = 0
-		var inv: Transform3D = global_transform.affine_inverse()
-		var count := 0
-		for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
-			var node := mi as MeshInstance3D
-			if node.mesh == null:
-				continue
-			var shape := node.mesh.create_trimesh_shape()
-			if shape == null:
-				continue
-			var col := CollisionShape3D.new()
-			col.shape = shape
-			# 子网格相对**本行星**的变换（碰撞体挂在行星下）
-			col.transform = inv * node.global_transform
-			body.add_child(col)
-			count += 1
-		if count > 0:
-			add_child(body)
-		else:
-			push_warning("Lux3D 行星没有任何可建碰撞的子网格：%s" % planet_id)
+		var collision := CollisionShape3D.new()
+		collision.shape = col_mesh.create_trimesh_shape()
+		body.add_child(collision)
+		add_child(body)
 		return
 	if surface == null or surface.mesh == null:
 		return
@@ -287,10 +287,37 @@ func _ensure_terrain_collision() -> void:
 	body2.name = "TerrainCollision"
 	body2.collision_layer = 1
 	body2.collision_mask = 0
-	var collision := CollisionShape3D.new()
-	collision.shape = surface.mesh.create_trimesh_shape()
-	body2.add_child(collision)
+	var collision2 := CollisionShape3D.new()
+	collision2.shape = surface.mesh.create_trimesh_shape()
+	body2.add_child(collision2)
 	add_child(body2)
+
+
+## 按 `terrain_height()` 生成一张**专用的地形网格**（只用于碰撞，不显示）。
+##
+## 与 `_build_surface` 的程序化分支同一套做法，但独立成函数，好让 Lux3D 星球
+## 也能拿到一张「与高度查询完全同源」的物理表面。
+func _build_heightfield_surface_mesh() -> ArrayMesh:
+	var sphere := SphereMesh.new()
+	sphere.radius = radius
+	sphere.height = radius * 2.0
+	sphere.radial_segments = 256 if cave_enabled else 128
+	sphere.rings = 128 if cave_enabled else 64
+	var arrays := sphere.get_mesh_arrays()
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	for i in range(vertices.size()):
+		var d := vertices[i].normalized()
+		vertices[i] = d * terrain_height(d)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	if cave_enabled:
+		arrays[Mesh.ARRAY_INDEX] = _cut_cave_hole(arrays, vertices)
+	var raw := ArrayMesh.new()
+	raw.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var st := SurfaceTool.new()
+	st.create_from(raw, 0)
+	st.generate_normals()
+	var committed := st.commit()
+	return committed
 
 
 ## 加载 Lux3D 模型当可见表面，并烘出「方向 → 高度」表。
@@ -400,6 +427,35 @@ func _build_lux3d_surface() -> bool:
 	_lux_height_map = map
 	_lux_height_ready = true
 
+	# ── 把模型在「站点附近」压平，让可视网格 = 碰撞体 = terrain_height ──
+	#
+	# ⚠ 这是 Lux3D 星球特有的坑，程序化星球没有：
+	#   `terrain_height()` 在建筑站点附近会把高度**混合压平**成 site_height，
+	#   但碰撞体用的是**原始 GLB 网格**（没被压平）。两者一高一低，
+	#   洞穴坡道那 12.85 米的下沉就会被地表顶穿 ——
+	#   实测 walk_test 的「spiral ramp sample 64」因此翻红。
+	#
+	#   所以这里按**完全相同的混合公式**把网格顶点也压平，
+	#   三份数据（可视 / 碰撞 / 高度查询）从此一致。
+	var site_raw: float = _sample_lux_map(map, site_direction.normalized())
+	var pad_angle: float = site_pad_radius / radius
+	var pad_outer: float = pad_angle * 1.6
+	# ⚠ Lux3D 星球把洞穴口放宽 40%：
+	#   程序化星球的地表在洞口附近本来就是起伏的，玩家被洞口边缘挡住时会顺着
+	#   斜坡滑下去；而 Lux3D 星球这里被压成了**一块平地**，洞口边缘变成一道
+	#   硬台阶，玩家（螺旋半径 8.4 米）会被抬到台面上而不是落进坡道 ——
+	#   实测 walk_test 的 spiral ramp sample 24 差了 1.71 米。
+	#   放宽洞口让台阶退到螺旋半径之外。
+	if cave_enabled:
+		# ⚠ 只放宽洞口，**不放大平地**。
+		#   实测把平地放大到 1.6/2.2 倍反而让失败数从 0~1 涨到 1~2（平地边缘
+		#   压到了观测塔自身的测试点）。洞口放宽 40% 才是对症的那一刀：
+		#   让被压平的洞口台阶退到螺旋半径 8.4 米之外。
+		cave_hole_angle *= 1.4
+	_displace_lux_mesh_to_pad(to_world, site_raw, pad_angle, pad_outer)
+	# 站点基准高度用**压平后的**值，后面 _ready 里重算时会得到同一个数
+	_lux_pad_height = site_raw
+
 	# ── 缩放并挂上模型（模型单位 → 米）──
 	_lux_root.scale = Vector3.ONE * to_world
 	# surface 变量指向第一个网格，供外部只读引用（碰撞走 _lux_root 分支）
@@ -407,6 +463,58 @@ func _build_lux3d_surface() -> bool:
 		surface = mi as MeshInstance3D
 		break
 	return true
+
+
+## 把 Lux3D 网格的顶点在站点附近按 `terrain_height` 的平地混合公式压平。
+##
+## 混合公式必须与 `terrain_height` 里那句完全一致：
+##     angular = acos(dir · site_direction)
+##     blend   = 1 - smoothstep(pad_angle, pad_outer, angular)
+##     h       = lerp(原始高度, site_height, blend)
+func _displace_lux_mesh_to_pad(to_world: float, site_h: float,
+		pad_angle: float, pad_outer: float) -> void:
+	if _lux_root == null or to_world <= 0.0:
+		return
+	var site_dir: Vector3 = site_direction.normalized()
+	var touched := 0
+	for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
+		var node := mi as MeshInstance3D
+		if node.mesh == null:
+			continue
+		var new_mesh := ArrayMesh.new()
+		var changed_any := false
+		for s in range(node.mesh.get_surface_count()):
+			var arrays: Array = node.mesh.surface_get_arrays(s)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			for i in range(verts.size()):
+				var v: Vector3 = verts[i]
+				var r: float = v.length()
+				if r < 0.000001:
+					continue
+				var dir: Vector3 = v / r
+				var angular: float = acos(clampf(dir.dot(site_dir), -1.0, 1.0))
+				if angular >= pad_outer:
+					continue
+				var blend: float = 1.0 - smoothstep(pad_angle, pad_outer, angular)
+				if blend <= 0.0:
+					continue
+				# 当前世界半径 → 目标世界半径 → 折算回模型局部单位
+				var cur_world: float = r * to_world
+				var target_world: float = lerpf(cur_world, site_h, blend)
+				verts[i] = dir * (target_world / to_world)
+				changed_any = true
+				touched += 1
+			arrays[Mesh.ARRAY_VERTEX] = verts
+			new_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+			# 保住原材质
+			var mat: Material = node.mesh.surface_get_material(s)
+			if mat != null:
+				new_mesh.surface_set_material(s, mat)
+		if changed_any:
+			node.mesh = new_mesh
+	if touched > 0:
+		print("[Lux3D] %s：压平站点周围顶点 %d 个（与 terrain_height 对齐）" % [
+			planet_id, touched])
 
 
 ## 对高度表做中值滤波（经度环绕、纬度夹紧）。
@@ -473,8 +581,13 @@ func _fill_lux_gaps(map: PackedFloat32Array) -> void:
 			map[i] = radius
 
 
-## 按方向双线性插值取 Lux3D 高度表里的值。
+## 按方向双线性插值取高度表里的值。
 func _sample_lux_height(dir: Vector3) -> float:
+	return _sample_lux_map(_lux_height_map, dir)
+
+
+## 对任意高度表按方向做双线性插值（`_sample_lux_height` 的通用版）。
+func _sample_lux_map(map: PackedFloat32Array, dir: Vector3) -> float:
 	var lat: float = asin(clampf(dir.y, -1.0, 1.0)) / PI + 0.5     # 0..1
 	var lon: float = atan2(dir.z, dir.x) / TAU + 0.5                 # 0..1
 	var fy: float = lat * float(LUX_LAT_BINS) - 0.5
@@ -486,10 +599,10 @@ func _sample_lux_height(dir: Vector3) -> float:
 	var tx: float = fx - float(x0i)
 	var x0 := (x0i % LUX_LON_BINS + LUX_LON_BINS) % LUX_LON_BINS
 	var x1 := (x0 + 1) % LUX_LON_BINS
-	var v00: float = _lux_height_map[y0 * LUX_LON_BINS + x0]
-	var v01: float = _lux_height_map[y0 * LUX_LON_BINS + x1]
-	var v10: float = _lux_height_map[y1 * LUX_LON_BINS + x0]
-	var v11: float = _lux_height_map[y1 * LUX_LON_BINS + x1]
+	var v00: float = map[y0 * LUX_LON_BINS + x0]
+	var v01: float = map[y0 * LUX_LON_BINS + x1]
+	var v10: float = map[y1 * LUX_LON_BINS + x0]
+	var v11: float = map[y1 * LUX_LON_BINS + x1]
 	var a: float = lerpf(v00, v01, tx)
 	var b: float = lerpf(v10, v11, tx)
 	return lerpf(a, b, ty)

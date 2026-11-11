@@ -116,7 +116,16 @@ const BH_POSITION_SCALE := 10.0
 ##   到时候只要在这里加一行：
 ##     "qinglan": "res://assets/models/qinglan-planet/model.glb",
 const LUX3D_PLANET_MODELS := {
-	"qinglan": "res://assets/models/qinglan-planet-v2/model.glb",
+	"qinglan": "res://assets/models/qinglan-planet-v5/model.glb",
+	"zheya": "res://assets/models/zheya-lux3d-v2/model.glb",
+	"cangbo": "res://assets/models/cangbo-lux3d-v2/model.glb",
+	"xuanjing": "res://assets/models/xuanjing-lux3d-v2/model.glb",
+	"xuanyuan": "res://assets/models/xuanyuan-lux3d-v2/model.glb",
+	"baiyao": "res://assets/models/baiyao-lux3d-v2/model.glb",
+	"pansha": "res://assets/models/pansha-lux3d-v2/model.glb",
+	"taiyuan": "res://assets/models/taiyuan-lux3d-v2/model.glb",
+	"liuwu": "res://assets/models/liuwu-lux3d-v2/model.glb",
+	"jianmo": "res://assets/models/jianmo-lux3d-v2/model.glb",
 }
 
 var sun_radius := 260.0 * SUN_SCALE
