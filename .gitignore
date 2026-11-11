@@ -25,6 +25,27 @@ build/
 #   想让展示图入库时，把下面这行删掉，再单独 add 需要的几个文件即可。
 captures/
 
+# ── Aholo Lux3D 生成的资产（不入库，省仓库体积与流量）─────────────
+#
+# 用户 2026-11-11 决定：**所有 Aholo / Lux3D 产出都不进版本库**，
+# 把流量与仓库空间留给真正需要的代码。
+#
+# 覆盖两类：
+#   · 星球表面：assets/models/<id>-lux3d/ 与 <id>-lux3d-v2/
+#   · 道具模型：assets/models/props/ 下的 AI 生成件
+#
+# ⚠ 注意：.gitignore 只对**未跟踪**的文件生效。
+#   已经进来的 57 个文件（217 MB）需要 `git rm --cached` 才会退出索引，
+#   而且它们仍留在历史里 —— 想真正减小 clone 体积得改写历史（风险高，不建议赶工期做）。
+#   这里的规则作用是「**不再继续长大**」。
+assets/models/*-lux3d/
+assets/models/*-lux3d-v2/
+assets/models/props/
+# 导入侧车也要一起忽略，否则 .glb 不存在时 .import 会指向空文件
+assets/models/*-lux3d/**/*.import
+assets/models/*-lux3d-v2/**/*.import
+assets/models/props/**/*.import
+
 # ── 手写备份与临时件（有 git 之后不该再手写备份，提交历史就是备份）──
 *.bak
 *.bak_*
