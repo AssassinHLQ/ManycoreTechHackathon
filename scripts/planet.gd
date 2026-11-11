@@ -69,6 +69,94 @@ const PROP_INSTANCE_CAP := {
 	"floating-rock": 8,
 }
 
+## 每颗星球的 AI 道具组合：kind → [prop_id, 数量, 尺寸下限, 尺寸上限, 是否靠基地, 悬浮?]
+##
+## ⚠ 2026-11-11 目标 ③「按星球类型与 prop_scale 布置更多物体、环境与特殊地标」。
+##   组合依据是每颗星球的设定文字（见 main.gd 的 description）：
+##     青岚=雾松林+石砌村舍+旧观测塔 → 树密、遗迹拱门、方尖碑、穹顶
+##     赭崖=盐碱裂谷+间歇喷泉+断裂观测环 → 喷口、尖峰、中继塔
+##     悬晶=环站残骸+磁性矿石+低空碎片 → 晶簇、悬浮石、中继塔
+##     缄默=黑曜石暗面+静默门阵 → 方尖碑阵、黑曜石尖峰
+##     瑶光=耀眼晶脊+朝下的镜面 → 晶簇极密、尖峰、悬浮石
+##   尺寸单位是「设计米数」，运行时会再乘 prop_scale。
+const PLANET_PROPS := {
+	"qinglan": [["ruin-arch", 3, 34, 52, true], ["obelisk", 4, 40, 70, false],
+		["dome-habitat", 2, 34, 50, true], ["rock-cluster", 6, 20, 40, false]],
+	"zheya": [["vent", 8, 24, 44, false], ["rock-spire", 10, 30, 70, false],
+		["signal-tower", 3, 46, 80, true], ["ruin-arch", 2, 30, 46, false]],
+	"cangbo": [["crystal-cluster", 10, 20, 44, false], ["dome-habitat", 3, 30, 46, true],
+		["floating-rock", 5, 26, 50, false]],
+	"xuanjing": [["crystal-cluster", 12, 22, 50, false], ["floating-rock", 8, 26, 54, false],
+		["signal-tower", 3, 44, 76, true]],
+	"xuanyuan": [["obelisk", 8, 46, 90, true], ["ruin-arch", 3, 36, 58, false],
+		["rock-spire", 6, 34, 76, false]],
+	"baiyao": [["rock-spire", 12, 32, 78, false], ["crystal-cluster", 8, 22, 46, false],
+		["dome-habitat", 2, 30, 44, true]],
+	"pansha": [["rock-spire", 14, 34, 86, false], ["ruin-arch", 3, 32, 52, false],
+		["rock-cluster", 10, 22, 46, false]],
+	"taiyuan": [["ruin-arch", 4, 32, 54, false], ["rock-cluster", 10, 20, 42, false],
+		["dome-habitat", 2, 30, 44, true]],
+	"liuwu": [["vent", 10, 26, 48, false], ["dome-habitat", 3, 32, 48, true],
+		["signal-tower", 2, 44, 72, false], ["rock-cluster", 6, 20, 38, false]],
+	"jianmo": [["obelisk", 12, 44, 92, false], ["rock-spire", 10, 32, 74, false],
+		["floating-rock", 5, 24, 48, false]],
+	"jiangxiao": [["rock-spire", 10, 30, 68, false], ["vent", 5, 22, 42, false],
+		["ruin-arch", 2, 30, 48, false]],
+	"cangwu": [["ruin-arch", 3, 32, 52, true], ["rock-cluster", 8, 20, 40, false],
+		["obelisk", 3, 40, 66, false]],
+	"jinwu": [["rock-cluster", 12, 22, 46, false], ["obelisk", 5, 42, 74, false],
+		["vent", 4, 22, 40, false]],
+	"yuheng": [["crystal-cluster", 10, 22, 46, false], ["obelisk", 4, 38, 64, false],
+		["rock-cluster", 8, 20, 38, false]],
+	"sue": [["obelisk", 10, 40, 76, false], ["rock-cluster", 10, 20, 40, false],
+		["floating-rock", 4, 24, 46, false]],
+	"danxia": [["rock-cluster", 12, 22, 48, false], ["rock-spire", 8, 30, 66, false],
+		["ruin-arch", 2, 30, 48, false]],
+	"biluo": [["crystal-cluster", 8, 20, 40, false], ["floating-rock", 6, 24, 46, false],
+		["dome-habitat", 3, 30, 44, true]],
+	"youdu": [["crystal-cluster", 12, 22, 48, false], ["rock-spire", 8, 30, 68, false],
+		["alien-tree", 4, 16, 30, false]],
+	"yaoguang": [["crystal-cluster", 14, 24, 54, false], ["rock-spire", 8, 30, 70, false],
+		["floating-rock", 6, 24, 48, false]],
+	"xuanpu": [["alien-tree", 8, 16, 32, false], ["crystal-cluster", 8, 20, 42, false],
+		["rock-cluster", 8, 20, 38, false]],
+}
+
+## 大型地貌件（目标 ④「大型地貌特征」）。
+##
+## 复用已生成的 AI 资产、放大到 300~800 米世界高度，做成从轨道上就能看见的地标：
+##   floating-rock  → 悬空巨岩（科幻感强）
+##   rock-spire     → 千米石柱 / 侵蚀塔
+##   rock-cluster   → 整座山丘群
+##   crystal-cluster→ 巨型晶脉
+## 尺寸是「设计米数」，运行时 × prop_scale。
+## ⚠ 这一条**完全零额度**：只是把已有 GLB 放大，不新增生成。
+const LANDFORM_PROPS := {
+	"qinglan": [["rock-cluster", 1, 90, 130, false]],
+	"zheya": [["rock-spire", 2, 110, 190, false], ["rock-cluster", 1, 80, 120, false]],
+	"cangbo": [["floating-rock", 2, 100, 170, false]],
+	"xuanjing": [["floating-rock", 3, 90, 160, false], ["rock-spire", 1, 100, 150, false]],
+	"xuanyuan": [["rock-spire", 2, 130, 220, false]],
+	"baiyao": [["rock-spire", 2, 110, 200, false]],
+	"pansha": [["rock-spire", 3, 120, 220, false]],
+	"taiyuan": [["rock-cluster", 2, 85, 130, false]],
+	"liuwu": [["rock-spire", 1, 110, 170, false], ["rock-cluster", 1, 80, 120, false]],
+	"jianmo": [["rock-spire", 3, 130, 230, false], ["floating-rock", 1, 100, 150, false]],
+	"jiangxiao": [["rock-spire", 2, 110, 190, false]],
+	"cangwu": [["rock-cluster", 2, 85, 135, false]],
+	"jinwu": [["rock-cluster", 2, 80, 125, false]],
+	"yuheng": [["crystal-cluster", 2, 90, 150, false]],
+	"sue": [["rock-spire", 2, 100, 170, false]],
+	"danxia": [["rock-cluster", 2, 90, 140, false], ["rock-spire", 1, 110, 180, false]],
+	"biluo": [["floating-rock", 2, 95, 160, false]],
+	"youdu": [["crystal-cluster", 2, 95, 160, false], ["rock-spire", 1, 110, 180, false]],
+	"yaoguang": [["crystal-cluster", 3, 100, 170, false], ["floating-rock", 1, 95, 150, false]],
+	"xuanpu": [["rock-cluster", 1, 90, 140, false], ["crystal-cluster", 1, 90, 140, false]],
+}
+
+## 会「悬浮」的道具：放置时抬高，做成浮空岛/浮石。
+const PROP_FLOATING := ["floating-rock"]
+
 const PROP_MODELS := {
 	"alien-tree": "res://assets/models/props/alien-tree/model.glb",
 	"alien-tree-lo": "res://assets/models/props/alien-tree-lo/model.glb",
@@ -92,6 +180,10 @@ static var _prop_mesh_cache := {}
 var prop_queue: Dictionary = {}
 ## 待落地的低模散布：同上
 var scatter_prop_queue: Dictionary = {}
+## 已经 flush 过的 prop_id。_flush_props 可能被调用两次
+## （铺量在 _build_landscape 里 flush、地标在 _build_landmark_props 里再 flush），
+## 没有这个集合会把铺量那批重复实例化一遍。
+var _flushed_prop_ids: Dictionary = {}
 
 
 func _ready() -> void:
@@ -151,6 +243,8 @@ func _ready() -> void:
 	ArchitectureScript.build(self, kind)
 	UndergroundScript.build(self, kind)
 	_build_ground_scatter()
+	# 目标 ③：按星球类型布置 AI 地标（少而大，和铺量的树/岩石分工不同）
+	_build_landmark_props()
 	if kind in ["xuanjing", "xuanyuan"]:
 		_build_ring()
 	# ⚠ 2026-11-11 Lux3D 星球**不再叠这层半透明水面球**。
@@ -580,7 +674,9 @@ func _build_lux3d_surface() -> bool:
 	#
 	#   所以这里按**完全相同的混合公式**把网格顶点也压平，
 	#   三份数据（可视 / 碰撞 / 高度查询）从此一致。
-	var site_raw: float = _sample_lux_map(map, site_direction.normalized())
+	# 平地基准也要走 _lift_lux：terrain_height() 在站点附近会把高度混合成
+	# site_height（= 本值），少了这一步整个基地会比周围地形低一截或高一块。
+	var site_raw: float = _lift_lux(_sample_lux_map(map, site_direction.normalized()))
 	var pad_angle: float = site_pad_radius / radius
 	var pad_outer: float = pad_angle * 1.6
 	# ⚠ Lux3D 星球把洞穴口稍微放宽一点：
@@ -678,7 +774,9 @@ func _displace_lux_mesh_to_pad(to_world: float, site_h: float,
 					continue
 				var dir: Vector3 = v / r
 				# ① 朝平滑高度表靠拢（全星球范围，消尖片）
-				var smooth_r: float = _sample_lux_map(_lux_height_map, dir)
+				# 必须用 _lift_lux 包一层：可视网格 conform 的目标就是
+				# terrain_height()，两边不一致玩家就会陷进地里 / 浮在空中。
+				var smooth_r: float = _lift_lux(_sample_lux_map(_lux_height_map, dir))
 				var blended: float
 				if conform >= 0.9999:
 					blended = smooth_r
@@ -830,7 +928,36 @@ func _fill_lux_gaps(map: PackedFloat32Array) -> void:
 
 
 ## 按方向双线性插值取高度表里的值。
+## 地形起伏加强系数（目标 ④「地形也要更多 AI 生成细节，更强的起伏」）。
+##
+## Lux3D 给的星球模型本身起伏就比程序化强（半径比 4~5 倍），但中值滤波 +
+## conform=1.0 之后被抹平了一部分，站在地上看只剩缓坡。
+## 这里把「相对设计半径的偏离量」放大，山更高、盆地更深，而球体本身不变。
+##
+## ⚠ 必须与可视网格、平地基准同步（见文件顶部与本函数的调用点），
+##   否则可视面与碰撞面再次分离，玩家会被卡住 —— 那是 2026-11-11 修过一轮的老问题。
+const LUX_RELIEF_BOOST := 1.35
+
+## 少数「以水/冰/平原为主」的星球保持较平的起伏，否则海面与冰架会碎成山脊。
+const LUX_RELIEF_FLAT_KINDS := ["cangbo", "biluo"]
+
+## 实测起伏最小的几颗（高度表只有 ±2~4%），单独提高加强系数，
+## 让它们也有能看的地形层次。实测值见 tests/probe_relief_budget.gd。
+const LUX_RELIEF_BOLD_KINDS := ["youdu", "yaoguang", "sue", "yuheng", "danxia", "xuanpu"]
+const LUX_RELIEF_BOLD := 1.55
+
+func _lift_lux(h: float) -> float:
+	if radius <= 0.0:
+		return h
+	if kind in LUX_RELIEF_FLAT_KINDS:
+		return radius + (h - radius) * 1.06
+	if kind in LUX_RELIEF_BOLD_KINDS:
+		return radius + (h - radius) * LUX_RELIEF_BOLD
+	return radius + (h - radius) * LUX_RELIEF_BOOST
+
+
 func _sample_lux_height(dir: Vector3) -> float:
+	return _lift_lux(_sample_lux_map(_lux_height_map, dir))
 	return _sample_lux_map(_lux_height_map, dir)
 
 
@@ -1044,6 +1171,17 @@ func _build_landscape() -> void:
 		"taiyuan": count = 150
 		"liuwu": count = 110
 		"jianmo": count = 90
+		# 后 10 颗 Lux3D 星球：按设定给不同密度
+		"cangwu": count = 160
+		"xuanpu": count = 150
+		"youdu": count = 130
+		"jiangxiao": count = 130
+		"danxia": count = 140
+		"yaoguang": count = 120
+		"jinwu": count = 120
+		"sue": count = 110
+		"yuheng": count = 110
+		"biluo": count = 90
 	for i in range(count):
 		var direction := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1)).normalized()
 		if direction.distance_to(Vector3.UP) < 0.25:
@@ -1097,6 +1235,39 @@ func _build_landscape() -> void:
 					_add_crystal(direction, Color("9b7fd0"), 0.0)
 				else:
 					_add_rock(direction, rng.randf_range(1.2, 4.2), Color("241f2b"), 0.0)
+			# ── 后 10 颗 Lux3D 星球：只用 AI 资产的树/岩石铺量 ──
+			"cangwu":
+				if i % 4 != 0:
+					_add_tree(direction, true)
+				else:
+					_add_rock(direction, rng.randf_range(1.6, 5.0), base_color.lightened(0.12), 0.0)
+			"xuanpu":
+				if i % 3 != 0:
+					_add_tree(direction, true)
+				else:
+					_add_rock(direction, rng.randf_range(1.4, 4.6), base_color.lightened(0.10), 0.0)
+			"youdu":
+				if i % 6 == 0:
+					_add_tree(direction, true)
+				else:
+					_add_rock(direction, rng.randf_range(1.6, 6.0), Color("2a3550"), 0.0)
+			"jiangxiao":
+				_add_rock(direction, rng.randf_range(1.8, 6.4), Color("7a3b2a"), 0.0)
+			"danxia":
+				_add_rock(direction, rng.randf_range(2.0, 7.0), Color("8c4a35"), 0.0)
+			"jinwu":
+				_add_rock(direction, rng.randf_range(1.8, 6.0), Color("b09050"), 0.0)
+			"sue":
+				_add_rock(direction, rng.randf_range(1.4, 5.2), Color("cfd4d8"), 0.0)
+			"yuheng":
+				if i % 7 == 0:
+					_add_tree(direction, true)
+				else:
+					_add_rock(direction, rng.randf_range(1.4, 5.0), Color("9fb6a8"), 0.0)
+			"yaoguang":
+				_add_rock(direction, rng.randf_range(1.6, 6.2), Color("c8dcea"), 0.0)
+			"biluo":
+				_add_rock(direction, rng.randf_range(1.2, 4.0), Color("a8c8d0"), -1.0)
 	if kind == "cangbo":
 		_add_landing_island()
 	elif kind == "qinglan":
@@ -1482,15 +1653,17 @@ static func _prop_mesh_for_instancing(prop_id: String) -> Mesh:
 ## 排入一个 AI 道具（地标）。size 是**世界米数**（道具高度）。
 ## altitude 是相对地表的抬升（负值=压入地面）。
 func _add_prop(prop_id: String, direction: Vector3, size: float,
-		altitude := 0.0, tint := Color.WHITE) -> void:
+		altitude := 0.0, tint := Color.WHITE, respect_cap := true) -> void:
 	if _prop_mesh(prop_id) == null:
 		return
 	if not prop_queue.has(prop_id):
 		prop_queue[prop_id] = []
 	# 限额：超过上限的调用直接丢弃，避免面数爆炸（见 PROP_INSTANCE_CAP 的说明）。
-	var cap: int = int(PROP_INSTANCE_CAP.get(prop_id, 20))
-	if (prop_queue[prop_id] as Array).size() >= cap:
-		return
+	# 地标（respect_cap=false）由 PLANET_PROPS 精确控制数量，不受铺量限额约束。
+	if respect_cap:
+		var cap: int = int(PROP_INSTANCE_CAP.get(prop_id, 20))
+		if (prop_queue[prop_id] as Array).size() >= cap:
+			return
 	prop_queue[prop_id].append({
 		"dir": direction.normalized(),
 		"size": size,
@@ -1572,6 +1745,92 @@ func _prop_collider_profile(prop_id: String) -> Vector2:
 	return Vector2(0.42, 0.62)       # 块状：半径 42% 高度
 
 
+## 在星球上挑一个放道具的方向。
+## near_site = true 时贴着基地外围（玩家一眼能看到），否则全球散布，
+## 两种情况都避开基地平地本身和洞口。
+func _pick_prop_direction(near_site: bool) -> Vector3:
+	var site: Vector3 = site_direction.normalized()
+	var pad_angle: float = site_pad_radius / radius
+	for _attempt in range(28):
+		var dir: Vector3
+		if near_site:
+			var perp: Vector3 = site.cross(Vector3.FORWARD)
+			if perp.length_squared() < 0.01:
+				perp = site.cross(Vector3.RIGHT)
+			perp = perp.normalized()
+			var axis: Vector3 = perp.rotated(site, rng.randf() * TAU)
+			var ang: float = pad_angle * rng.randf_range(1.2, 3.2)
+			dir = site.rotated(axis, ang).normalized()
+		else:
+			dir = Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1),
+				rng.randf_range(-1, 1))
+			if dir.length_squared() < 0.001:
+				continue
+			dir = dir.normalized()
+		var arc: float = acos(clampf(dir.dot(site), -1.0, 1.0))
+		if arc < pad_angle * 0.95:
+			continue                      # 别压在基地平地上
+		if _near_cave(dir, 0.06):
+			continue                      # 别堵洞口
+		return dir
+	return Vector3.ZERO
+
+
+## 按 kind 布置这一颗星球的 AI 地标（目标 ③）。
+##
+## 与铺量的树/岩石分开：这里是「少而大、能认出来」的地标，
+## 每颗星球的组合不同，所以 20 颗星球各有各的地貌性格。
+func _build_landmark_props() -> void:
+	var table: Array = PLANET_PROPS.get(kind, [])
+	if table.is_empty():
+		return
+	for entry in table:
+		var prop_id: String = entry[0]
+		if _prop_mesh(prop_id) == null:
+			continue
+		var count: int = int(entry[1])
+		var size_min: float = float(entry[2]) * prop_scale
+		var size_max: float = float(entry[3]) * prop_scale
+		var near: bool = bool(entry[4])
+		var floating: bool = PROP_FLOATING.has(prop_id)
+		for _i in range(count):
+			var dir := _pick_prop_direction(near)
+			if dir == Vector3.ZERO:
+				continue
+			var size := rng.randf_range(size_min, size_max)
+			# 悬浮的抬高到半空；其余底部微沉入地表，避免悬空缝。
+			var altitude: float = size * 0.35 if floating else -size * 0.04
+			_add_prop(prop_id, dir, size, altitude, _prop_tint(), false)
+	# 目标 ④：大型地貌件（把已有资产放大，零额度）
+	_build_landform_props()
+	# 地标与地貌件都是在 _build_landscape 之后才排进队列的，所以必须在这里补 flush
+	# （_flush_props 内部有 _flushed_prop_ids 去重，铺量那批不会重复实例化）。
+	_flush_props()
+
+
+## 布置大型地貌件（目标 ④）。复用已有 AI 资产放大，零额度消耗。
+func _build_landform_props() -> void:
+	var table: Array = LANDFORM_PROPS.get(kind, [])
+	if table.is_empty():
+		return
+	for entry in table:
+		var prop_id: String = entry[0]
+		if _prop_mesh(prop_id) == null:
+			continue
+		var count: int = int(entry[1])
+		var size_min: float = float(entry[2]) * prop_scale
+		var size_max: float = float(entry[3]) * prop_scale
+		var floating: bool = PROP_FLOATING.has(prop_id)
+		for _i in range(count):
+			# 地貌件放得远一点，别压住基地
+			var dir := _pick_prop_direction(false)
+			if dir == Vector3.ZERO:
+				continue
+			var size := rng.randf_range(size_min, size_max)
+			var altitude: float = size * 0.45 if floating else -size * 0.05
+			_add_prop(prop_id, dir, size, altitude, _prop_tint(), false)
+
+
 ## 这颗星球的道具色调。用 MultiMesh 实例色调制 AI 贴图，
 ## 让同一套 AI 资产在 20 颗星球上呈现各自的色系（用户：「保留配色，呼应名字」）。
 func _prop_tint() -> Color:
@@ -1598,6 +1857,9 @@ func _flush_props() -> void:
 		var entries: Array = prop_queue[prop_id]
 		if entries.is_empty():
 			continue
+		if _flushed_prop_ids.has(prop_id):
+			continue
+		_flushed_prop_ids[prop_id] = true
 		var mesh: Mesh = _prop_mesh_for_instancing(prop_id)
 		if mesh == null:
 			continue
