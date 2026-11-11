@@ -92,8 +92,21 @@ const ORBIT_SCALE := 10.0
 const PLANET_RADIUS_SCALE := 3.0
 const SUN_SCALE := 10.0
 ## 黑洞整体位置的外移倍率。黑洞不属于行星系统，但要保持在系统外围，
-## 所以位置跟轨道同比例外移（尺寸不动 —— 它的 7200 米引力范围是玩法标定值）。
+## 所以位置跟轨道同比例外移。
 const BH_POSITION_SCALE := 10.0
+## 黑洞的**视觉**尺寸倍率。
+##
+## ⚠ 2026-11-11 用户反馈「找不到黑洞了」。
+##   根因：位置 ×10 挪到 (−118000, 52000, 96000)（离母星约 17.7 万米），
+##   但 GARGANTUA_SCALE 仍是 4.0、外圈壳半径 1211 米 ——
+##   在 17.7 万米处它的**角尺寸只有约 0.78°**（满屏约 60°），
+##   加上吸积盘本来就暗，等于在天上隐形了。
+##
+##   解法：只放大**视觉**（scale + 各级壳/盘半径），不放大引力。
+##   引力范围仍是 BH_PULL_RANGE = 7200 米这个玩法标定值，
+##   否则「靠近才被拽」的手感会被破坏。
+##   视觉 ×10 后角尺寸回到约 7.8°，和原来的观感一致。
+const BH_VISUAL_SCALE := 10.0
 
 ## ── Lux3D 生成的星球表面 ────────────────────────────────────────────
 ## 键 = 行星 id，值 = GLB 路径。不在表里的行星继续用程序化球面。
@@ -1315,7 +1328,10 @@ func _build_gargantua() -> void:
 	gargantua = Node3D.new()
 	gargantua.name = "Gargantua"
 	gargantua.position = GARGANTUA_POSITION
-	gargantua.scale = Vector3.ONE * GARGANTUA_SCALE
+	# 视觉尺寸 = 原始 4.0 × BH_VISUAL_SCALE。
+	# 着色器里的 inner_radius / outer_radius 是**模型局部坐标**，
+	# 挂在 scale 之下自动跟着放大，不用改参数。
+	gargantua.scale = Vector3.ONE * (GARGANTUA_SCALE * BH_VISUAL_SCALE)
 	# 盘面侧过来一点：正对着看会缩成一条线
 	gargantua.rotation = Vector3(deg_to_rad(-13.0), deg_to_rad(34.0), deg_to_rad(4.0))
 	add_child(gargantua)
