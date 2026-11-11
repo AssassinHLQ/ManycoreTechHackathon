@@ -78,6 +78,21 @@ var engine_materials: Array = []
 var engine_lights: Array = []
 ## 外部模型的尾焰锥体（程序化几何那套没有这个）。用来按推力改长度。
 var engine_plumes: Array = []
+
+## 腹部（向下）喷焰：升空 / 悬停用。
+##
+## 和 engine_plumes 分开存，是因为两者的点亮条件不同：
+##   · engine_plumes  —— 前进推力（W）点亮，朝 +Z
+##   · ventral_*      —— 上升推力（Space）点亮，朝 -Y
+## 混在一个数组里就没法分别控制了。
+var ventral_plumes: Array = []
+var ventral_cores: Array = []
+var ventral_lights: Array = []
+## 腹部喷焰当前的显示强度（0~1），由 _update_engine 做平滑，避免开关式闪烁。
+var ventral_level := 0.0
+## 本帧的「上升推力」强度（0~1）：按 Space 时为 1，按 Ctrl/C 下降时为 0。
+## 腹部喷焰只认这个，不认 thrust_level —— 前进和上升是两回事。
+var ascend_level := 0.0
 ## 按材质分组的盒体批次，_build_model 末尾统一合并提交。
 var _batch := {}
 var hull_body: StaticBody3D
@@ -730,6 +745,81 @@ func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 		holder.add_child(light)
 		engine_lights.append(light)
 
+	_build_ventral_exhaust(holder, bounds)
+
+
+## 底部（腹部）喷焰：升空 / 悬停时的向下推力。
+##
+## 为什么要有：飞船不只会向前飞，还能按 Space 上升。上升的动力来自腹部
+## 推进器 —— 不开火却往上飘是说不通的。（用户：「我们飞船除了前进还可以
+## 上升，上升时的动力就来自底下的排出火焰」）
+##
+## 顺带解决一个玩法问题：星球地形不平，落地判定要求速度足够低；
+## 有了向下的推力就能在坡面上「悬停」一小会儿再找平，而不是一头栽下去。
+##
+## 实现要点：
+##   · 复用 _build_external_exhaust 造好的 flame / core 材质（加成同一批
+##     engine_materials，所以 _update_engine 里的亮度插值会一并带上它们）
+##   · _plume_mesh 沿 +Z 生成，这里把节点绕 X 轴转 -90°，锥体就朝 -Y（向下）
+##   · 单独收集到 ventral_plumes，由 _update_engine 按「上升推力」单独控制
+##     亮度 —— 前进推力不该点亮腹部火焰，反之亦然
+func _build_ventral_exhaust(holder: Node3D, bounds: AABB) -> void:
+	# 复用后向尾焰的材质：同一批 engine_materials 已经注册过，
+	# 这里只是再取一次引用（不能重复 append，否则亮度会被插值两遍）。
+	if engine_materials.size() < 2:
+		return
+	var flame: Material = engine_materials[0]
+	var core_mat: Material = engine_materials[1]
+
+	var length: float = bounds.size.z
+	var span: float = bounds.size.x
+	# 腹部高度：包围盒底部再往上一点点（喷口就在船底装甲上）
+	var belly_y: float = bounds.position.y + bounds.size.y * 0.06
+
+	# 三个腹部喷口：前后各一 + 中间一（三角布局，悬停时看起来更稳）
+	var vent_nozzles := [
+		Vector3(0.0, belly_y, -length * 0.12),          # 前
+		Vector3(0.0, belly_y, length * 0.10),           # 后
+		Vector3(0.0, belly_y, 0.0),                     # 中
+	]
+	var scales := [0.0085, 0.0085, 0.0110]   # 中间那束略粗
+
+	for i in range(vent_nozzles.size()):
+		var nozzle: Vector3 = vent_nozzles[i]
+		var r: float = span * float(scales[i])
+
+		# 外层火舌
+		var plume := MeshInstance3D.new()
+		plume.mesh = _plume_mesh(length * 0.22, r, 12)
+		plume.material_override = flame
+		plume.position = nozzle
+		# _plume_mesh 沿 +Z 长出；绕 X 转 -90° 后 +Z 变成 -Y → 朝下
+		plume.rotation.x = -PI * 0.5
+		plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		plume.visible = false
+		holder.add_child(plume)
+		ventral_plumes.append(plume)
+
+		# 内层亮芯
+		var core := MeshInstance3D.new()
+		core.mesh = _plume_mesh(length * 0.11, r * 0.5, 10)
+		core.material_override = core_mat
+		core.position = nozzle
+		core.rotation.x = -PI * 0.5
+		core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		core.visible = false
+		holder.add_child(core)
+		ventral_cores.append(core)
+
+		# 底部照明：悬停时照亮脚下的地面，让「离地多少」有直观反馈
+		var light := OmniLight3D.new()
+		light.position = nozzle + Vector3(0.0, -length * 0.08, 0.0)
+		light.light_color = Color("9fd8ff")
+		light.light_energy = 0.0
+		light.omni_range = span * 1.2
+		holder.add_child(light)
+		ventral_lights.append(light)
+
 
 ## 生成一束尾焰网格：从喷口（z=0，粗、亮）沿 +Z 收尖（z=len，细、透明）。
 ## 顶点色带 alpha，配合 vertex_color_use_as_albedo 做出真实的「烧到尾端就散开」。
@@ -1378,6 +1468,9 @@ func _physics_process(delta: float) -> void:
 		thrust.z = -forward_input          # 机头朝 -Z，所以向前的推力是负 z
 		thrust.y = Input.get_axis("thrust_down", "jump")
 		thrust = thrust.limit_length(1.0)
+		# 腹部喷焰只认「向上的推力分量」：按 Space 才有，按 Ctrl/C 下降时没有
+		# （下降是重力帮忙，不该向下喷火 —— 那是加速坠落，不是推力）。
+		ascend_level = maxf(0.0, thrust.y)
 		var boosting := Input.is_action_pressed("jetpack") and fuel > 0.0
 		var has_input := thrust.length_squared() > 0.01 or absf(Input.get_axis("move_left", "move_right")) > 0.1
 
@@ -2089,6 +2182,53 @@ func _update_engine(delta: float) -> void:
 		node.scale = node.scale.lerp(
 			Vector3(1.0 + sway, 1.0 + sway, target_len),
 			1.0 - exp(-delta * 14.0))
+
+	_update_ventral(delta)
+
+
+## 腹部喷焰：升空（Space）时向下喷，提供「看得见的升力」。
+##
+## 与后向尾焰**分离控制** —— 按 W 前进不该点亮腹部火焰，按 Space 上升也不该
+## 点亮尾部。所以强度单独走 ventral_level，不共用 thrust_level。
+##
+## 关键：`ascend_level` 由调用方在 _physics_process 里按「上升推力」写入
+## （见 thrust.y 那段）。这里只负责按它做视觉。
+func _update_ventral(delta: float) -> void:
+	if ventral_plumes.is_empty():
+		return
+
+	var target: float = clampf(ascend_level, 0.0, 1.0)
+	# 上升推力有惯性时（比如刚松手）让它慢慢熄，不要瞬间断火
+	ventral_level = lerpf(ventral_level, target, 1.0 - exp(-delta * 9.0))
+
+	var firing: bool = ventral_level > 0.05
+	for i in range(ventral_plumes.size()):
+		var node := ventral_plumes[i] as Node3D
+		if not firing:
+			node.visible = false
+			if i < ventral_cores.size():
+				(ventral_cores[i] as Node3D).visible = false
+			continue
+		node.visible = true
+		if i < ventral_cores.size():
+			(ventral_cores[i] as Node3D).visible = true
+
+		# 抖动相位与后向尾焰错开，两者同时喷时不会看出是同一个节奏
+		var phase: float = _plume_phase * 21.0 + float(i) * 2.7
+		var base_len: float = 0.25 + ventral_level * 1.0
+		var flicker: float = 1.0 + sin(phase) * 0.15 + sin(phase * 3.1) * 0.07
+		var target_len: float = base_len * flicker
+		var sway: float = sin(_plume_phase * 7.0 + float(i) * 2.3) * 0.05
+
+		var s := Vector3(1.0 + sway, 1.0 + sway, target_len)
+		node.scale = node.scale.lerp(s, 1.0 - exp(-delta * 16.0))
+		if i < ventral_cores.size():
+			var core := ventral_cores[i] as Node3D
+			core.scale = core.scale.lerp(s * 0.85, 1.0 - exp(-delta * 16.0))
+
+	for light in ventral_lights:
+		var lt := 0.0 if not firing else (0.35 + ventral_level * 1.9)
+		light.light_energy = lerpf(light.light_energy, lt, delta * 11.0)
 
 
 ## 把一个盒体塞进按材质分组的 SurfaceTool 批次，用于铆钉 / 格栅 / 防滑条这类重复小件。
