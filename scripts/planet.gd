@@ -65,6 +65,9 @@ const PROP_INSTANCE_CAP := {
 	"dome-habitat": 4,
 	"signal-tower": 4,
 	"crystal-cluster": 10,
+	"crystal-cluster-lo": 70,
+	"vent-lo": 60,
+	"stone-bridge": 4,
 	"vent": 8,
 	"floating-rock": 8,
 }
@@ -133,21 +136,21 @@ const PLANET_PROPS := {
 ## ⚠ 这一条**完全零额度**：只是把已有 GLB 放大，不新增生成。
 const LANDFORM_PROPS := {
 	"qinglan": [["rock-cluster", 1, 90, 130, false]],
-	"zheya": [["rock-spire", 2, 110, 190, false], ["rock-cluster", 1, 80, 120, false]],
+	"zheya": [["rock-spire", 2, 110, 190, false], ["rock-cluster", 1, 80, 120, false], ["stone-bridge", 1, 90, 150, false]],
 	"cangbo": [["floating-rock", 2, 100, 170, false]],
 	"xuanjing": [["floating-rock", 3, 90, 160, false], ["rock-spire", 1, 100, 150, false]],
-	"xuanyuan": [["rock-spire", 2, 130, 220, false]],
+	"xuanyuan": [["rock-spire", 2, 130, 220, false], ["stone-bridge", 1, 90, 150, false]],
 	"baiyao": [["rock-spire", 2, 110, 200, false]],
 	"pansha": [["rock-spire", 3, 120, 220, false]],
 	"taiyuan": [["rock-cluster", 2, 85, 130, false]],
-	"liuwu": [["rock-spire", 1, 110, 170, false], ["rock-cluster", 1, 80, 120, false]],
-	"jianmo": [["rock-spire", 3, 130, 230, false], ["floating-rock", 1, 100, 150, false]],
+	"liuwu": [["rock-spire", 1, 110, 170, false], ["rock-cluster", 1, 80, 120, false], ["stone-bridge", 1, 90, 150, false]],
+	"jianmo": [["rock-spire", 3, 130, 230, false], ["floating-rock", 1, 100, 150, false], ["stone-bridge", 1, 90, 150, false]],
 	"jiangxiao": [["rock-spire", 2, 110, 190, false]],
 	"cangwu": [["rock-cluster", 2, 85, 135, false]],
 	"jinwu": [["rock-cluster", 2, 80, 125, false]],
 	"yuheng": [["crystal-cluster", 2, 90, 150, false]],
 	"sue": [["rock-spire", 2, 100, 170, false]],
-	"danxia": [["rock-cluster", 2, 90, 140, false], ["rock-spire", 1, 110, 180, false]],
+	"danxia": [["rock-cluster", 2, 90, 140, false], ["rock-spire", 1, 110, 180, false], ["stone-bridge", 1, 90, 150, false]],
 	"biluo": [["floating-rock", 2, 95, 160, false]],
 	"youdu": [["crystal-cluster", 2, 95, 160, false], ["rock-spire", 1, 110, 180, false]],
 	"yaoguang": [["crystal-cluster", 3, 100, 170, false], ["floating-rock", 1, 95, 150, false]],
@@ -169,6 +172,9 @@ const PROP_MODELS := {
 	"dome-habitat": "res://assets/models/props/dome-habitat/model.glb",
 	"signal-tower": "res://assets/models/props/signal-tower/model.glb",
 	"crystal-cluster": "res://assets/models/props/crystal-cluster/model.glb",
+	"crystal-cluster-lo": "res://assets/models/props/crystal-cluster-lo/model.glb",
+	"vent-lo": "res://assets/models/props/vent-lo/model.glb",
+	"stone-bridge": "res://assets/models/props/stone-bridge/model.glb",
 	"vent": "res://assets/models/props/vent/model.glb",
 	"floating-rock": "res://assets/models/props/floating-rock/model.glb",
 }
@@ -1188,6 +1194,11 @@ func _build_landscape() -> void:
 			continue
 		if _near_cave(direction, 0.03):
 			continue
+		# 基地平地上不长任何东西：那块地形被压平了，长树/晶簇既难看又会堵路
+		# （实测：沧波星一个晶簇落在潮汐站台阶上，玩家走不进去）。
+		if acos(clampf(direction.dot(site_direction.normalized()), -1.0, 1.0)) \
+				< (site_pad_radius / maxf(radius, 1.0)) * 1.1:
+			continue
 		if kind == "qinglan" and direction.distance_to(Vector3(-0.45, 1.0, -0.28).normalized()) < 0.28:
 			continue
 		match kind:
@@ -2042,6 +2053,12 @@ func _add_basalt(direction: Vector3) -> void:
 
 
 func _add_crystal(direction: Vector3, color: Color, altitude: float) -> void:
+	# ⚠ 2026-11-11 用户：「不能是程序化的，必须 AI 生成」。
+	#   优先用 Lux3D 的发光晶簇（低模变体铺量用），缺失时回退下面的程序化晶簇。
+	if _prop_mesh("crystal-cluster-lo") != null:
+		_add_prop("crystal-cluster-lo", direction,
+			rng.randf_range(16.0, 34.0) * prop_scale, altitude, color)
+		return
 	var root := _prop_parent(direction, altitude)
 	var height := rng.randf_range(6.0, 18.0)
 	var material := _material(color.darkened(0.2), 1.3)
@@ -2078,6 +2095,11 @@ func _add_crystal(direction: Vector3, color: Color, altitude: float) -> void:
 
 
 func _add_spout(direction: Vector3) -> void:
+	# 同 _add_crystal：优先 AI 喷口（低模变体），缺失时回退程序化。
+	if _prop_mesh("vent-lo") != null:
+		_add_prop("vent-lo", direction,
+			rng.randf_range(14.0, 28.0) * prop_scale, -1.0 * prop_scale, _prop_tint())
+		return
 	var root := _prop_parent(direction, -1.0)
 	root.scale = Vector3.ONE * rng.randf_range(3.5, 7.0)
 	var material := _material(Color(0.38, 0.76, 0.85, 0.24))

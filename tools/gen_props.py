@@ -74,6 +74,15 @@ PROPS += [
      "cluster of rounded weathered boulders of varied size, low detail"),
     ("rock-spire-lo",  10000,
      "sharp faceted obsidian spire, low detail"),
+    ("crystal-cluster-lo",  10000,
+     "cluster of tall glowing crystal shards growing from stone, low detail "
+     "silhouette only"),
+    ("vent-lo",  10000,
+     "volcanic fumarole vent, cracked crater rim with ash crust, low detail "
+     "silhouette only"),
+    ("stone-bridge",  26000,
+     "ancient stone bridge spanning a chasm, two thick pillars, cracked carved "
+     "deck with low side walls, weathered alien ruin"),
 ]
 
 DEV_NAMES = {
@@ -87,6 +96,12 @@ DEV_NAMES = {
     "crystal-cluster": "发光晶簇",
     "vent": "火山喷口",
     "floating-rock": "悬浮碎石岛",
+    "alien-tree-lo": "伞冠异星树（低模）",
+    "rock-cluster-lo": "层积巨岩群（低模）",
+    "rock-spire-lo": "黑曜石尖峰（低模）",
+    "crystal-cluster-lo": "发光晶簇（低模）",
+    "vent-lo": "火山喷口（低模）",
+    "stone-bridge": "古石桥",
 }
 
 

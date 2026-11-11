@@ -632,6 +632,54 @@
       "modified_by": "tools/gen_props.py",
       "generated_by_tool": "Aholo Lux3D OpenAPI（cn 区域）",
       "task_id_note": "生成台账在 _lux3d_work/logs/collection.sqlite"
+    },
+    {
+      "slug": "prop-crystal-cluster-lo-ai-generated",
+      "original_file": "(AI 生成，无原始下载文件)",
+      "title": "crystal-cluster-lo · 星球道具",
+      "author": "AI 生成（Aholo Lux3D，text-to-3D G1-Turbo）",
+      "license": "Aholo Lux3D 生成，权属以平台服务条款与参赛协议为准",
+      "attribution": "Aholo Lux3D 生成，不含第三方素材；权属以平台服务条款与参赛协议为准",
+      "source_url": "https://labs.aholo3d.cn/",
+      "imported": true,
+      "imported_slug": "props/crystal-cluster-lo",
+      "imported_path": "assets/models/props/crystal-cluster-lo/model.glb",
+      "modifications": "Aholo Lux3D text-to-3D 生成（G1-Turbo，目标 0 面，实测 9910 面 / 8476 顶点，9.1 MB，扣 13 credits）；未做几何修改；游戏内在 MultiMesh 里用实例色按星球调色",
+      "modified_by": "tools/gen_props.py",
+      "generated_by_tool": "Aholo Lux3D OpenAPI（cn 区域）",
+      "task_id_note": "生成台账在 _lux3d_work/logs/collection.sqlite"
+    },
+    {
+      "slug": "prop-stone-bridge-ai-generated",
+      "original_file": "(AI 生成，无原始下载文件)",
+      "title": "stone-bridge · 星球道具",
+      "author": "AI 生成（Aholo Lux3D，text-to-3D G1-Turbo）",
+      "license": "Aholo Lux3D 生成，权属以平台服务条款与参赛协议为准",
+      "attribution": "Aholo Lux3D 生成，不含第三方素材；权属以平台服务条款与参赛协议为准",
+      "source_url": "https://labs.aholo3d.cn/",
+      "imported": true,
+      "imported_slug": "props/stone-bridge",
+      "imported_path": "assets/models/props/stone-bridge/model.glb",
+      "modifications": "Aholo Lux3D text-to-3D 生成（G1-Turbo，目标 0 面，实测 22168 面 / 20290 顶点，8.3 MB，扣 13 credits）；未做几何修改；游戏内在 MultiMesh 里用实例色按星球调色",
+      "modified_by": "tools/gen_props.py",
+      "generated_by_tool": "Aholo Lux3D OpenAPI（cn 区域）",
+      "task_id_note": "生成台账在 _lux3d_work/logs/collection.sqlite"
+    },
+    {
+      "slug": "prop-vent-lo-ai-generated",
+      "original_file": "(AI 生成，无原始下载文件)",
+      "title": "vent-lo · 星球道具",
+      "author": "AI 生成（Aholo Lux3D，text-to-3D G1-Turbo）",
+      "license": "Aholo Lux3D 生成，权属以平台服务条款与参赛协议为准",
+      "attribution": "Aholo Lux3D 生成，不含第三方素材；权属以平台服务条款与参赛协议为准",
+      "source_url": "https://labs.aholo3d.cn/",
+      "imported": true,
+      "imported_slug": "props/vent-lo",
+      "imported_path": "assets/models/props/vent-lo/model.glb",
+      "modifications": "Aholo Lux3D text-to-3D 生成（G1-Turbo，目标 0 面，实测 8248 面 / 6966 顶点，6.8 MB，扣 13 credits）；未做几何修改；游戏内在 MultiMesh 里用实例色按星球调色",
+      "modified_by": "tools/gen_props.py",
+      "generated_by_tool": "Aholo Lux3D OpenAPI（cn 区域）",
+      "task_id_note": "生成台账在 _lux3d_work/logs/collection.sqlite"
     }
   ]
 }
