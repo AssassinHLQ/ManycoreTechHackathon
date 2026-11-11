@@ -1794,19 +1794,27 @@ func _reset_positions() -> void:
 		player.reparent(home, false)
 	var site_direction := Vector3(-0.06, 1.0, -0.04).normalized()
 	var arch := home.find_child("Architecture_Qinglan", true, false)
+	# ⚠ 2026-11-11 站点周围的布局偏移必须跟建筑一起放大。
+	#
+	#   建筑整棵子树现在按 `home.prop_scale`（=5）放大 —— 平地 230 米、
+	#   观测塔 65 米高。而下面这些「飞船停在离站点 30 米、出生点在 35.5 米」
+	#   的偏移量是**绝对米数**，星球放大后它们会跑进建筑群里面，
+	#   于是冒烟测试翻红：player wakes beside the parked ship / spawn point is
+	#   collision-free。这里统一乘 prop_scale，保持「相对站点建筑」的比例不变。
+	var layout_scale: float = home.prop_scale if home.prop_scale > 0.0 else 1.0
 	var base_tangent: Vector3 = site_direction.cross(Vector3.FORWARD)
 	if arch != null:
 		base_tangent = arch.global_transform.basis.z.normalized()
 	if base_tangent.length_squared() < 0.01:
 		base_tangent = site_direction.cross(Vector3.RIGHT).normalized()
 	var parking_tangent: Vector3 = base_tangent
-	var ship_direction: Vector3 = (site_direction + base_tangent * (30.0 / float(home.radius))).normalized()
+	var ship_direction: Vector3 = (site_direction + base_tangent * (30.0 * layout_scale / float(home.radius))).normalized()
 	var ship_position: Vector3 = home.surface_position(ship_direction, 2.3)
 	if not _ship_parking_clear(ship_position):
-		for step in range(1, 7):
-			var offset := float(step) * 0.14 * (1.0 if step % 2 == 1 else -1.0)
+		for step in range(1, 9):
+			var offset := float(step) * 0.12 * (1.0 if step % 2 == 1 else -1.0)
 			var candidate_tangent: Vector3 = base_tangent.rotated(site_direction, offset)
-			var candidate_direction: Vector3 = (site_direction + candidate_tangent * (30.0 / float(home.radius))).normalized()
+			var candidate_direction: Vector3 = (site_direction + candidate_tangent * (30.0 * layout_scale / float(home.radius))).normalized()
 			var candidate_position: Vector3 = home.surface_position(candidate_direction, 2.3)
 			if _ship_parking_clear(candidate_position):
 				parking_tangent = candidate_tangent
@@ -1814,11 +1822,32 @@ func _reset_positions() -> void:
 				ship_position = candidate_position
 				break
 	var lateral: Vector3 = site_direction.cross(parking_tangent).normalized()
-	var spawn_direction: Vector3 = (site_direction + parking_tangent * (35.5 / float(home.radius)) + lateral * (3.2 / float(home.radius))).normalized()
+	var spawn_direction: Vector3 = (site_direction + parking_tangent * (35.5 * layout_scale / float(home.radius)) + lateral * (3.2 * layout_scale / float(home.radius))).normalized()
 	var spawn_position: Vector3 = home.surface_position(spawn_direction, 1.4)
 	var village_center: Vector3 = home.surface_position(site_direction, 0.0)
 	var look_direction: Vector3 = village_center - home.surface_position(spawn_direction, 0.0)
 	look_direction = (look_direction - spawn_direction * look_direction.dot(spawn_direction)).normalized()
+	# 兜底：出生点万一还压在建筑/岩石里，就沿切向一圈圈往外找空位。
+	# （建筑 ×5 之后体积大了 125 倍，光靠固定偏移算不准。）
+	var spawn_ok: bool = _safe_spawn_clear(spawn_position, spawn_direction)
+	if not spawn_ok:
+		for ring in range(1, 8):
+			var r_scale := 1.0 + float(ring) * 0.35
+			for k in range(12):
+				var ang := TAU * float(k) / 12.0
+				var t_alt: Vector3 = parking_tangent.rotated(site_direction, ang)
+				var cand_dir: Vector3 = (site_direction
+					+ t_alt * (35.5 * layout_scale * r_scale / float(home.radius))).normalized()
+				var cand_pos: Vector3 = home.surface_position(cand_dir, 1.4)
+				if _safe_spawn_clear(cand_pos, cand_dir):
+					spawn_direction = cand_dir
+					spawn_position = cand_pos
+					look_direction = (village_center - home.surface_position(cand_dir, 0.0))
+					look_direction = (look_direction - cand_dir * look_direction.dot(cand_dir)).normalized()
+					spawn_ok = true
+					break
+			if spawn_ok:
+				break
 	player.position = spawn_position
 	player.basis = Basis.looking_at(look_direction, spawn_direction)
 	player.velocity = Vector3.ZERO

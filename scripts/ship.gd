@@ -92,15 +92,26 @@ const AUTOPILOT_FUEL_PER_DV := 0.003
 const AUTOPILOT_CRUISE := 2000.0
 ## 速度剖面按「可用减速度的多少比例」来设计。
 ##
-## 这个值不能到 0.5，原因见 _autopilot_desired_speed 的注释：
-## sqrt 剖面与蠕行剖面的交点处，减速需求恒等于「2 x 剖面减速度」。
-## 取 0.35 就是「最坏情况下也只用掉 70% 的机动能力」，留 30% 给跟踪误差。
+## 剖面假设的刹车能力 = 可用减速度 × 本值。
 ##
-## ⚠ 别指望调大能「减速更早」—— 方向是反的：
-##   fraction 越大 → 剖面假设的刹车能力越强 → 允许速度越高 → 更晚才减速。
-##   要让它早点慢下来，应该调**小** fraction 或调**小** CRUISE。
-##   本次修「高速冲脸」用的是后者（CRUISE 4000→2000）。
-const AUTOPILOT_BRAKE_FRACTION := 0.35
+## ⚠ 2026-11-11 第四次修正（用户：「减速太慢了，根本没改，我制动减速快多了，
+##   这样子一直拖累自动航行时间」）。
+##
+##   实测旧值有多慢（tools/_sim_autopilot.py 复刻公式 + 60Hz 积分）：
+##     剖面减速度 = (230 − 20) × 0.35 = 73.5 m/s²  ← 只有手动硬刹 260 的 28%
+##     2000 m/s 刹停距离 27,211 米、耗时 27.2 秒
+##     从 4 万米落地总耗时 115.2 秒（快两分钟），且 2.7 万米就开始收油
+##
+##   改成 0.90，并且 `available` 改用**手动制动的减速度**（SHIP_BRAKE_DECEL）
+##   而不是推进加速度 AUTOPILOT_ACCEL：
+##     剖面减速度 = (260 − 20) × 0.90 = 216 m/s²（手动的 83%）
+##     刹停距离 9,259 米、耗时 9.3 秒
+##     从 4 万米落地总耗时 27.3 秒
+##
+##   为什么留 10% 余量而不是 1.0：剖面是「刚好刹住」的临界值，
+##   飞行中还有跟踪误差、地形起伏、目标在动，留一点才不会冲过落点。
+##   要再快就调小 AUTOPILOT_CRUISE（巡航速度），别再动这里。
+const AUTOPILOT_BRAKE_FRACTION := 0.90
 ## 可用减速度的下限。行星引力最大 32，留个地板免得剖面被压成 0 而卡死。
 const AUTOPILOT_BRAKE_FLOOR := 30.0
 ## 末端指数逼近的时间常数（秒）。d/tau 就是最后几米的下降速度。
@@ -109,18 +120,18 @@ const AUTOPILOT_CREEP_TIME := 1.0
 ##
 ## 用户截图反馈「快到星球才减速」：√(2ad) 在 9826 米处仍允许 1202 m/s，
 ## 只剩 8.2 秒落地 —— 视觉上就是一路狂飙、最后猛刹。
+## 这条剖面强制「离地面 d 米时，速度不超过 d / 本值」，
+## 给整段进近一个固定的时间预算。
 ##
-## 这条剖面强制「离地面 d 米时，速度不超过 d / 本值」，等于给整段进近
-## 一个固定的时间预算：不管离多远，至少留这么多秒。
+## ⚠ 2026-11-11 从 12 秒改成 4 秒（用户：「减速太慢，一直拖累自动航行时间」）。
 ##
-## 取 12 秒的实测效果（重力 20、brake 73.5）：
-##     30000 m: feasible 2100 > d/12=2500 → 取 2100（动力学更紧，不干预）
-##     20000 m: feasible 1715 vs 1667    → 取 1667（开始接管）
-##      9826 m: feasible 1202 vs  819    → 取  819（此前是 1202，降 32%）
-##      3000 m: feasible  664 vs  250    → 取  250
-## 关键：从 2 万米以下全程恒定「12 秒到地」，减速平摊在整段进近上，
-## 而不是集中在最后两三秒。这也是玩家能明确「感觉到在减速」的区间。
-const AUTOPILOT_APPROACH_TIME := 12.0
+##   12 秒时这条剖面在 2 万米以下**全程接管**，把速度一直压在 d/12，
+##   相当于强行规定「落地前至少磨蹭 12 秒」—— 这正是旅行时间被拖长的另一半原因。
+##   刹车能力提到 216 m/s² 之后，动力学剖面本身已经在 9.2 公里处接管，
+##   这条只需要兜住「极高处还保留很大速度」的极端情况，4 秒足够：
+##     3000 m: feasible 1138 vs d/4=750   → 取 750（仍是这条更紧，但不再磨）
+##      500 m: feasible  464 vs d/4=125   → 取 125（近地仍然稳稳收住）
+const AUTOPILOT_APPROACH_TIME := 4.0
 ## 期望停在地表上方多高。留 2.6 米，落点判定（< 3.4 米）之前就已经几乎悬停。
 const AUTOPILOT_TOUCHDOWN_ALT := 2.6
 const MANUAL_FUEL_PER_DV := 0.00625
@@ -910,8 +921,16 @@ const EXHAUST_NOZZLES_ARE_FINAL := true
 
 func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 	var tail_z: float = bounds.position.z + bounds.size.z
-	var length := bounds.size.z
-	var span := bounds.size.x
+	# ⚠ 单位必须用**缩放后**的 ship_model_*，不能用 bounds.size.*
+	#
+	#   bounds 是**原始 GLB** 的 AABB（约 1.378 × 0.450 × 1.910），
+	#   而尾焰现在挂在 self（ship 根）下，不在 holder 的 factor(≈7.33) 缩放里。
+	#   拿 bounds 的 1.91 去算长度，得到 1.91×0.32 = 0.61 米，
+	#   而半径用 base_r(0.589)×2.0 = 1.18 米 —— 宽是长的两倍，
+	#   渲染出来就是一片「扁蓝刀片」，还飘在喷口外面（用户截图）。
+	#   ship_model_length / _span 是已经乘过 factor 的米数（14.0 / 10.1），用它才对。
+	var length: float = ship_model_length
+	var span: float = ship_model_span
 	# 模型实际尺寸和探针量的时候可能不同（换了模型/改了缩放），
 	# 那就按比例把实测坐标缩放到当前包围盒，避免硬编码失效。
 	var ref_size := Vector3(1.3784, 0.4498, 1.9100)
@@ -1031,8 +1050,9 @@ func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 		engine_plumes.append(plume)
 
 		# ③ 亮芯：短一半，贴合喷口；侧面 20 边已足够圆
+		#    半径取火舌的 0.40 倍（原来 0.62 倍，几乎和火舌一样粗，看不出层次）
 		var core := MeshInstance3D.new()
-		core.mesh = _plume_mesh(length * 0.22, base_r * 0.62 * radius_k, 20, 10, 1.5)
+		core.mesh = _plume_mesh(length * 0.22, base_r * 0.40 * radius_k, 20, 10, 1.5)
 		core.material_override = core_mat
 		core.position = nozzle
 		core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1074,8 +1094,9 @@ func _build_ventral_exhaust(holder: Node3D, bounds: AABB) -> void:
 	var flame: Material = engine_materials[0]
 	var core_mat: Material = engine_materials[1]
 
-	var length: float = bounds.size.z
-	var span: float = bounds.size.x
+	# ⚠ 同样必须用缩放后的 ship_model_*（原因见 _build_external_exhaust 顶部）
+	var length: float = ship_model_length
+	var span: float = ship_model_span
 	# 腹部高度：用**实测的 ship 局部坐标**。
 	# 机身 AABB 的 y 是 [-SINK, height-SINK]（实测 -2.30 ~ 1.00），
 	# 船底就是 -SINK，喷口贴在船底上方一点。
@@ -2344,7 +2365,10 @@ func _autopilot_desired_speed(altitude: float, gravity: Vector3) -> float:
 	#   取 6 秒：9826 米处 → 1638，仍不生效（因为 feasible 更紧）；
 	#   真正起作用是在 1 万~3 万米这一段，让收油明显提前。
 	#   两条剖面取小，所以只是「更保守」，绝不会比动力学允许的更快。
-	var available: float = maxf(AUTOPILOT_ACCEL - gravity.length(), AUTOPILOT_BRAKE_FLOOR)
+	# ⚠ 2026-11-11：可用减速度改用**手动制动的减速度**，
+	#   而不是推进加速度 —— 自动航行刹车的上限本来就该是「玩家按住 S 能刹多快」。
+	#   旧版用 AUTOPILOT_ACCEL(230) 再乘 0.35，等于只用了 28% 的刹车能力。
+	var available: float = maxf(SHIP_BRAKE_DECEL - gravity.length(), AUTOPILOT_BRAKE_FLOOR)
 	var brake: float = available * AUTOPILOT_BRAKE_FRACTION
 	var d: float = maxf(altitude - AUTOPILOT_TOUCHDOWN_ALT, 0.0)
 	# 从巡航速度刹停所需的距离

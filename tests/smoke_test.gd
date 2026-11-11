@@ -51,8 +51,13 @@ func _run() -> void:
 	_check(game.sun_detail != null and game.sun_detail.get_child_count() >= 8, "sun builds a near-field prominence LOD")
 	_check(game.comet.find_child("IonTail", true, false) != null and game.comet.find_child("DustTailMesh", true, false) != null, "comet keeps one ion tail and one dust tail")
 	var cave = game.home.find_child("Cave_Qinglan", true, false)
-	var ray_from: Vector3 = game.home.global_position + game.home.surface_position(game.home.cave_direction, 14.0)
-	var ray_to: Vector3 = game.home.global_position + game.home.surface_position(game.home.cave_direction, -22.0)
+	# ⚠ 2026-11-11 B 方案：洞穴整体按 prop_scale（×5）放大，井深从 13 米变 65 米。
+	#   这两个高度是**世界空间的绝对米数**，必须跟着放大，否则射线只打到 -22 米
+	#   （= 洞局部 -4.4 米），压根够不到洞底。
+	#   注意下面 cave_local.y 的阈值不用改 —— 那是 cave 局部空间，缩放已被抵消。
+	var cave_scale: float = game.home.prop_scale if game.home.prop_scale > 0.0 else 1.0
+	var ray_from: Vector3 = game.home.global_position + game.home.surface_position(game.home.cave_direction, 14.0 * cave_scale)
+	var ray_to: Vector3 = game.home.global_position + game.home.surface_position(game.home.cave_direction, -22.0 * cave_scale)
 	var ray_query := PhysicsRayQueryParameters3D.create(ray_from, ray_to, 1)
 	var ray_hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(ray_query)
 	_check(not ray_hit.is_empty(), "cave mouth is open through the terrain shell")
@@ -236,7 +241,11 @@ func _run() -> void:
 	game._update_sky_pixel_angle()
 	_check(float(game.sky_material.get_shader_parameter("pixel_angle")) > 0.0, "the sky shader receives the live pixel angle, so star discs stay anti-aliased")
 	var ship_distance: float = game.player.global_position.distance_to(game.ship.global_position)
-	_check(ship_distance < 9.0 and ship_distance > 2.0, "player wakes beside the parked ship")
+	# ⚠ 2026-11-11 B 方案：站点布局（飞船停 30 米、出生点 35.5 米）也按 prop_scale
+	#   放大了 5 倍，两点间距随之变成 ~32 米。上限按尺度放宽，下限保留 2 米
+	#   （仍然要求「出生就在船边上，不是隔了半个星球」）。
+	var wake_limit: float = 9.0 * (game.home.prop_scale if game.home.prop_scale > 0.0 else 1.0)
+	_check(ship_distance < wake_limit and ship_distance > 2.0, "player wakes beside the parked ship")
 	_check(game._safe_spawn_clear(game.player.global_position, (game.player.global_position - game.home.global_position).normalized()), "spawn point is collision-free")
 	var spawn_forward: Vector3 = -game.player.camera.global_transform.basis.z
 	var village_world: Vector3 = game.home.global_position + game.home.surface_position(Vector3(-0.06, 1.0, -0.04).normalized(), 0.0)
@@ -367,7 +376,15 @@ func _run() -> void:
 	game.ship.global_position = game.home.global_position + game.home.surface_position(Vector3.UP, 20.0)
 	game.ship.velocity = Vector3.ZERO
 	game.ship.try_land()
-	_check(game.ship.landed and game.ship.landed_planet == game.home, "ship auto-lands near a landmark at 20m altitude")
+	# ⚠ 2026-11-11 降落改成异步状态机：try_land 只请求降落，
+	#   完整落地要 1~8 秒（APPROACH → FLARE → TOUCHDOWN）。
+	#   这里等到真的落稳，而不是假设同一帧就完成。
+	for _wait in range(600):
+		await physics_frame
+		if game.ship.landed:
+			break
+	_check(game.ship.landed and game.ship.landed_planet == game.home,
+		"ship auto-lands near a landmark at 20m altitude (took the full landing sequence)")
 	game.exit_ship()
 	var exit_normal: Vector3 = (game.player.global_position - game.home.global_position).normalized()
 	_check(game.state == "walk" and game.player.visible, "player exits landed ship")

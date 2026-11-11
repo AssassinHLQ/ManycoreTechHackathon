@@ -69,6 +69,19 @@ func _ready() -> void:
 			site_pad_radius = 44.0
 		"jianmo":
 			site_pad_radius = 34.0
+	# ⚠ 2026-11-11 平地半径跟着**行星半径**一起放大。
+	#
+	#   上面那些 34~46 米是按「半径 400 米的青岚星」标定的人类尺度场地。
+	#   用户先后把星球放大（半径 ×3 → ×5），但这条一直是**绝对固定值**，
+	#   于是星球越大地形起伏越大，而平地还是原来那么一小块 ——
+	#   洞穴螺旋坡道（外缘离站点约 39 米）就压到了平地之外的起伏地形上，
+	#   walk_test 的 sample 144 因此反复翻红。
+	#
+	#   这里按「实际半径 / 设计半径 400 米」等比放大，
+	#   保证平地的**相对比例**与当初标定时一致。
+	if radius > 0.0 and terrain_reference_radius > 0.0:
+		prop_scale = radius / terrain_reference_radius
+		site_pad_radius *= prop_scale
 	site_height = _raw_terrain_height(site_direction)
 	_setup_cave()
 	_update_orbit()
@@ -120,8 +133,36 @@ func _setup_cave() -> void:
 			cave_mouth_radius = 8.5
 		_:
 			cave_mouth_radius = 10.0
+	# ⚠ 2026-11-11 洞穴也按 prop_scale 放大。
+	#
+	#   原因：洞体（underground.gd）用的是绝对米数 —— 竖井半径 10.6 米、
+	#   洞室 +9.5 米、井深 13 米。星球半径 ×5 之后，这个洞相对星球变成了
+	#   一个针眼，而碰撞球面的格子（384 等分 = 33 米弧长）比洞口（10 米）还大，
+	#   _cut_cave_hole 连一个三角形都裁不掉 → 洞口被地形封死，
+	#   冒烟测试『the open mouth drops all the way to the cave floor』翻红。
+	#   放大 5 倍后 cave_hole_angle = 50/2000 = 0.025 rad > 一格 0.0164 rad，
+	#   洞口能在碰撞网格上真正开出来；同时和放大后的建筑保持同一尺度。
+	# ⚠ 2026-11-11（B 方案，用户定）：洞穴跟着 prop_scale ×5 一起放大。
+	#
+	#   为什么不放大不行：星球半径 ×5、建筑 65 米高、平地 230 米，
+	#   而洞还是 10 米宽、井深 13 米 —— 比例完全不对，而且
+	#   cave_hole_angle = 10/2000 = 0.005 rad 比碰撞网格一格（0.0164 rad）还小，
+	#   _cut_cave_hole 一个三角形都裁不掉，洞口直接被地形封死。
+	#
+	#   放大后：竖井半径 53 米、井深 65 米、洞室 +47 米，
+	#   cave_hole_angle = 50/2000 = 0.025 rad > 一格 0.0164 rad，
+	#   配合 _build_heightfield_surface_mesh 里的洞口局部细分，洞能开得干净。
+	#   underground.gd 也必须用 _prop_parent（同一个缩放），两者才对得上。
+	# ⚠ cave_mouth_radius **不要**在这里乘 prop_scale。
+	#   它是 underground.gd 的**局部单位**（shaft_radius = 本值 + 0.6），
+	#   而 underground 整棵子树已经由 _prop_parent 乘了一次 prop_scale。
+	#   这里再乘一次 = 缩放两次 → 世界竖井半径 253 米，而洞口只有 57 米，
+	#   会变成「小洞口下面一个巨大洞厅」的穿帮。
+	#   世界尺度的洞口角只在这里算一次：
+	#     洞口世界半径 = cave_mouth_radius * prop_scale（+ 下面 _build_lux3d_surface 的余量）
+	distance *= prop_scale
 	cave_direction = (site_direction + tangent * (distance / radius)).normalized()
-	cave_hole_angle = cave_mouth_radius / radius
+	cave_hole_angle = (cave_mouth_radius * prop_scale) / radius
 
 
 func _near_cave(direction: Vector3, margin: float) -> bool:
@@ -145,6 +186,16 @@ func _near_cave(direction: Vector3, margin: float) -> bool:
 ##   所以起伏幅度按「设计半径」算、不按放大后的 radius 算 ——
 ##   行星变大，但地表的绝对起伏保持原样，建筑、台阶、行走手感都不受影响。
 var terrain_reference_radius := 0.0
+## 地面物件的统一缩放系数 = 实际半径 / 设计半径（现在 = 5）。
+##
+## ⚠ 2026-11-11 用户：「为什么每个星球就一个星球在，没有东西」。
+##   星球半径 ×5 之后，只有 `site_pad_radius` 跟着放大了（46 → 230 米），
+##   而建筑、熔岩柱、晶体、树、岩石的尺寸**全是绝对米数**没动：
+##     观测塔 13 米高，搁在半径 2000 米的星球上 = 地球上一根 40 米长的针；
+##     全星球 170 棵树，平均 15 万平方米一棵。
+##   结果从驾驶舱看下去，每颗星球都是一颗光球，上面什么都没有。
+##   这里统一乘上 5：建筑变 20~65 米、树变 18~40 米，从空中一眼就能看见。
+var prop_scale := 1.0
 
 
 func terrain_height(direction: Vector3) -> float:
@@ -207,8 +258,8 @@ var lux_model_path := ""
 var _lux_height_map := PackedFloat32Array()
 var _lux_height_ready := false
 ## 纬度分格数；经度是它的两倍（经线在极点收敛，这样格子近似方正）。
-const LUX_LAT_BINS := 96
-const LUX_LON_BINS := 192
+const LUX_LAT_BINS := 192
+const LUX_LON_BINS := 384
 ## Lux3D 模型的挂载根（缩放后挂在行星下）。
 var _lux_root: Node3D
 ## 站点平地高度（Lux3D 分支压平网格后记下来，供 _ready 重算 site_height 对照）。
@@ -224,6 +275,11 @@ func _build_surface() -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = radius
 	sphere.height = radius * 2.0
+	# ⚠ 这里保持 256/128（原来就是），**不要跟着碰撞那套提到 384×192**。
+	#   程序化星球的碰撞体直接复用这块可视网格（见 _ensure_terrain_collision
+	#   的非 Lux3D 分支），可视面 = 碰撞面，本来就没有「不一致」。
+	#   盲提高分辨率只会让可视网格从 6.5 万面涨到 14.7 万面，白烧 GPU。
+	#   （2026-11-11 修「卡死」时误改过这里一次，已回退。）
 	sphere.radial_segments = 256 if cave_enabled else 128
 	sphere.rings = 128 if cave_enabled else 64
 	var arrays := sphere.get_mesh_arrays()
@@ -313,8 +369,15 @@ func _build_heightfield_surface_mesh() -> ArrayMesh:
 	var sphere := SphereMesh.new()
 	sphere.radius = radius
 	sphere.height = radius * 2.0
-	sphere.radial_segments = 256 if cave_enabled else 128
-	sphere.rings = 128 if cave_enabled else 64
+	# ⚠ 2026-11-11 分辨率从 128×64（cave 256×128）提到 384×192。
+	#
+	#   这是「地形把人物卡死」的根因：Lux3D 的高度表本身是 96×192 格
+	#   （半径 2000 米时每格约 65 米），而旧碰撞球面在赤道只有 128 格
+	#   = **每格 98 米**，比高度表本身还粗 —— 采样不足导致碰撞面在地下
+	#   切出一条条几十米宽的大折面，玩家走在折面棱上就被卡住。
+	#   现在的 384×192（每格约 32 米）是高度表的 2 倍过采样，能完整表达它。
+	sphere.radial_segments = 384
+	sphere.rings = 192
 	var arrays := sphere.get_mesh_arrays()
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	for i in range(vertices.size()):
@@ -322,6 +385,20 @@ func _build_heightfield_surface_mesh() -> ArrayMesh:
 		vertices[i] = d * terrain_height(d)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	if cave_enabled:
+		# ⚠ 2026-11-11 洞口必须**局部细分**，否则开不出洞。
+		#
+		#   矛盾点：碰撞球面整球 384×192，一格约 33 米弧长；
+		#   而洞口只有 cave_mouth_radius（青岚星 10 米）—— **洞口比一格还小**。
+		#   `_cut_cave_hole` 按三角形重心角度判据裁，重心永远落不进洞口，
+		#   于是一个三角形都裁不掉，洞口被地形封死（冒烟测试
+		#   『the open mouth drops all the way to the cave floor』翻红）。
+		#
+		#   之前能用是因为星球半径只有 400 米、一格 19 米，也差不多是侥幸。
+		#   现在把洞口周围递归切 3 轮（33 → 16.5 → 8.2 → 4.1 米），
+		#   洞口边缘才有足够密的顶点，裁出来的洞才对得上 underground 的竖井。
+		var refined := _refine_around_cave(vertices, arrays[Mesh.ARRAY_INDEX])
+		vertices = refined[0]
+		arrays[Mesh.ARRAY_VERTEX] = vertices
 		arrays[Mesh.ARRAY_INDEX] = _cut_cave_hole(arrays, vertices)
 	var raw := ArrayMesh.new()
 	raw.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
@@ -435,7 +512,7 @@ func _build_lux3d_surface() -> bool:
 	#   · 一棵树在赤道上约占 2 格（格宽 = 2πR/192，R=1200 时约 39 米）
 	#   · 观测台那块平台约占 10 格以上
 	# 半径 2（5×5）、跑 2 遍，正好吃掉树冠、留下平台。
-	map = _median_filter_lux(map, 2, 2)
+	map = _median_filter_lux(map, 4, 2)
 	_lux_height_map = map
 	_lux_height_ready = true
 
@@ -452,21 +529,30 @@ func _build_lux3d_surface() -> bool:
 	var site_raw: float = _sample_lux_map(map, site_direction.normalized())
 	var pad_angle: float = site_pad_radius / radius
 	var pad_outer: float = pad_angle * 1.6
-	# ⚠ Lux3D 星球把洞穴口放宽 40%：
+	# ⚠ Lux3D 星球把洞穴口稍微放宽一点：
 	#   程序化星球的地表在洞口附近本来就是起伏的，玩家被洞口边缘挡住时会顺着
 	#   斜坡滑下去；而 Lux3D 星球这里被压成了**一块平地**，洞口边缘变成一道
-	#   硬台阶，玩家（螺旋半径 8.4 米）会被抬到台面上而不是落进坡道 ——
-	#   实测 walk_test 的 spiral ramp sample 24 差了 1.71 米。
-	#   放宽洞口让台阶退到螺旋半径之外。
+	#   硬台阶，玩家会被抬到台面上而不是落进坡道。
+	#
+	#   ⚠ 2026-11-11 B 方案：原来写的是 cave_hole_angle *= 1.4（放宽 40%）。
+	#   洞 ×5 之后洞本身就大了 5 倍，再放宽 40% 会开出直径 140 米的大窟窿，
+	#   大到射线从洞口穿过去都打不到东西。改成**按米加的固定余量**：
+	#   洞口半径 = cave_mouth_radius + 1.5 * prop_scale（放大后多留 7.5 米），
+	#   这个余量只用来把压平产生的台阶推出坡道之外，和尺度无关。
 	if cave_enabled:
-		# ⚠ 只放宽洞口，**不放大平地**。
-		#   实测把平地放大到 1.6/2.2 倍反而让失败数从 0~1 涨到 1~2（平地边缘
-		#   压到了观测塔自身的测试点）。洞口放宽 40% 才是对症的那一刀：
-		#   让被压平的洞口台阶退到螺旋半径 8.4 米之外。
-		cave_hole_angle *= 1.4
+		# 世界尺度算：洞体世界半径 = cave_mouth_radius * prop_scale
+		# （underground 的竖井 + 0.6 局部 ≈ +3 世界米，这里一并算进余量）
+		var rim_extra: float = 1.5 * prop_scale
+		cave_hole_angle = ((cave_mouth_radius + 0.6) * prop_scale + rim_extra) / radius
 	_displace_lux_mesh_to_pad(to_world, site_raw, pad_angle, pad_outer)
 	# 站点基准高度用**压平后的**值，后面 _ready 里重算时会得到同一个数
 	_lux_pad_height = site_raw
+
+	# ── 换成「带平铺细节」的材质 ──
+	# Lux3D 原材质是 StandardMaterial3D + 一张 2048² 包全星球的贴图
+	# （每像素约 6 米），近看必然糊。这里把它的 albedo 贴图抽出来当基色，
+	# 叠一层每 8 米重复的程序化颗粒（三向投影），近看就有质感了。
+	_apply_detail_material(to_world)
 
 	# ── 缩放并挂上模型（模型单位 → 米）──
 	_lux_root.scale = Vector3.ONE * to_world
@@ -489,6 +575,14 @@ func _displace_lux_mesh_to_pad(to_world: float, site_h: float,
 		return
 	var site_dir: Vector3 = site_direction.normalized()
 	var touched := 0
+	# ⚠ 2026-11-11 额外一步：把**所有**顶点朝高度表靠拢，消掉尖片。
+	#   混入比例 MESH_CONFORM：1 = 完全跟随平滑高度表（最平），0 = 原始几何。
+	# ⚠ 2026-11-11 从 0.95 提到 1.0。
+	#   0.95 意味着每个顶点仍保留 5% 的原始 GLB 起伏，
+	#   而碰撞/地形查询只认 `terrain_height` —— 两份表面差几十米，
+	#   玩家就会「看着在地上、实际陷在碰撞面里」，走两步被卡死。
+	#   1.0 = 可视网格完全落在 terrain_height 上，三份数据真正同源。
+	var conform := 1.0
 	for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
 		var node := mi as MeshInstance3D
 		if node.mesh == null:
@@ -504,29 +598,74 @@ func _displace_lux_mesh_to_pad(to_world: float, site_h: float,
 				if r < 0.000001:
 					continue
 				var dir: Vector3 = v / r
+				# ① 先朝平滑高度表靠拢（全星球范围，消尖片）
+				var smooth_r: float = _sample_lux_map(_lux_height_map, dir)
+				var blended: float = lerpf(r * to_world, smooth_r, conform)
+				# ② 站点附近再压平（原有逻辑，保持不变）
 				var angular: float = acos(clampf(dir.dot(site_dir), -1.0, 1.0))
-				if angular >= pad_outer:
-					continue
-				var blend: float = 1.0 - smoothstep(pad_angle, pad_outer, angular)
-				if blend <= 0.0:
-					continue
-				# 当前世界半径 → 目标世界半径 → 折算回模型局部单位
-				var cur_world: float = r * to_world
-				var target_world: float = lerpf(cur_world, site_h, blend)
-				verts[i] = dir * (target_world / to_world)
+				if angular < pad_outer:
+					var blend: float = 1.0 - smoothstep(pad_angle, pad_outer, angular)
+					blended = lerpf(blended, site_h, blend)
+				verts[i] = dir * (blended / to_world)
 				changed_any = true
 				touched += 1
 			arrays[Mesh.ARRAY_VERTEX] = verts
-			new_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-			# 保住原材质
-			var mat: Material = node.mesh.surface_get_material(s)
-			if mat != null:
-				new_mesh.surface_set_material(s, mat)
+			# 顶点动过之后重算法线：尖片的硬边一半来自法线不连续，
+			# 平滑法线能让起伏看起来像丘陵而不是碎玻璃。
+			var st := SurfaceTool.new()
+			st.create_from_arrays(arrays, Mesh.PRIMITIVE_TRIANGLES)
+			st.generate_normals()
+			var rebuilt := st.commit()
+			var mat2: Material = node.mesh.surface_get_material(s)
+			if mat2 != null:
+				rebuilt.surface_set_material(s, mat2)
+			new_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,
+				rebuilt.surface_get_arrays(0))
+			if mat2 != null:
+				new_mesh.surface_set_material(s, mat2)
+			continue
+
 		if changed_any:
 			node.mesh = new_mesh
 	if touched > 0:
 		print("[Lux3D] %s：压平站点周围顶点 %d 个（与 terrain_height 对齐）" % [
 			planet_id, touched])
+
+
+## 把 Lux3D 星球的材质换成「基色贴图 + 平铺细节」。
+const DETAIL_SHADER := preload("res://shaders/planet_detail.gdshader")
+
+
+func _apply_detail_material(world_scale: float) -> void:
+	if _lux_root == null:
+		return
+	for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
+		var node := mi as MeshInstance3D
+		if node.mesh == null:
+			continue
+		for s in range(node.mesh.get_surface_count()):
+			var src: Material = node.mesh.surface_get_material(s)
+			if src == null:
+				src = node.material_override
+			if src == null:
+				continue
+			var albedo_tex: Texture2D = null
+			var rough: float = 0.88
+			if src is StandardMaterial3D:
+				albedo_tex = (src as StandardMaterial3D).albedo_texture
+				rough = clampf((src as StandardMaterial3D).roughness, 0.0, 1.0)
+			if albedo_tex == null:
+				continue
+			var mat := ShaderMaterial.new()
+			mat.shader = DETAIL_SHADER
+			mat.set_shader_parameter("base_tex", albedo_tex)
+			mat.set_shader_parameter("detail_meters", 8.0)
+			mat.set_shader_parameter("model_scale", world_scale)
+			# 暗色星球（玄渊/缄默）细节弱一点，否则会显得脏
+			var strength: float = 0.20 if kind in ["xuanyuan", "jianmo"] else 0.30
+			mat.set_shader_parameter("detail_strength", strength)
+			mat.set_shader_parameter("roughness_value", rough)
+			node.mesh.surface_set_material(s, mat)
 
 
 ## 对高度表做中值滤波（经度环绕、纬度夹紧）。
@@ -640,6 +779,91 @@ func _cut_cave_hole(arrays: Array, vertices: PackedVector3Array) -> PackedInt32A
 	return kept
 
 
+## 在洞口附近把三角形递归细分，让洞口边缘的格子小到能表达洞。
+##
+## 输入输出都是「方向 * terrain_height(方向)」的顶点表 + 索引表，
+## 返回 [vertices, indices]。细分只发生在洞口附近的三角形上，
+## 整球分辨率不变（否则 20 颗星球的面数会炸）。
+##
+## 做法：1→4 细分（三条边各取中点）。中点方向取两端点方向的球面中点，
+## 再乘 terrain_height 贴地，所以新顶点同样落在地形表面上。
+##
+## ⚠ 注意 GDScript 的 PackedVector3Array 是**写时复制**：
+##   往函数参数里 push_back 不会传回调用方。所以这里自己维护一个
+##   Array[Vector3] 工作副本，最后再转回 PackedVector3Array。
+func _refine_around_cave(vertices: PackedVector3Array, indices: PackedInt32Array) -> Array:
+	if indices.is_empty():
+		indices.resize(vertices.size())
+		for i in range(vertices.size()):
+			indices[i] = i
+	var cos_zone: float = cos(cave_hole_angle * 2.6)   # 洞口外 2.6 倍角范围
+	var work: Array = []
+	work.resize(vertices.size())
+	for i in range(vertices.size()):
+		work[i] = vertices[i]
+	var idx: PackedInt32Array = indices.duplicate()
+	for _round in range(3):
+		var cache := {}
+		var next := PackedInt32Array()
+		var refined_count := 0
+		for i in range(0, idx.size(), 3):
+			var ia: int = idx[i]
+			var ib: int = idx[i + 1]
+			var ic: int = idx[i + 2]
+			var a: Vector3 = work[ia]
+			var b: Vector3 = work[ib]
+			var c: Vector3 = work[ic]
+			var centroid: Vector3 = (a + b + c).normalized()
+			if centroid.dot(cave_direction) < cos_zone:
+				next.push_back(ia)
+				next.push_back(ib)
+				next.push_back(ic)
+				continue
+			var ab: int = _edge_midpoint(cache, work, ia, ib)
+			var bc: int = _edge_midpoint(cache, work, ib, ic)
+			var ca: int = _edge_midpoint(cache, work, ic, ia)
+			next.push_back(ia)
+			next.push_back(ab)
+			next.push_back(ca)
+			next.push_back(ab)
+			next.push_back(ib)
+			next.push_back(bc)
+			next.push_back(ca)
+			next.push_back(bc)
+			next.push_back(ic)
+			next.push_back(ab)
+			next.push_back(bc)
+			next.push_back(ca)
+			refined_count += 1
+		idx = next
+		if refined_count == 0:
+			break
+	var out := PackedVector3Array()
+	out.resize(work.size())
+	for i in range(work.size()):
+		out[i] = work[i]
+	return [out, idx]
+
+
+## 取 (ia, ib) 边的球面中点顶点索引（同一轮内同一条边只加一次）。
+## work 是 Array[Vector3]，可以原地 push_back。
+func _edge_midpoint(cache: Dictionary, work: Array, ia: int, ib: int) -> int:
+	var key: int = mini(ia, ib) * 1048576 + maxi(ia, ib)
+	if cache.has(key):
+		return int(cache[key])
+	var a: Vector3 = work[ia]
+	var b: Vector3 = work[ib]
+	var dir: Vector3 = a.normalized() + b.normalized()
+	var new_index: int = work.size()
+	if dir.length_squared() < 0.000001:
+		work.append((a + b) * 0.5)
+	else:
+		var d: Vector3 = dir.normalized()
+		work.append(d * terrain_height(d))
+	cache[key] = new_index
+	return new_index
+
+
 func _build_atmosphere() -> void:
 	# 硫坞星 / 磐砂星 / 缄默星 不做大气壳：硫雾用灯光表现，光壳在近距离会露出低模面片。
 	# 纭潪鏄?/ 纾愮爞鏄?/ 缂勯粯鏄?涓嶅仛澶ф皵澹筹細纭浘鐢ㄧ伅鍏夎〃鐜帮紝鍏夊３鍦ㄨ繎璺濈浼氶湶鍑轰綆妯￠潰鐗囥€?	# ⚠ 2026-11-11 Lux3D 星球**不加大气层壳**：
@@ -709,6 +933,10 @@ func _build_atmosphere() -> void:
 
 func _build_landscape() -> void:
 	var count := 170
+	# ⚠ 星球放大 5 倍后表面积 ×25，物件数量也翻倍，否则空旷得像荒星。
+	#   没有再乘 5：每棵树都带一个 StaticBody3D 碰撞体，
+	#   20 颗星球 × 850 个碰撞体太贵，×2 已经足够看出层次。
+	count *= 2
 	match kind:
 		"zheya": count = 140
 		"cangbo": count = 70
@@ -1008,6 +1236,18 @@ func _grass_tuft_mesh() -> ArrayMesh:
 	return surface_tool.commit()
 
 
+## 和 `_surface_parent` 一样，但把整棵子树按 `prop_scale` 放大。
+##
+## 只给**户外摆件**用（建筑、熔岩柱、晶体、喷口、遗迹、落点岛）。
+## 洞穴内部（underground.gd）故意不用它 —— 那是给人走的手工空间，
+## 保持人类尺度才对。
+func _prop_parent(direction: Vector3, altitude: float) -> Node3D:
+	var root := _surface_parent(direction, altitude)
+	if root != null and not is_equal_approx(prop_scale, 1.0):
+		root.scale = Vector3.ONE * prop_scale
+	return root
+
+
 func _surface_parent(direction: Vector3, altitude: float) -> Node3D:
 	var root := Node3D.new()
 	add_child(root)
@@ -1017,7 +1257,7 @@ func _surface_parent(direction: Vector3, altitude: float) -> Node3D:
 
 
 func _add_tree(direction: Vector3, _collidable := false) -> void:
-	var size := rng.randf_range(1.0, 2.25)
+	var size := rng.randf_range(1.0, 2.25) * prop_scale
 	var up := direction.normalized()
 	var origin := surface_position(direction, -0.85)
 	var transform := Transform3D(Basis(Quaternion(Vector3.UP, up)).scaled(Vector3.ONE * size), origin)
@@ -1202,6 +1442,7 @@ func _broadleaf_canopy_mesh() -> ArrayMesh:
 
 
 func _add_rock(direction: Vector3, size: float, color: Color, altitude: float) -> void:
+	size *= prop_scale
 	var rotation := Basis.from_euler(Vector3(rng.randf() * PI, rng.randf() * PI, rng.randf() * PI))
 	var scale := Vector3(rng.randf_range(0.7, 1.3), rng.randf_range(0.7, 1.4), rng.randf_range(0.7, 1.3)) * size
 	var transform := Transform3D(rotation.scaled(scale), surface_position(direction, altitude + size * 0.12))
@@ -1211,7 +1452,7 @@ func _add_rock(direction: Vector3, size: float, color: Color, altitude: float) -
 
 
 func _add_basalt(direction: Vector3) -> void:
-	var root := _surface_parent(direction, 0.0)
+	var root := _prop_parent(direction, 0.0)
 	var height := rng.randf_range(6.0, 24.0)
 	root.rotation.y = rng.randf() * TAU
 	root.add_child(_mesh(_cylinder(1.4, 2.1, height, 6), _material(Color("372d31")), Vector3(0, height * 0.42, 0)))
@@ -1232,7 +1473,7 @@ func _add_basalt(direction: Vector3) -> void:
 
 
 func _add_crystal(direction: Vector3, color: Color, altitude: float) -> void:
-	var root := _surface_parent(direction, altitude)
+	var root := _prop_parent(direction, altitude)
 	var height := rng.randf_range(6.0, 18.0)
 	var material := _material(color.darkened(0.2), 1.3)
 	# 晶簇：一根主棱 + 三到四根副棱 + 底部碎晶座，不再是单锥
@@ -1268,7 +1509,7 @@ func _add_crystal(direction: Vector3, color: Color, altitude: float) -> void:
 
 
 func _add_spout(direction: Vector3) -> void:
-	var root := _surface_parent(direction, -1.0)
+	var root := _prop_parent(direction, -1.0)
 	root.scale = Vector3.ONE * rng.randf_range(3.5, 7.0)
 	var material := _material(Color(0.38, 0.76, 0.85, 0.24))
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -1288,7 +1529,7 @@ func _limit_range(node: Node, end: float) -> void:
 
 
 func _add_landing_island() -> void:
-	var root := _surface_parent(Vector3.UP, -2.5)
+	var root := _prop_parent(Vector3.UP, -2.5)
 	var stone := SphereMesh.new()
 	stone.radius = 34.0
 	stone.height = 68.0
@@ -1312,7 +1553,7 @@ func _add_landing_island() -> void:
 
 func _add_home_ruin() -> void:
 	var direction := Vector3(0.68, 0.65, -0.3).normalized()
-	var root := _surface_parent(direction, 0.0)
+	var root := _prop_parent(direction, 0.0)
 	var stone := _material(Color("7c8175"))
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
@@ -1343,7 +1584,7 @@ func _add_eye_spires() -> void:
 	for i in range(11):
 		var angle := float(i) / 11.0 * TAU
 		var direction := Vector3(cos(angle) * 0.36, 1.0, sin(angle) * 0.36).normalized()
-		var root := _surface_parent(direction, 0.0)
+		var root := _prop_parent(direction, 0.0)
 		var height := 22.0 + i * 2.2
 		var spire := _mesh(_cylinder(0.0, 2.0, height, 5), _material(Color("263239")), Vector3(0, height * 0.42, 0))
 		spire.rotation.z = 0.22

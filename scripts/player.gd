@@ -15,6 +15,18 @@ var bob_time := 0.0
 var last_grounded := false
 var blocked_time := 0.0
 var blocked_hint_cooldown := 0.0
+## 当前所处环境的「世界尺度」。星球表面 = planet.prop_scale（现在 5），
+## 站内 / 阁楼这类手工空间 = 1.0。
+##
+## ⚠ 2026-11-11 用户选了 B 方案：建筑、洞穴、树石全部按 prop_scale ×5 放大，
+##   而玩家一直是 8.5 m/s 的人类速度 —— 于是走进一栋 65 米高的塔要 30 秒，
+##   walk_test 的「进出门」三条断言全部翻红（局部走了不到 1 米）。
+##   所以人也要按同一比例变大：跑得更快、跳得更高、胶囊更大。
+##   这样「相对建筑」的手感和放大前一模一样。
+var body_scale := 1.0
+var _body_collision: CollisionShape3D
+var _body_capsule: CapsuleShape3D
+var _body_scaled_once := false
 
 
 func _ready() -> void:
@@ -25,11 +37,15 @@ func _ready() -> void:
 	safe_margin = 0.025
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
+	# 基准尺寸（body_scale = 1 时的人类尺度）。实际值在 _physics_process 里
+	# 按所处环境的 body_scale 更新，见 _apply_body_scale()。
 	capsule.radius = 0.34
 	capsule.height = 1.65
 	collision.shape = capsule
 	collision.position.y = 0.82
 	add_child(collision)
+	_body_collision = collision
+	_body_capsule = capsule
 
 	camera = Camera3D.new()
 	camera.position.y = 1.48
@@ -119,24 +135,32 @@ func _physics_process(delta: float) -> void:
 		gravity_strength = planet.gravity_strength
 	_align_up(normal)
 	up_direction = normal
+	# 星球表面按星球尺度放大，室内（站内 / 阁楼）保持人类尺度。
+	var wanted_scale := 1.0
+	if not in_station and not game.in_attic and planet != null:
+		wanted_scale = planet.prop_scale if planet.prop_scale > 0.0 else 1.0
+	_apply_body_scale(wanted_scale)
 
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var wish: Vector3 = global_transform.basis * Vector3(input.x, 0.0, input.y)
 	wish = (wish - normal * wish.dot(normal)).normalized()
-	var speed := 8.5
+	# 速度按 body_scale 缩放：世界大 5 倍，人相对也要跑 5 倍快，
+	# 才能维持「相对建筑」的原手感。
+	var speed := 8.5 * body_scale
 	if Input.is_action_pressed("thrust_down"):
-		speed = 15.5
+		speed = 15.5 * body_scale
 	if focus:
-		speed = 4.0
+		speed = 4.0 * body_scale
 	var vertical_speed := velocity.dot(normal)
 	var horizontal := velocity - normal * vertical_speed
-	horizontal = horizontal.move_toward(wish * speed, delta * (34.0 if is_on_floor() else 12.0))
+	horizontal = horizontal.move_toward(wish * speed,
+		delta * (34.0 if is_on_floor() else 12.0) * body_scale)
 
 	if is_on_floor():
 		if vertical_speed < 0.0:
 			vertical_speed = -0.8
 		if Input.is_action_just_pressed("jump"):
-			vertical_speed = 9.5
+			vertical_speed = 9.5 * body_scale
 		fuel = minf(100.0, fuel + delta * 14.0)
 	else:
 		if in_station or game.in_attic:
@@ -147,8 +171,8 @@ func _physics_process(delta: float) -> void:
 
 	var jetting := false
 	if Input.is_action_pressed("jetpack") and fuel > 0.0 and not game.map_open:
-		vertical_speed += 46.0 * delta
-		vertical_speed = minf(vertical_speed, 17.0)
+		vertical_speed += 46.0 * delta * body_scale
+		vertical_speed = minf(vertical_speed, 17.0 * body_scale)
 		fuel = maxf(0.0, fuel - delta * (18.0 + gravity_strength * 0.22))
 		jetting = true
 	velocity = horizontal + normal * vertical_speed
@@ -165,7 +189,18 @@ func _physics_process(delta: float) -> void:
 		blocked_hint_cooldown = 7.0
 		blocked_time = 0.0
 
-	if in_station or global_position.distance_to(game.ship.global_position) < 9.0 or global_position.distance_to(game.campfire.global_position) < 6.0:
+	# ── 氧气与喷气燃料的补给规则（用户 2026-11-11）──────────────────
+	#
+	# 用户原话：「人在飞机旁边不能回复氧气和喷气，必须进入飞机才回满」
+	#
+	# ⚠ 旧版是「距飞船 9 米内就 +18/s 回氧」—— 于是站在船边也能一直回氧。
+	#   现在改成两档：
+	#     · 站内 / 阁楼 / 篝火边：仍然回氧（这些是「安全屋」性质）
+	#     · **飞船旁不再回氧**，只有真正上船（state == "ship"）才回满
+	#       （上船那一刻由 main.gd 的 enter_ship 一次性灌满）
+	var safe_zone: bool = in_station or game.in_attic \
+			or global_position.distance_to(game.campfire.global_position) < 6.0
+	if safe_zone:
 		oxygen = minf(100.0, oxygen + delta * 18.0)
 	else:
 		oxygen = maxf(0.0, oxygen - delta * 0.22)
@@ -177,10 +212,26 @@ func _physics_process(delta: float) -> void:
 	var target_fov := maxf(SCOPE_BASE_FOV / scope_zoom, 4.0) if focus else 74.0
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 9.0))
 	var planar_speed := horizontal.length()
-	if is_on_floor() and planar_speed > 0.5:
-		bob_time += delta * planar_speed * 1.25
-	camera.position.y = 1.48 + sin(bob_time) * minf(planar_speed / 8.5, 1.0) * 0.035
+	if is_on_floor() and planar_speed > 0.5 * body_scale:
+		bob_time += delta * planar_speed / maxf(body_scale, 0.001) * 1.25
+	camera.position.y = (1.48 + sin(bob_time) * minf(planar_speed / (8.5 * body_scale), 1.0) * 0.035) * body_scale
 	game.audio.set_jetpack(jetting)
+
+
+## 把胶囊与「贴地/台阶」相关的容差按 body_scale 重设。
+## 只在数值真的变了的时候写一次，避免每帧改碰撞体（会让物理服务器反复重建）。
+func _apply_body_scale(wanted: float) -> void:
+	if is_equal_approx(wanted, body_scale) and _body_scaled_once:
+		return
+	body_scale = maxf(wanted, 0.01)
+	_body_scaled_once = true
+	if _body_capsule != null and _body_collision != null:
+		_body_capsule.radius = 0.34 * body_scale
+		_body_capsule.height = 1.65 * body_scale
+		_body_collision.position.y = 0.82 * body_scale
+	# 贴地吸附、台阶余量也要跟着放大，否则大尺度下会被小台阶卡住。
+	floor_snap_length = 0.55 * body_scale
+	safe_margin = 0.025 * body_scale
 
 
 func _sensitivity_multiplier() -> float:

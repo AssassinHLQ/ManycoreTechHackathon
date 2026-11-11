@@ -53,7 +53,9 @@ func _run() -> void:
 	var arch: Node3D = game.home.find_child("Architecture_Qinglan", true, false)
 
 	_place(arch, Vector3(8.0, 1.9, 0.0))
-	for i in range(10):
+	# 2026-11-11 物理插值开启后，从 0.29 米高处落地要约 15 帧才稳定；
+	# 原来等 10 帧是踩线过的（实测第 10 帧 is_on_floor 仍为 false）。
+	for i in range(30):
 		await physics_frame
 	_check(game.player.is_on_floor(), "player stands on the observatory platform")
 	var wall_run: Array = await _walk("move_left", 180)
@@ -62,7 +64,7 @@ func _run() -> void:
 	_check(wall_local.x > 6.0, "the platform wall stops the player outside the tower")
 
 	_place(arch, Vector3(0.5, 1.78, 3.0))
-	for i in range(10):
+	for i in range(30):
 		await physics_frame
 	var exit_run: Array = await _walk("move_back", 180)
 	var exit_local: Vector3 = arch.global_transform.affine_inverse() * game.player.global_position
@@ -70,7 +72,7 @@ func _run() -> void:
 	_check(exit_local.z > 6.0, "the player leaves through the front doorway")
 
 	_place(arch, Vector3(0.5, 1.9, 8.0))
-	for i in range(10):
+	for i in range(30):
 		await physics_frame
 	var enter_run: Array = await _walk("move_forward", 150)
 	var enter_local: Vector3 = arch.global_transform.affine_inverse() * game.player.global_position
@@ -90,21 +92,30 @@ func _run() -> void:
 	_check(tide_local.z < 3.6, "the player enters the tide station")
 
 	_place(arch, Vector3(8.0, 1.9, 0.0))
-	for i in range(6):
+	for i in range(30):
 		await physics_frame
 	var surface_run: Array = await _walk("move_forward", 120)
 	_check(surface_run[0] < 1.5, "surface walking never snaps")
 	_check(surface_run[1] > 5.0, "surface walking covers ground")
 
 	var cave: Node3D = game.home.find_child("Cave_Qinglan", true, false)
+	# ⚠ 2026-11-11：星球放大后这一段会随机有 1~2 个点失败，但单独诊断
+	#   （probe_cave_ramp_diag.gd）四个点全过、误差仅 0.21~0.30 米。
+	#   说明坡道本身没问题，是**前面几步留下的物理状态**让玩家在 45 帧内
+	#   还没落稳。所以这里只加「稳定时间」，不改容差、不放宽判据。
 	for sample in [24, 64, 104, 144]:
 		var t := float(sample) / 160.0
 		var angle := PI * 0.5 - 0.30 + 0.36 * 40.0 * t
 		var expected_y := lerpf(-0.2, -12.85, t)
 		game.player.reparent(game.home, false)
-		game.player.global_position = cave.global_transform * Vector3(cos(angle) * 8.4, expected_y + 1.2, sin(angle) * 8.4)
 		game.player.velocity = Vector3.ZERO
-		for i in range(45):
+		game.player.global_position = cave.global_transform * Vector3(cos(angle) * 8.4, expected_y + 1.2, sin(angle) * 8.4)
+		# 先空跑几帧让物理服务器把新位置同步进碰撞检测
+		for i in range(10):
+			await physics_frame
+		game.player.velocity = Vector3.ZERO
+		game.player.global_position = cave.global_transform * Vector3(cos(angle) * 8.4, expected_y + 1.2, sin(angle) * 8.4)
+		for i in range(140):
 			await physics_frame
 		var local: Vector3 = cave.global_transform.affine_inverse() * game.player.global_position
 		_check(game.player.is_on_floor() and absf(local.y - expected_y) < 0.9, "spiral ramp supports the player at sample %d" % sample)

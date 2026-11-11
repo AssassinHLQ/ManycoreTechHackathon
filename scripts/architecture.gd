@@ -1,6 +1,10 @@
 extends RefCounted
 
-## 程序化地标建筑。所有尺寸均为米，不随星球半径整体缩放。
+## 程序化地标建筑。所有尺寸均按「半径 400 米」的设计尺度写成米。
+##
+## ⚠ 2026-11-11 改：整棵子树现在由 `planet._prop_parent()` 按
+##   `radius / 400` 统一放大（现在 ×5），所以这里的数字**不用动** ——
+##   写 13 米的观测塔，在半径 2000 米的星球上就是 65 米高。
 ## _surface_parent() 返回的局部空间中，Y 轴为地表法线。
 
 const UndergroundScript = preload("res://scripts/underground.gd")
@@ -20,7 +24,7 @@ static func build(planet, kind: String) -> void:
 	elif kind == "xuanyuan":
 		altitude = -0.05
 
-	var root: Node3D = planet._surface_parent(direction, altitude)
+	var root: Node3D = planet._prop_parent(direction, altitude)
 	if root == null:
 		return
 	root.name = "Architecture_%s" % kind.capitalize()

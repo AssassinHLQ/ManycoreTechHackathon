@@ -16,7 +16,10 @@ const TIDE_DOOR_WIDTH := 2.2
 static func build(planet, kind: String) -> void:
 	if not planet.cave_enabled:
 		return
-	var root: Node3D = planet._surface_parent(planet.cave_direction, 0.0)
+	# ⚠ B 方案（用户 2026-11-11 定）：整座洞体跟着 prop_scale（×5）放大，
+	#   和放大后的建筑、洞口半径（cave_mouth_radius ×5）同一套尺度。
+	#   用 _surface_parent 会让洞还是人类尺寸，而星球已经大 5 倍。
+	var root: Node3D = planet._prop_parent(planet.cave_direction, 0.0)
 	if root == null:
 		return
 	root.name = "Cave_%s" % kind.capitalize()
