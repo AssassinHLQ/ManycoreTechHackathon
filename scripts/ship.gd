@@ -255,8 +255,21 @@ const BH_TANGENT_RATIO := 0.5
 ## 不改速度大小，速度够快就能走双曲线轨道溜掉。
 ## 下面三个参数在近黑洞区域强行吃掉切向速度，让高速飞船也逃不掉。
 ##
-## 从多近开始吃切向速度（closeness，0~1）。0.62 约合离黑洞 2810。
-const BH_CAPTURE_FROM := 0.62
+## ── 吸积盘阻力的距离淡出 ──────────────────────────────────────────
+##
+## 用户实测：「不管你多大速度，到附近都会被快速拖慢，3200 和 1000 都是 3 秒失去速度」。
+## 根因有两个，都在下面修掉：
+##   ① 轨道阻尼原来是「进到场内 22 秒内**无条件**按 28%/秒 衰减切向速度」——
+##      距离完全不参与，所以连 7000 米外巡航都在被慢慢刹停。
+##   ② v² 阻力的开关虽然有距离门槛，但门槛（0.62 ≈ 2810 米）开得很晚，
+##      中间没有远近差别，近了才突然咬人。
+##
+## 现在统一乘一个距离淡出系数：
+##     disk_fade = smoothstep(BH_DISK_FROM, BH_DISK_TO, closeness)
+##   BH_DISK_FROM 0.45 ≈ 4014 米 —— 在此之前阻力**完全为 0**，正常巡航不挨咬。
+##   BH_DISK_TO   0.85 ≈ 1182 米 —— 在此之后阻力拉满。
+const BH_DISK_FROM := 0.45
+const BH_DISK_TO := 0.85
 
 ## ── 吸积盘阻力（动力学摩擦）──────────────────────────────────────
 ##
@@ -291,12 +304,12 @@ const BH_SINK_TO_INWARD := 0.9
 ## 120 是视界，这里留出一段缓冲区，让「已经没救了」的观感提前出现，
 ## 而不是等贴脸才判定。
 ##
-## ── 强制捕获兜底 ─────────────────────────────────────────────────
-## 进了这个半径就别想走：不管速度多少，切向速度被吃掉、径向速度被拉满。
-## 120 是视界，这里留出一段缓冲区，让「已经没救了」的观感提前出现。
-##
-## 取 2400：实测 3000 处、1600 全速擦边时，仅靠引力+切向吞噬仍能逃出去。
-const BH_FORCE_CAPTURE := 2400.0
+## ⚠ 2026-11-11 用户反馈「黑洞太强了怎么办」：
+##   原来取 2400，是视界（120）的 **20 倍** —— 离黑洞 2.4 公里内就无条件
+##   判定捕获，不管多快往哪飞都逃不掉。玩家感觉撞上了一堵看不见的墙。
+##   现在缩到 1400（视界的 11.7 倍）：保留「进了就没救」的压迫感，
+##   但在外面留出一段真正能挣扎的区间（1400~2400 之间不再硬判定）。
+const BH_FORCE_CAPTURE := 1400.0
 ## 强制捕获时每秒最多砍掉多少 m/s 的切向速度（**固定量，不是比例**）。
 ##
 ## ⚠ 2026-11-10 用户实测「3200 和 1000 都是 3 秒失去速度」：
@@ -1484,7 +1497,12 @@ func _black_hole_pull(delta: float) -> Vector3:
 	# 速度越快，吃掉的越多，这样高速度也躲不过。
 	var tangential_weight := (1.0 - smoothstep(0.0, BH_ORBIT_FADE, bh_orbit_age)) \
 		* (1.0 - smoothstep(0.85, 0.97, closeness))
-	if closeness > BH_CAPTURE_FROM:
+	# 吸积盘的**距离淡出系数**：0 = 完全不吃速度（远场正常巡航），1 = 阻力拉满。
+	# 这一层是用户实测「不管多快、到附近都被快速拖慢」的修复核心：
+	# 以前阻力一开就是满档，而且轨道阻尼**完全不看距离**，
+	# 7000 米外巡航也在被慢慢刹停。
+	var disk_fade := smoothstep(BH_DISK_FROM, BH_DISK_TO, closeness)
+	if disk_fade > 0.001:
 		# 切向速度（垂直于半径方向的分量）—— 这是「擦边溜走」靠的那个分量。
 		var tx := velocity - direction * velocity.dot(direction)
 		var tx_speed := tx.length()
@@ -1493,9 +1511,9 @@ func _black_hole_pull(delta: float) -> Vector3:
 			# 见 BH_DRAG_HALF / BH_DRAG_MAX 的注释。
 			# 用户要的「越快拽得越狠」就体现在这里：
 			# 1000 m/s 被砍约 1200 m/s²，4000 m/s 被砍约 5700 m/s²。
-			var grab := smoothstep(BH_CAPTURE_FROM, 1.0, closeness)
+			# 再乘 disk_fade：越靠近吸积盘阻力越强，远处为 0。
 			var v2 := tx_speed * tx_speed
-			var drag_a := BH_DRAG_MAX * (v2 / (v2 + BH_DRAG_HALF * BH_DRAG_HALF)) * grab
+			var drag_a := BH_DRAG_MAX * (v2 / (v2 + BH_DRAG_HALF * BH_DRAG_HALF)) * disk_fade
 			var cut := minf(tx_speed, drag_a * delta)
 			velocity -= tx / tx_speed * cut
 			# 被吃掉的切向动量有一部分转成**向心速度**，让飞船真的被卷进去，
@@ -1520,7 +1538,12 @@ func _black_hole_pull(delta: float) -> Vector3:
 		# 不然飞船会绕成一条完美的闭合圆轨道、在固定半径上永远打转（实测卡在
 		# ~1000 处不动）。这里直接扣掉一点切向速度，让它慢慢往里螺进。
 		# 注意：只扣**切向**分量，朝里的那部分速度不动，所以「被吸进去」的手感还在。
-		var drag := drift * clampf(BH_ORBIT_DRAG * delta, 0.0, 0.5)
+		#
+		# ⚠ 2026-11-11：原来这一下**完全不看距离**，进场 22 秒内无条件按
+		#   28%/秒 衰减切向速度 —— 所以 7000 米外正常巡航也在被慢慢刹停，
+		#   这正是用户实测「3200 和 1000 都是 3 秒失去速度」的另一半根因。
+		#   现在乘上 disk_fade：远处为 0，近处才逐渐咬人。
+		var drag := drift * clampf(BH_ORBIT_DRAG * disk_fade * delta, 0.0, 0.5)
 		velocity -= drag
 	bh_pull = pull
 	return pull

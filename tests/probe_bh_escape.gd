@@ -73,7 +73,14 @@ func _run() -> void:
 					if ship.bh_captured:
 						var inward: Vector3 = (hole - ship.global_position).normalized()
 						var tv: Vector3 = ship.velocity - inward * ship.velocity.dot(inward)
-						ship.velocity -= tv * clampf(ship.BH_FORCE_BRAKE * dt, 0.0, 1.0)
+						# ⚠ 2026-11-11：常量在 412e122 从 BH_FORCE_BRAKE 改名为
+						#   BH_FORCE_BRAKE_DECEL，这里漏改 → 每帧抛一次错误，
+						#   64800 条错误日志把探针卡死。顺手把「固定减速度」也同步上，
+						#   免得探针和生产逻辑漂移。
+						var tv_speed: float = tv.length()
+						if tv_speed > 0.01:
+							var cut: float = minf(tv_speed, ship.BH_FORCE_BRAKE_DECEL * dt)
+							ship.velocity -= tv / tv_speed * cut
 						var ispd: float = ship.velocity.dot(inward)
 						if ispd < ship.BH_FORCE_INWARD:
 							ship.velocity += inward * (ship.BH_FORCE_INWARD - ispd)
