@@ -19,6 +19,8 @@ var orbit_height := 0.0
 var base_color := Color.GRAY
 var accent_color := Color.WHITE
 var surface: MeshInstance3D
+## 行星环（只有悬晶星/玄渊星有）。一整片 annulus，见 _build_ring。
+var ring_node: MeshInstance3D
 var atmosphere: MeshInstance3D
 var clouds: MeshInstance3D
 var rng := RandomNumberGenerator.new()
@@ -1320,19 +1322,87 @@ func _add_eye_spires() -> void:
 		_limit_range(root, 3000.0)
 
 
+## 行星环：**一整片**扁平半透明圆盘，不是几条细铁圈。
+##
+## ⚠ 2026-11-11 用户：「这些环不好看，能不能搞好点」。
+##   旧实现是 3 个 `TorusMesh` 叠起来，三个致命问题：
+##     · TorusMesh 是**实心圆管**，不是薄片 —— 看起来就是橙色管子
+##     · outer − inner 只有半径的 2%（约 16 米），等于一条细线
+##     · 三条环各自倾斜 18°/21°/24°，于是像三根铁丝歪着套在球上
+##   现在改成一个 annulus（环形平面）+ 径向分带着色器（见 planet_ring.gdshader）：
+##   一整片、有缝、内缘外缘淡出的环面。
+const RING_SHADER := preload("res://shaders/planet_ring.gdshader")
+
+
 func _build_ring() -> void:
-	for i in range(3):
-		var ring := MeshInstance3D.new()
-		var mesh := TorusMesh.new()
-		mesh.inner_radius = radius * (1.35 + i * 0.09)
-		mesh.outer_radius = radius * (1.37 + i * 0.09)
-		mesh.rings = 96
-		mesh.ring_segments = 8
-		ring.mesh = mesh
-		ring.material_override = _material(accent_color.darkened(0.35), 0.45)
-		ring.rotation_degrees = Vector3(18 + i * 3, i * 11, 24)
-		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(ring)
+	var inner: float = radius * 1.34
+	var outer: float = radius * 2.15
+	var ring := MeshInstance3D.new()
+	ring.name = "PlanetRing"
+	ring.mesh = _annulus_mesh(inner, outer, 192)
+
+	var mat := ShaderMaterial.new()
+	mat.shader = RING_SHADER
+	# 配色从行星主色派生，但**去饱和**——环是碎冰和尘埃，不该是饱和的橙。
+	#
+	# ⚠ 2026-11-11 调暗一轮：第一版环偏亮偏白，比星球本体还抢眼，
+	#   尤其玄渊星（近黑）配亮白环反差过大。整体压暗、透明度也降一点，
+	#   让环退到星球后面当背景。暗色行星（玄渊/缄默）再额外压一档。
+	var is_dark_planet: bool = kind in ["xuanyuan", "jianmo"]
+	var light_col: Color = Color("b8b2a8").lerp(accent_color.lightened(0.35), 0.30)
+	var dark_col: Color = Color("4a4642").lerp(accent_color.darkened(0.35), 0.22)
+	if is_dark_planet:
+		light_col = light_col.darkened(0.28)
+		dark_col = dark_col.darkened(0.25)
+	mat.set_shader_parameter("ring_light", Vector3(light_col.r, light_col.g, light_col.b))
+	mat.set_shader_parameter("ring_dark", Vector3(dark_col.r, dark_col.g, dark_col.b))
+	mat.set_shader_parameter("base_alpha", 0.52 if is_dark_planet else 0.64)
+	mat.set_shader_parameter("inner_fade", 0.09)
+	mat.set_shader_parameter("outer_fade", 0.26)
+	mat.set_shader_parameter("seed", float(abs(planet_id.hash()) % 977) * 0.137)
+	ring.material_override = mat
+
+	# 整个环面**统一倾角**（不再每条各转一个角度），略绕 Y 轴错开让边缘不总正对镜头
+	ring.rotation_degrees = Vector3(22.0, 14.0, 8.0)
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ring)
+	ring_node = ring
+
+
+## 生成一个扁平圆环面（annulus）：法线朝 +Y，UV 的 v = 径向 0→1。
+##
+## 为什么不用 TorusMesh：那是**有截面厚度的圆管**，从侧面看是一根管子；
+## 行星环在视觉上必须是一张零厚度的薄片。
+func _annulus_mesh(inner: float, outer: float, segments: int) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in range(segments):
+		var a0: float = TAU * float(i) / float(segments)
+		var a1: float = TAU * float(i + 1) / float(segments)
+		var c0: float = cos(a0)
+		var s0: float = sin(a0)
+		var c1: float = cos(a1)
+		var s1: float = sin(a1)
+		var in0 := Vector3(c0 * inner, 0.0, s0 * inner)
+		var in1 := Vector3(c1 * inner, 0.0, s1 * inner)
+		var out0 := Vector3(c0 * outer, 0.0, s0 * outer)
+		var out1 := Vector3(c1 * outer, 0.0, s1 * outer)
+		var u0: float = float(i) / float(segments)
+		var u1: float = float(i + 1) / float(segments)
+		# 两个三角组成一个环形四边形；法线统一朝上
+		_annulus_tri(st, in0, out0, out1,
+			Vector2(u0, 0.0), Vector2(u0, 1.0), Vector2(u1, 1.0))
+		_annulus_tri(st, in0, out1, in1,
+			Vector2(u0, 0.0), Vector2(u1, 1.0), Vector2(u1, 0.0))
+	return st.commit()
+
+
+func _annulus_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3,
+		ua: Vector2, ub: Vector2, uc: Vector2) -> void:
+	for pair in [[a, ua], [b, ub], [c, uc]]:
+		st.set_normal(Vector3.UP)
+		st.set_uv(pair[1])
+		st.add_vertex(pair[0])
 
 
 func _build_water() -> void:
