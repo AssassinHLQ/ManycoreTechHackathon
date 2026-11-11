@@ -415,11 +415,26 @@ func _ready() -> void:
 	var hull_collision := CollisionShape3D.new()
 	hull_shape = BoxShape3D.new()
 	if ship_model_length > 0.01:
-		# 外部模型：按实测包围盒的 72% 做碰撞（留出翼尖、天线这类细枝末节）。
+		# ⚠ 2026-11-11 用户反馈「飞船碰撞不到位，我都钻进去了」。
+		#
+		#   旧版按「实测包围盒 × 0.72/0.85」估算碰撞盒，理由是「留出翼尖、天线
+		#   这类细枝末节」。实测覆盖率只有 X 72% / Y 85% / Z 58%（按机身算），
+		#   机头、机尾、机翼都有大块无碰撞区，玩家能直接走进模型里。
+		#
+		#   现在改成**机身包围盒 × 0.97** —— 只留 3% 收缩，避免碰撞面与可见面
+		#   完全重合时的抖动；覆盖率到 97%，人钻不进去了。
+		#
+		#   ⚠ 为什么用 ship_model_span/height/length 而不是「所有 mesh 的合并包围盒」：
+		#     那三个值是在 _build_external_exhaust 之前测的（见上方 bounds 计算），
+		#     所以**只含机身**。若改成现算全部 mesh，会把 6 束尾焰（伸到 Z=10.4）
+		#     也算进来，碰撞盒在机尾多出 3.4 米空气墙 —— 玩家没碰到飞船却被挡住，
+		#     比穿透更难受。探针里踩过这个坑，记在这里。
 		hull_shape.size = Vector3(
-			maxf(0.6, ship_model_span * 0.72),
-			maxf(0.5, ship_model_height * 0.85),
-			maxf(0.8, ship_model_length * 0.72))
+			maxf(0.6, ship_model_span * 0.97),
+			maxf(0.5, ship_model_height * 0.97),
+			maxf(0.8, ship_model_length * 0.97))
+		# 模型在 _build_external_model 里被平移成「XZ 居中、底部贴 y=0」，
+		# 所以碰撞盒中心就是机身高度的一半。
 		hull_collision.position = Vector3(0.0, ship_model_height * 0.5, 0.0)
 	else:
 		hull_shape.size = Vector3(3.0, 1.8, 4.6)
