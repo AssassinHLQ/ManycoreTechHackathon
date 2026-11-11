@@ -86,7 +86,17 @@ func _ready() -> void:
 	_build_ground_scatter()
 	if kind in ["xuanjing", "xuanyuan"]:
 		_build_ring()
-	if kind == "cangbo":
+	# ⚠ 2026-11-11 Lux3D 星球**不再叠这层半透明水面球**。
+	#
+	#   用户：「星球上面那些水怎么处理」——沧波星上能看到一层玻璃球罩套在
+	#   星球外面，边缘有硬边，还有一块块方块状的穿插痕迹。
+	#   原因是 `_build_water()` 用一个**规则球面**（半径 site_height + 潮位）
+	#   去表现海水，而 Lux3D 的地表是起伏不规则的 —— 球面和地形到处相交，
+	#   交界处就是那些方块。
+	#
+	#   Lux3D 星球的海洋本来就画在贴图里（沧波是冰架与潮汐裂缝），
+	#   叠一层几何水面只会打架，所以这类星球直接跳过。
+	if kind == "cangbo" and lux_model_path == "":
 		_build_water()
 
 
@@ -632,12 +642,33 @@ func _cut_cave_hole(arrays: Array, vertices: PackedVector3Array) -> PackedInt32A
 
 func _build_atmosphere() -> void:
 	# 硫坞星 / 磐砂星 / 缄默星 不做大气壳：硫雾用灯光表现，光壳在近距离会露出低模面片。
+	# 纭潪鏄?/ 纾愮爞鏄?/ 缂勯粯鏄?涓嶅仛澶ф皵澹筹細纭浘鐢ㄧ伅鍏夎〃鐜帮紝鍏夊３鍦ㄨ繎璺濈浼氶湶鍑轰綆妯￠潰鐗囥€?	# ⚠ 2026-11-11 Lux3D 星球**不加大气层壳**：
+	#   实测那圈深色硬边和内部的方块状穿插都来自这个 cull_front 的规则球壳
+	#   （Lux3D 贴图本身已经画了大气般的边缘过渡）。
+	if lux_model_path != "":
+		return
 	if kind not in ["qinglan", "cangbo", "zheya", "baiyao", "taiyuan"]:
 		return
+	# ⚠ 2026-11-11 Lux3D 星球：外壳半径必须**推到地形最高点之外**。
+	#
+	#   用户：「星球上面那些水怎么处理」——沧波星外面那圈硬边和方块。
+	#   根因不是水，是这两个**规则球壳**：
+	#     · 大气层 radius × 1.035
+	#     · 云层   radius × 1.012
+	#   而 Lux3D 地形起伏是 0.92 ~ 1.073 倍半径，于是两个壳都被地形顶穿，
+	#   从地表冒出来的那一片就是那些方块状穿插。
+	#   这里把壳的基准半径换成「地形最高点」，两个壳整体抬到地表之上。
+	var shell_base: float = radius
+	if _lux_height_ready:
+		var peak := 0.0
+		for h in _lux_height_map:
+			peak = maxf(peak, h)
+		if peak > radius:
+			shell_base = peak
 	atmosphere = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
-	sphere.radius = radius * 1.035
-	sphere.height = radius * 2.07
+	sphere.radius = shell_base * 1.035
+	sphere.height = shell_base * 2.07
 	# 分段数提高，避免近距离看到大气球的多边形面片。
 	sphere.radial_segments = 96
 	sphere.rings = 48
@@ -650,11 +681,20 @@ func _build_atmosphere() -> void:
 	atmosphere.material_override = material
 	atmosphere.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(atmosphere)
-	if kind in ["qinglan", "cangbo"]:
+	# ⚠ 2026-11-11 Lux3D 星球**不加程序化云层**。
+	#
+	#   用户：「星球上面那些水怎么处理」——沧波星和青岚星外面的方块状穿插。
+	#   排查过程：先怀疑水面球（已关，没用）→ 再怀疑大气层被地形顶穿
+	#   （实测高度表只有 1274.6~1302.4，起伏 1.02 倍，根本没顶穿）。
+	#   最后把同一个 GLB 拿到 Blender 里渲染对照：**模型本身完全干净**。
+	#   所以方块是游戏里额外叠的 `CloudShader` 云层球 —— 噪声贴在一个规则球面上，
+	#   而 Lux3D 贴图里本来就画了云和冰盖，两层打架就成块。
+	#   这类星球直接跳过云层。
+	if kind in ["qinglan", "cangbo"] and lux_model_path == "":
 		clouds = MeshInstance3D.new()
 		var cloud_sphere := SphereMesh.new()
-		cloud_sphere.radius = radius * 1.012
-		cloud_sphere.height = radius * 2.024
+		cloud_sphere.radius = shell_base * 1.012
+		cloud_sphere.height = shell_base * 2.024
 		cloud_sphere.radial_segments = 64
 		cloud_sphere.rings = 32
 		clouds.mesh = cloud_sphere
