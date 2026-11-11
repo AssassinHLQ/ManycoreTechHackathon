@@ -25,6 +25,22 @@ func _run() -> void:
 	root.add_child(game)
 	await game.await_world_ready()
 	await process_frame
+	# ⚠ 2026-11-11：建场改成两阶段（母星先行、其余后台补建），
+	#   world_ready 时只有 1 颗行星，而下面要断言 20 颗。
+	#
+	#   等待条件用 `planets.size() < 20`（测试真正需要的前置条件）。
+	#
+	#   ⚠ 超时必须用**真实时钟**，不能用「每帧 += 0.016」累加：
+	#     headless 模式帧率极高，累加到 180 只要几秒真实时间，
+	#     而后台补建 19 颗行星真实需要 ~40 秒 —— 循环会提前放弃（实测踩过）。
+	#     现在用 Time.get_ticks_msec() 判真实耗时，上限 180 秒。
+	var deadline_ms: int = Time.get_ticks_msec() + 180000
+	while game.planets.size() < 20 and Time.get_ticks_msec() < deadline_ms:
+		await process_frame
+	if game.planets.size() < 20:
+		push_error("行星补建超时：只建出 %d / 20 颗（等了 %.1f 秒）"
+			% [game.planets.size(), 180.0])
+	await process_frame
 	var old_logs: Dictionary = game.discovered.duplicate(true)
 	var old_loops: int = game.loop_count
 	game.discovered.clear()
