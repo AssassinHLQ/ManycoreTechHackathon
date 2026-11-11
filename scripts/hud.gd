@@ -1,11 +1,36 @@
 extends CanvasLayer
 
 const DrawScript = preload("res://scripts/hud_draw.gd")
+const DecoScript = preload("res://scripts/hud_deco.gd")
 
 var game
 var font: Font
 ## 2D 绘制层（准星/星球标签/座舱框）。测试需要访问，所以存成成员。
 var drawing: Control
+var deco: Control
+## 状态条的分段刻度位置，交给装饰层画。
+var _bar_ticks: Array = []
+## 状态面板里的图标（船体/推进剂/氧气），切模式时要换图。
+var _row_icons: Array = []
+## 8 颗子系统状态灯。
+var _system_lights: Array = []
+var _lights_root: Control
+var _lights_caption: Label
+## 环形燃料表的外层容器（由装饰层负责实际绘制）。
+var _gauge_root
+## 带小数和单位的数值标签
+var bar_a_value: Label
+var bar_b_value: Label
+
+
+## 状态面板里两行的 y 坐标（相对面板）。
+## 抽成函数是因为布局改过几次，散落的魔数最容易改漏一处。
+func r0_y() -> int:
+	return 36
+
+
+func r1_y() -> int:
+	return 86
 var root: Control
 var hud_root: Control
 var menu: Control
@@ -78,6 +103,13 @@ func _ready() -> void:
 	drawing.font = font
 	add_child(drawing)
 
+	# 装饰层要画在 drawing 之上（切角框、括号、扫描线盖住底图）。
+	# 它自己 mouse_filter = IGNORE，不挡交互。
+	deco = DecoScript.new()
+	deco.game = game
+	deco.font = font
+	add_child(deco)
+
 	root = Control.new()
 	root.theme = theme
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -95,23 +127,59 @@ func _ready() -> void:
 
 
 func _install_button_theme(theme: Theme) -> void:
-	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color("173b43")
-	normal.border_color = Color("4c9b9a")
-	normal.set_border_width_all(1)
-	normal.set_corner_radius_all(3)
-	normal.content_margin_left = 20
-	normal.content_margin_right = 20
-	var hover := normal.duplicate()
-	hover.bg_color = Color("24545a")
-	hover.border_color = Color("8ad8cc")
-	var pressed := normal.duplicate()
-	pressed.bg_color = Color("0e292f")
-	theme.set_stylebox("normal", "Button", normal)
-	theme.set_stylebox("hover", "Button", hover)
-	theme.set_stylebox("pressed", "Button", pressed)
+	# 按钮三态优先用素材（Button03/04 是圆角矩形带细描边，尺寸 56×58 够九宫格）。
+	# 素材不可用时回退到原来的 StyleBoxFlat —— 保证任何环境都能跑。
+	var normal_tex := _nine("Button03.png", Vector4(10, 10, 10, 10),
+		Color(0.62, 0.86, 0.88, 1.0), Vector4(20, 8, 20, 8))
+	var hover_tex := _nine("Button04.png", Vector4(10, 10, 10, 10),
+		Color(1.0, 1.0, 1.0, 1.0), Vector4(20, 8, 20, 8))
+	var pressed_tex := _nine("Button03.png", Vector4(10, 10, 10, 10),
+		Color(0.42, 0.62, 0.64, 1.0), Vector4(20, 8, 20, 8))
+
+	if normal_tex != null and hover_tex != null and pressed_tex != null:
+		theme.set_stylebox("normal", "Button", normal_tex)
+		theme.set_stylebox("hover", "Button", hover_tex)
+		theme.set_stylebox("pressed", "Button", pressed_tex)
+		theme.set_stylebox("focus", "Button", hover_tex)
+		theme.set_stylebox("disabled", "Button", normal_tex)
+	else:
+		var normal := StyleBoxFlat.new()
+		normal.bg_color = Color("173b43")
+		normal.border_color = Color("4c9b9a")
+		normal.set_border_width_all(1)
+		normal.set_corner_radius_all(3)
+		normal.content_margin_left = 20
+		normal.content_margin_right = 20
+		var hover := normal.duplicate()
+		hover.bg_color = Color("24545a")
+		hover.border_color = Color("8ad8cc")
+		var pressed := normal.duplicate()
+		pressed.bg_color = Color("0e292f")
+		theme.set_stylebox("normal", "Button", normal)
+		theme.set_stylebox("hover", "Button", hover)
+		theme.set_stylebox("pressed", "Button", pressed)
+
 	theme.set_color("font_color", "Button", Color("dcece7"))
 	theme.set_color("font_hover_color", "Button", Color.WHITE)
+	theme.set_color("font_pressed_color", "Button", Color("bfe4e2"))
+	theme.set_color("font_disabled_color", "Button", Color(0.55, 0.65, 0.65))
+
+	# 面板容器统一走素材面板，这样任何用 PanelContainer 的地方都自动生效
+	var panel_box := _nine("MainPanel03.png", Vector4(12, 12, 12, 12),
+		Color(0.72, 0.94, 1.0, 0.92), Vector4(16, 14, 16, 14))
+	if panel_box != null:
+		theme.set_stylebox("panel", "PanelContainer", panel_box)
+		theme.set_stylebox("panel", "Panel", panel_box)
+
+	# 滑块：Slider01.png 是 245×18 的横条，正好当 HSlider 的槽
+	var slider_box := _nine("Slider01.png", Vector4(10, 6, 10, 6),
+		Color(0.75, 0.95, 1.0, 0.85), Vector4(0, 6, 0, 6))
+	if slider_box != null:
+		theme.set_stylebox("slider", "HSlider", slider_box)
+		theme.set_stylebox("grabber_area", "HSlider", slider_box)
+
+	# 开关/复选框：Switch01/02 是 66×24，做 CheckBox 也可以，但 CheckBox
+	# 需要方形，这块先留着 —— 设置页的开关是自绘的，不走主题。
 
 
 func _build_hud() -> void:
@@ -160,21 +228,111 @@ func _build_hud() -> void:
 	status_panel.anchor_top = 1.0
 	status_panel.anchor_bottom = 1.0
 	status_panel.offset_left = 24
-	status_panel.offset_top = -174
-	status_panel.offset_right = 310
+	status_panel.offset_top = -300
+	status_panel.offset_right = 352
 	status_panel.offset_bottom = -24
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.015, 0.028, 0.047, 0.72)
-	style.border_color = Color(0.26, 0.53, 0.55, 0.42)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(3)
-	status_panel.add_theme_stylebox_override("panel", style)
+	# 状态面板用素材贴图（SelectPanel01 竖版 157×339，正好配左下角竖条）
+	# ⚠ 变量必须声明成 StyleBox 而不是 StyleBoxFlat ——
+	#   后者的类型推断会把 StyleBoxTexture 赋值判为错误。
+	var status_style: StyleBox = _nine("SelectPanel01.png", Vector4(10, 12, 10, 12),
+		Color(0.95, 1.15, 1.25, 1.0), Vector4(18, 12, 18, 14))
+	if status_style == null:
+		var flat := StyleBoxFlat.new()
+		flat.bg_color = Color(0.015, 0.028, 0.047, 0.72)
+		flat.border_color = Color(0.26, 0.53, 0.55, 0.42)
+		flat.set_border_width_all(1)
+		flat.set_corner_radius_all(3)
+		status_style = flat
+	status_panel.add_theme_stylebox_override("panel", status_style)
 	hud_root.add_child(status_panel)
-	status_title = _label(status_panel, "宇航服", Rect2(16, 8, 250, 26), 13, Color("70c7c3"))
-	bar_a_label = _label(status_panel, "氧气", Rect2(16, 40, 250, 24), 14, Color("d9e8e5"))
-	bar_a = _bar(status_panel, Rect2(16, 68, 250, 7), Color("69cbd2"))
-	bar_b_label = _label(status_panel, "喷气燃料", Rect2(16, 87, 250, 24), 14, Color("d9e8e5"))
-	bar_b = _bar(status_panel, Rect2(16, 115, 250, 7), Color("e5b873"))
+
+	# ── 面板内容重排 ────────────────────────────────────────────────
+	#
+	# 原来的面板只有「标题 + 两条光溜溜的进度条」，用户反馈「太素」。
+	# 现在加三样东西让信息密度上来：
+	#   1. 每行左侧一个图标（白+深描边，可染色）
+	#   2. 右侧数值带小数和单位，像真实仪表读数
+	#   3. 右下角一个环形燃料表 + 底部一排状态灯
+	status_title = _label(status_panel, "生命维持系统", Rect2(16, 8, 240, 22), 12, Color("70c7c3"))
+
+	# 三行指标：图标 + 名称 + 数值 + 条
+	var rows := [
+		{"icon": "health.png", "name": "船体 / 氧气", "color": Color("69cbd2"), "y": 36},
+		{"icon": "fuel.png", "name": "推进剂", "color": Color("e5b873"), "y": 86},
+	]
+	for i in range(rows.size()):
+		var r: Dictionary = rows[i]
+		# 图标给 24×24（原始 16×16，放大 1.5 倍靠 stretch 做）。
+		# 16px 在 1080p 下太小，看不出是「船体」还是「燃料」。
+		var icon := _icon(status_panel, String(r["icon"]),
+			Rect2(14, r["y"] - 2, 24, 24), Color(0.72, 0.94, 0.96, 0.95))
+		icon.name = "row_icon_%d" % i
+		_row_icons.append(icon)
+
+	bar_a_label = _label(status_panel, "船体", Rect2(44, r0_y(), 150, 20), 14, Color("d9e8e5"))
+	bar_a_value = _label(status_panel, "100.0 %", Rect2(180, r0_y(), 150, 20), 13, Color("8fe3e8"))
+	bar_a_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	bar_a = _bar(status_panel, Rect2(16, 60, 306, 7), Color("69cbd2"))
+
+	bar_b_label = _label(status_panel, "推进剂", Rect2(44, r1_y(), 150, 20), 14, Color("d9e8e5"))
+	bar_b_value = _label(status_panel, "100.0 %", Rect2(180, r1_y(), 150, 20), 13, Color("f0cb8a"))
+	bar_b_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	bar_b = _bar(status_panel, Rect2(16, 110, 306, 7), Color("e5b873"))
+
+	# 状态灯阵：8 个小方块，亮灭反映各子系统是否正常。
+	# 这些是真实状态，不是装饰 —— 见 _process 里的 _update_system_lights。
+	# 位置 y=136：推进剂条占到 117，留 19px 间隙，不重叠。
+	_lights_root = Control.new()
+	_lights_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_lights_root.position = Vector2(16, 136)
+	_lights_root.size = Vector2(200, 26)
+	status_panel.add_child(_lights_root)
+	_lights_caption = _label(status_panel, "子系统", Rect2(16, 178, 120, 18), 11, Color(0.55, 0.74, 0.75))
+	for i in range(8):
+		var light := ColorRect.new()
+		light.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		light.position = Vector2(i * 24, 6)
+		light.size = Vector2(14, 14)
+		light.color = Color(0.2, 0.5, 0.55, 0.9)
+		_lights_root.add_child(light)
+		_system_lights.append(light)
+		# 灯下面一小条标签线，视觉上「有内容」
+		var tick := ColorRect.new()
+		tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tick.position = Vector2(i * 24 + 4, 24)
+		tick.size = Vector2(6, 2)
+		tick.color = Color(0.42, 0.78, 0.80, 0.35)
+		_lights_root.add_child(tick)
+
+	# 环形燃料表：直接实例化 DecoScript 里的 RingGauge。
+	# 它自己画自己、用局部坐标，不用跨层换算（之前那套换算在山模式下会错位）。
+	_gauge_root = DecoScript.RingGauge.new()
+	_gauge_root.font = font
+	_gauge_root.position = Vector2(232, 146)
+	_gauge_root.size = Vector2(78, 78)
+	status_panel.add_child(_gauge_root)
+
+	# 状态面板的装饰框（面板变高了，rect 也要跟着改：24,-300 → 328×276）
+	deco.add_frame(Rect2(24, -300, 328, 276), Color(0.42, 0.78, 0.80, 1.0), "SUIT")
+
+	# 两条状态条的刻度位置：面板上移后重新算
+	_bar_ticks.append({"rect": Rect2(24 + 16, -268 + 60, 306, 7), "color": Color("69cbd2")})
+	_bar_ticks.append({"rect": Rect2(24 + 16, -268 + 110, 306, 7), "color": Color("e5b873")})
+	if deco != null:
+		deco.bar_ticks = _bar_ticks
+		# 面板网格底纹：铺在面板内侧，极低透明度，让底子不空。
+		# 这里的高度用屏幕高 + offset 换算，因为 deco 是整屏坐标系。
+		var vh: float = get_viewport().get_visible_rect().size.y
+		deco.grid_rects.append({
+			"rect": Rect2(24 + 8, vh - 300 + 8, 312, 260),
+			"alpha": 0.07,
+		})
+		# 状态条刻度也要用全局坐标（deco 画在整屏，不是面板内）
+		_bar_ticks.clear()
+		_bar_ticks.append({"rect": Rect2(24 + 16, vh - 300 + 60, 306, 7), "color": Color("69cbd2")})
+		_bar_ticks.append({"rect": Rect2(24 + 16, vh - 300 + 110, 306, 7), "color": Color("e5b873")})
+		deco.bar_ticks = _bar_ticks
+		deco.queue_redraw()
 
 	ship_stats = _label(hud_root, "", Rect2(-390, -214, 360, 180), 15, Color("b9d9d7"))
 	ship_stats.anchor_left = 1.0
@@ -187,8 +345,11 @@ func _build_hud() -> void:
 func _build_menu() -> void:
 	menu = _overlay(0.2)
 	var panel := Panel.new()
-	panel.position = Vector2(66, 96)
-	panel.size = Vector2(590, 768)
+	# 面板高度按内容实测调：原名 590×768 @ y=96（底 864）。
+	# 加了两行外部素材署名后，第三行（Aholo Lux3D）仍被裁，故定为 590×880 @ y=60，
+	# 底部落在 940，给 1080 屏留 140px 余量；内容超长时 _panel_box 会内部滚动。
+	panel.position = Vector2(66, 60)
+	panel.size = Vector2(590, 880)
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	menu.add_child(panel)
 	var box := _panel_box(panel, 34)
@@ -210,11 +371,22 @@ func _build_menu() -> void:
 	_button(box, "退出", func(): get_tree().quit()).custom_minimum_size.y = 38
 	var footer := _text(box, "原创科幻原型  /  烤棉花糖为致敬  /  GODOT 4  /  建议佩戴耳机", 11, Color(0.46, 0.6, 0.61))
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# CC BY 4.0 的署名义务：用了别人的模型就必须署上出处，且要出现在**游戏里**，
-	# 不能只写在仓库的说明文件里（导出后的 exe / 网页版并不带文档）。
-	# 目前唯一一件外部模型是卡冈图雅，以后每加一件就追加一行。
-	var credits := _text(box, "外部模型：\u201cBlack Hole\u201d by Nestaeric, CC BY 4.0", 10, Color(0.38, 0.5, 0.52))
+	# 署名义务：用了别人的素材就必须署上出处，且要出现在**游戏里** ——
+	# 导出后的 exe / 网页版并不带仓库里的文档，只写在 THIRD_PARTY_NOTICES.md
+	# 是不够的。以后每加一件外部素材就在这里追加一行。
+	#
+	# 分两行是为了不把一行撑爆（1080 宽的菜单面板放不下）。
+	var credits := _text(box,
+		"外部素材：Black Hole 模型 Nestaeric (CC BY 4.0)　·" +
+		"　UI 贴图 Wenrexa (CC0)　·　图标 Pixel UI Sci-Fi by heyheythere (CC BY 4.0)",
+		10, Color(0.38, 0.5, 0.52))
 	credits.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	credits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var credits2 := _text(box,
+		"星球模型由 Aholo Lux3D（群核科技）文生 3D 生成　·　完整声明见 THIRD_PARTY_NOTICES.md",
+		10, Color(0.34, 0.45, 0.47))
+	credits2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	credits2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
 func _build_pause() -> void:
@@ -707,10 +879,15 @@ func _process(delta: float) -> void:
 			status_title.text = "飞船系统 · 已对接补给"
 		else:
 			status_title.text = "飞船系统 · %.2f G" % (planet.gravity_strength / 20.0)
-		bar_a_label.text = "船体完整度　%d%%" % int(game.ship.hull)
-		bar_b_label.text = "推进剂　%d%%" % int(game.ship.fuel)
+		# 数值带小数和单位 —— 「100%」看着像进度条，「100.0 %」才像仪表读数
+		bar_a_label.text = "船体"
+		bar_a_value.text = "%.1f %%" % game.ship.hull
+		bar_b_label.text = "推进剂"
+		bar_b_value.text = "%.1f T" % (game.ship.fuel * 0.01)
 		bar_a.value = game.ship.hull
 		bar_b.value = game.ship.fuel
+		_row_icons[0].modulate = Color(0.55, 0.90, 0.95, 0.95) if game.ship.hull > 30.0 \
+				else Color(1.0, 0.45, 0.30, 1.0)
 		if game.ship.docked:
 			ship_stats.text = "速度  000.0 m/s\n对接　归航站\nE 进入归航站 / Space 脱离\n推进剂与船体补给中"
 		else:
@@ -735,12 +912,18 @@ func _process(delta: float) -> void:
 			status_title.text = "宇航服 · %.2f G" % (game.station.artificial_gravity / 20.0)
 		else:
 			status_title.text = "宇航服 · %.2f G" % (planet.gravity_strength / 20.0)
-		bar_a_label.text = "氧气　%d%%" % int(game.player.oxygen)
-		bar_b_label.text = "喷气燃料　%d%%" % int(game.player.fuel)
+		bar_a_label.text = "氧气"
+		bar_a_value.text = "%.1f kPa" % (game.player.oxygen * 0.21)
+		bar_b_label.text = "喷气燃料"
+		bar_b_value.text = "%.1f kg" % (game.player.fuel * 0.12)
 		bar_a.value = game.player.oxygen
 		bar_b.value = game.player.fuel
+		_row_icons[0].modulate = Color(0.55, 0.90, 0.95, 0.95) if game.player.oxygen > 25.0 \
+				else Color(1.0, 0.45, 0.30, 1.0)
 		ship_stats.text = ""
 	ship_stats.visible = game.state == "ship"
+	_update_system_lights()
+	_update_gauge()
 	# 左下角的读数面板整体跟着走：阁楼线藏、太空线显示
 	if status_panel != null:
 		status_panel.visible = not bool(game.in_attic)
@@ -784,7 +967,96 @@ func _center_panel(parent: Control, panel_size: Vector2) -> Panel:
 	return panel
 
 
-func _panel_style() -> StyleBoxFlat:
+## Wenrexa「UI Minimalism SciFi」素材的九宫格贴图。
+##
+## 授权：CC0（作者 Wenrexa 明确写 "You can use it in COMMERCIAL and FREE projects"）。
+## CC0 不要求署名，本项目仍在 THIRD_PARTY_NOTICES.md 里致谢。
+##
+## 为什么走 StyleBoxTexture 而不是继续用 StyleBoxFlat：
+##   手写 StyleBoxFlat 只能画「纯色 + 直角/小圆角」，做不出包边、发光线、
+##   内阴影这些让 UI 有「成品感」的细节。这是程序化 UI 的上限 —— 承认它，
+##   该用素材就用素材。
+##
+## 缩放说明：素材里最薄的面板也有 143 米高、852×527 的大面板，
+## 九宫格边距按「切角尺寸」取 8~12 像素，中间拉伸区不会被压扁。
+const UI_TEX_DIR := "res://assets/ui/wenrexa/"
+
+## 缓存已加载的贴图，避免每次建档都重新 load。
+var _ui_tex_cache := {}
+
+
+## 放一个图标。素材是「16×16 白色像素图 + 深描边」，所以用 modulate 染色即可。
+##
+## ⚠ TextureRect 的坑：默认 stretch_mode 会拉伸变形、expand_mode 会把小图硬撑开，
+##   两者叠加就把 16×16 的图标糊成一块色斑（截图里船体旁边那个青色方块）。
+##   正确做法：expand_mode = KEEP_SIZE（保留原尺寸）+ stretch_mode = KEEP，
+##   然后靠 scale 做整数倍放大 —— 像素图放大必须整数倍，否则会灰边。
+func _icon(parent: Control, name: String, rect: Rect2, tint := Color.WHITE) -> Control:
+	var path := "res://assets/ui/icons/" + name
+	if ResourceLoader.exists(path):
+		var tr := TextureRect.new()
+		tr.texture = load(path)
+		tr.position = rect.position
+		tr.size = rect.size
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP
+		tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		tr.modulate = tint
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		parent.add_child(tr)
+		return tr
+	var ph := ColorRect.new()
+	ph.position = rect.position
+	ph.size = rect.size
+	ph.color = Color(tint.r, tint.g, tint.b, 0.25)
+	ph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(ph)
+	return ph
+
+
+func _ui_tex(name: String) -> Texture2D:
+	if _ui_tex_cache.has(name):
+		return _ui_tex_cache[name]
+	var path := UI_TEX_DIR + name
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path) as Texture2D
+	_ui_tex_cache[name] = tex
+	return tex
+
+
+## 用素材贴图造一个九宫格 StyleBox。margin 传 4 个数（左/上/右/下）。
+##
+## 贴图缺失时返回 null，调用方负责回退到 StyleBoxFlat ——
+## 这样即使素材没导入（新克隆仓库、CI 环境）也不会白屏。
+func _nine(name: String, margins: Vector4, tint := Color.WHITE,
+		pad := Vector4(0, 0, 0, 0)) -> StyleBox:
+	var tex := _ui_tex(name)
+	if tex == null:
+		return null
+	var box := StyleBoxTexture.new()
+	box.texture = tex
+	box.texture_margin_left = margins.x
+	box.texture_margin_top = margins.y
+	box.texture_margin_right = margins.z
+	box.texture_margin_bottom = margins.w
+	box.modulate_color = tint
+	box.content_margin_left = pad.x
+	box.content_margin_top = pad.y
+	box.content_margin_right = pad.z
+	box.content_margin_bottom = pad.w
+	return box
+
+
+func _panel_style() -> StyleBox:
+	# 主面板用 MainPanel03（302×143，横向面板，拉伸最自然）。
+	# 贴图没准备好时退回原来的 StyleBoxFlat，保证不会一屏空白。
+	# ⚠ 这里把 tint 提到 1.15 倍亮度：原图偏暗，在 1080p 下几乎看不见边框，
+	#   用户反馈「太素」。提亮后青色描边才明显，但仍保持深底。
+	var box := _nine("MainPanel03.png", Vector4(12, 12, 12, 12),
+		Color(1.35, 1.55, 1.70, 1.0), Vector4(18, 16, 18, 16))
+	if box != null:
+		return box
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.018, 0.034, 0.055, 0.96)
 	style.border_color = Color(0.28, 0.58, 0.58, 0.72)
@@ -850,14 +1122,77 @@ func _bar(parent: Control, rect: Rect2, color: Color) -> ProgressBar:
 	bar.value = 100
 	bar.show_percentage = false
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 底槽用主题里的 panel_inset 感觉（这里仍走纯色，因为进度条高度只有 7 像素，
+	# 九宫格边距塞不下）。填充色由调用方给（氧气青 / 燃料琥珀）。
 	var background := StyleBoxFlat.new()
-	background.bg_color = Color(0.12, 0.2, 0.23, 0.8)
+	background.bg_color = Color(0.06, 0.11, 0.14, 0.85)
+	background.set_corner_radius_all(2)
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = color
+	fill.set_corner_radius_all(2)
+	# 填充加一条顶部高光，让条形有厚度而不是一块纯色
+	fill.border_color = Color(color.r, color.g, color.b, 1.0).lightened(0.25)
+	fill.border_width_top = 1
 	bar.add_theme_stylebox_override("background", background)
 	bar.add_theme_stylebox_override("fill", fill)
 	parent.add_child(bar)
 	return bar
+
+
+## 8 颗子系统状态灯。
+##
+## 这些是**真实状态**，不是随机闪烁的装饰 —— 每颗灯对应一个实际条件，
+## 玩家扫一眼就知道哪个系统挂了。闪烁只用于「警告」态（见下面 sin 那段）。
+##
+## 顺序：船体 / 推进剂 / 生命维持 / 导航 / 通讯 / 扫描 / 护盾 / 引擎
+func _update_system_lights() -> void:
+	if _system_lights.is_empty():
+		return
+	var in_ship: bool = game.state == "ship"
+	var hull: float = game.ship.hull if in_ship else game.player.oxygen
+	var fuel: float = game.ship.fuel if in_ship else game.player.fuel
+	var powered: bool = fuel > 0.5
+
+	# 每项 {ok: 是否正常, warn: 是否警告}
+	var states := [
+		{"ok": hull > 40.0, "warn": hull <= 40.0},
+		{"ok": fuel > 15.0, "warn": fuel <= 15.0},
+		{"ok": hull > 20.0, "warn": hull <= 20.0},
+		{"ok": true, "warn": false},
+		{"ok": game.station != null, "warn": false},
+		{"ok": game.scan_target != null, "warn": false},
+		{"ok": not game.ship.autopilot, "warn": false},
+		{"ok": powered, "warn": not powered},
+	]
+
+	# 警告态闪烁：用 game.visual_time 做相位，频率 3Hz
+	var blink: float = 0.55 + 0.45 * sin(game.visual_time * 19.0)
+
+	for i in range(_system_lights.size()):
+		var light: ColorRect = _system_lights[i]
+		if i >= states.size():
+			light.color = Color(0.12, 0.2, 0.24, 0.6)
+			continue
+		var st: Dictionary = states[i]
+		if st["warn"]:
+			light.color = Color(1.0, 0.42, 0.26, blink)
+		elif st["ok"]:
+			light.color = Color(0.42, 0.92, 0.90, 0.92)
+		else:
+			light.color = Color(0.16, 0.28, 0.32, 0.75)
+
+
+## 环形燃料表：把当前油量喂给 RingGauge 节点。
+## 它自己负责绘制和坐标，这里只传一个 0~1 的数。
+func _update_gauge() -> void:
+	if _gauge_root == null:
+		return
+	var pct: float = 0.0
+	if game.state == "ship":
+		pct = game.ship.fuel / 100.0
+	else:
+		pct = game.player.fuel / 100.0
+	_gauge_root.set_value(pct)
 
 
 func _center_anchor(control: Control, bottom: bool) -> void:

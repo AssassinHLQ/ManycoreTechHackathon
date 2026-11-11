@@ -1,7 +1,7 @@
 # THIRD_PARTY_NOTICES / 第三方组件与内容声明
 
 > 本文件用于履行第三方组件的署名、许可声明义务，并说明仓库内的非原创内容来源。
-> 最后更新：2026-11-02
+> 最后更新：2026-11-11
 
 ## 0. 版权与许可状态
 
@@ -100,12 +100,42 @@ SOFTWARE.
 
 ### 3.2 3D 模型资产（GLB）
 
+#### 3.2.1 内嵌于 HTML 的模型
+
 `世界种子-Demo04.html` 与 `文物修复师-Demo03.html` 内的 3D 模型（青铜爵、越王勾践剑、
 三星堆面具、史莱姆、小恶魔、宝箱、水晶簇等）由 **Aholo Lux3D（群核科技）** 的文生 3D
 服务生成，以 base64 内嵌进 HTML。
 
 - 这些资产的权属**以 Aholo Lux3D 平台服务条款与参赛协议为准**，不由本仓库的版权声明决定。
 - 若用于参赛之外的产品化、批量分发或商业发行，需自行向平台确认授权范围。
+
+#### 3.2.2 游戏内的星球模型（`assets/models/*-lux3d`）
+
+游戏里 9 颗可着陆行星的球体模型，同样由 **Aholo Lux3D（群核科技）** 的文生 3D 服务生成，
+以 `.glb` 文件形式存放：
+
+| 目录 | 对应天体 | 文件数 | 体积 |
+|---|---|---|---|
+| `assets/models/baiyao-lux3d` / `-v2` | 白曜星 | 各 1 | 10.7 / 15.5 MB |
+| `assets/models/cangbo-lux3d` / `-v2` | 沧波星 | 各 1 | 13.0 / 12.9 MB |
+| `assets/models/jianmo-lux3d` / `-v2` | 缄默星 | 各 1 | 11.0 / 15.7 MB |
+| `assets/models/liuwu-lux3d` / `-v2` | 硫坞星 | 各 1 | 12.6 / 14.0 MB |
+| `assets/models/pansha-lux3d` / `-v2` | 磐砂星 | 各 1 | 10.0 / 14.3 MB |
+| `assets/models/taiyuan-lux3d` / `-v2` | 苔垣星 | 各 1 | 11.7 / 17.5 MB |
+| `assets/models/xuanjing-lux3d` / `-v2` | 悬晶星 | 各 1 | 15.0 / 21.3 MB |
+| `assets/models/xuanyuan-lux3d` / `-v2` | 玄渊星 | 各 1 | 11.4 / 18.2 MB |
+| `assets/models/zheya-lux3d` / `-v2` | 赭崖星 | 各 1 | 11.8 / 13.5 MB |
+
+（`-v2` 为同一天体的第二版生成结果，用于对比与替换。）
+
+- **生成方式**：通过 Aholo Lux3D 的文生 3D（text-to-3D）能力产出基础球体几何与贴图，
+  再由本项目做缩放、地形噪声叠加与材质调整。
+- **权属**：以 Aholo Lux3D 平台服务条款与参赛协议为准。本项目在此致谢该服务。
+- **使用限制**：同 3.2.1，若用于参赛之外的产品化或商业发行，需自行向平台确认授权范围。
+- **未使用 AI 图像生成模型**：这些是 3D 生成服务的产出，不是图片生成。
+
+其余模型（`black-hole`、`one-dim-star`、`qinglan-planet*`、`ship-fighter`、
+`space-station*`）为本项目自行制作或程序化生成，见 3.7。
 
 ### 3.3 Godot Engine（`demo/` 网页版）
 
@@ -137,7 +167,56 @@ Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 J
 - 上游项目：<https://github.com/notofonts/noto-cjk>（Noto Sans SC）、
   <https://github.com/notofonts/symbols>（Noto Sans Symbols 2）。
 
-### 3.5 《借一扇晴天》原创内容
+### 3.5 界面素材：Wenrexa「UI Minimalism SciFi」
+
+HUD 的面板、按钮、滑动条等界面贴图来自 **Wenrexa** 的素材包
+**「UI Minimalism SciFi」**（也被作者称为 *FREE UI KIT Nesia v2*）。
+
+| 项目 | 内容 |
+|---|---|
+| 作者 | Wenrexa（<https://wenrexa.com/>） |
+| 原始发布页 | <https://opengameart.org/content/assets-ui-minimalism-scifi> |
+| 许可证 | **CC0 1.0 Universal（公共领域贡献）** |
+| 全文 | <https://creativecommons.org/publicdomain/zero/1.0/> |
+| 落地路径 | `assets/ui/wenrexa/`（33 个 PNG） |
+| 原始包 | `wenrexaassetsui_scifi.zip`，6.5 MB，含 1920×1080 分层 PSD |
+
+作者在发布页上明确写明：**“You can use it in COMMERCIAL and FREE projects”**。
+
+> **关于署名**：CC0 1.0 在法律上**不要求**署名、不要求保留版权声明、也不要求以相同方式共享。
+> 本项目仍然在此列出，是出于对作者的尊重与致谢，而非许可义务。
+> 本项目的 AGPL-3.0 不覆盖这些贴图——它们仍属公共领域，任何人可自由使用。
+
+本项目对这些贴图所做的处理：
+
+- 未修改原始 PNG 文件本身，仅通过 Godot 的 `StyleBoxTexture`（九宫格）与
+  `modulate_color` 做运行时染色，以匹配本项目的青蓝／琥珀配色。
+- 未将其单独打包、转售或作为素材库再分发。
+
+### 3.6 界面图标：Pixel UI Sci-Fi Free
+
+HUD 里船体／推进剂等小图标来自 **heyheythere（Spyridon Pikoulas）** 的
+**「Pixel UI Sci-Fi Free」**。
+
+| 项目 | 内容 |
+|---|---|
+| 作者 | heyheythere / Spyridon Pikoulas |
+| 原始发布页 | <https://godotengine.org/asset-library/asset/5491> |
+| 源码仓库 | <https://github.com/Spyridon-Pikoulas/godot-pixel-ui-scifi-free> |
+| 许可证 | **Creative Commons Attribution 4.0 International（CC BY 4.0）** |
+| 全文 | <https://creativecommons.org/licenses/by/4.0/> |
+| 落地路径 | `assets/ui/icons/`（从中选取 18 个图标中的 2 个：`health.png`、`fuel.png`） |
+| 版本 | 1.0.1 |
+
+**CC BY 4.0 要求署名**，本条即为该署名。本项目对其的使用方式：
+
+- 仅使用 `health.png`（船体）与 `fuel.png`（推进剂）两个图标，通过 `modulate` 染色后显示。
+- 未修改图标本身的像素内容。
+- 未单独售卖或作为素材库再分发。
+- 本项目整体以 AGPL-3.0 发布；该图标仍按 CC BY 4.0 授权，两者不冲突
+  （CC BY 4.0 允许被纳入采用其他许可证的更大作品，仅要求保留署名）。
+
+### 3.7 《借一扇晴天》原创内容
 
 `demo/` 中除上述引擎与字体外的星球、地形、归航站、建筑、洞穴、模型、材质、着色器、界面、
 文本与程序音频均为本项目原创生成。类型与体验层面受到包括 **Outer Wilds** 在内的探索类作品启发
@@ -179,6 +258,9 @@ Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 J
 | Godot Engine 4.7.1 运行时（`index.wasm` / `index.js`） | MIT | 与 AGPL 兼容，可再分发 |
 | Noto Sans SC 子集（`assets/ui_font.ttf`） | SIL OFL 1.1 | 修改版（实例化为 wght=400 + 子集裁剪），字体本身仍为 OFL，许可全文随包分发 |
 | Noto Sans Symbols 2 子集（`assets/ui_symbols.ttf`） | SIL OFL 1.1 | 同上 |
+| Wenrexa「UI Minimalism SciFi」贴图（`assets/ui/wenrexa/`） | CC0 1.0 | 公共领域，无需署名；此处列出仅为致谢 |
+| Pixel UI Sci-Fi Free 图标（`assets/ui/icons/`） | CC BY 4.0 | **需署名**，见 3.6 |
+| Aholo Lux3D 生成的星球模型（`assets/models/*-lux3d`） | 平台条款 | **非本仓库可再许可**，见 3.2.2 |
 
 > AGPL 第 13 条要求：通过网络向用户提供服务时，必须让使用者能够获得对应源代码。
 > 因此公开本网页版时，源码必须一并可获取。
