@@ -20,6 +20,48 @@ var orbit_yaw := 0.0
 var orbit_pitch := 0.28
 ## 第三人称相机的跟随距离（米）。滚轮也能调。
 var orbit_distance := 13.0
+## 第三人称相机的**目标**跟随距离。滚轮只改这个，实际 orbit_distance
+## 每帧向它插值逼近 —— 这样滚轮像第一人称的长焦一样丝滑，
+## 而不是「咔」地跳一格。
+##
+## ⚠ 2026-11-11：旧版滚轮直接改 orbit_distance（*0.9 / *1.1），
+##   一次跳 10% 且没有过渡，玩家反馈「僵硬」。这里拆成
+##   「目标值 + 每帧指数插值」，时间常数与第一人称 FOV 一致（8.0）。
+var orbit_distance_target := 13.0
+## 插值时间常数。越大越快贴上去；第一人称 FOV 用的是 8.0。
+const ORBIT_LERP_SPEED := 8.0
+
+# ── 下船修理（用户 2026-11-11 需求）─────────────────────────────────
+## 船体不再靠「降落/停靠」自动回血，必须**下船、对准飞船、按 F** 修理。
+##
+## 规则（用户原话）：
+##   · 降落补充能源，但是不能修理飞机，必须下船对准飞机按 F 修理
+##   · 修理时显示修理进度，**修理时暂时代替氧气的 UI**
+##   · 人在飞机旁边不能回复氧气和喷气，必须进入飞机才回满
+##   · 在飞机上时，飞机补充能源时下方小字提示「正在汲取星体能源」
+##
+## 修理进度 0..1。>0 表示正在修。
+var repair_progress := 0.0
+## 修理一次从开始到满要多久（秒）。船体 0→100 的最短时间。
+## 取 3.2 秒：比烤棉花糖（8 秒）短得多，不至于让玩家等着无聊，
+## 又长到能看见进度条在走。
+const REPAIR_DURATION := 3.2
+## 能否开始修理的判定半径（米）。玩家要在飞船附近。
+##
+## ⚠ 2026-11-11 用户：「飞船修理的判断范围太小了」。
+##   原来是 6 米，而且量的是**相机到飞船原点**的距离 —— 飞船半长 3.25 米，
+##   站在机头旁边光这段就吃掉 3~4 米余量，稍微一站偏就判不到。
+##   现在放大到 14 米，并改成量**到船体包围盒**的距离（见 repair_check）。
+const REPAIR_RANGE := 14.0
+## 对着飞船的判定：视线方向与「玩家→飞船」夹角余弦要大于它（≈ 45°）。
+##
+## 原来 0.906（≈25°）要求盯住**船体中心点**，贴着船身站时视线常落在别处，
+## 手感很差。放宽到 0.707（≈45°），并且**近距离直接免掉瞄准判定**。
+const REPAIR_AIM_COS := 0.707
+## 贴得这么近（米）就不检查瞄准了 —— 都站到船身上了，不用再抬头找中心。
+const REPAIR_CONTACT_RANGE := 8.0
+## 修理中被打断（走开/松开 F）后，进度是否保留。保留 —— 否则手一抖就白干。
+var repair_active := false
 
 ## 船体椭球半轴（米）。所有贴附件的位置都从它推导，避免悬空。
 const HULL_X := 1.75
@@ -33,28 +75,52 @@ const AUTOPILOT_ACCEL := 230.0
 ##   按原来的系数要烧掉约 62 点油（油箱才 100），远行必然搁浅在半路。
 ##   降到 0.003 后同一趟约 23 点，留得住返程。
 const AUTOPILOT_FUEL_PER_DV := 0.003
-## 自动航行的巡航速度上限（米/秒）。远距离赶路时压在这条线上。
+## 自动航行的巡航速度上限（米/秒）。
 ##
-## ⚠ 2026-11-11 用户：「自动驾驶锁定一直加速，直到快到星球才像上一个提交一样减速」。
+## ⚠ 2026-11-11 **第二次调整**。用户截图：高度 9826 米、速度 1259 m/s，
+##   问「自动航行没改减速逻辑吗？」—— 逻辑是对的，但**参数让它来不及停**。
 ##
-##   这正是 `_autopilot_desired_speed` 本来的形状（两条剖面取小）：
-##     可行上限 √(2·a·d)  —— 随距离增长，远处报得很大
-##     末端蠕行 d/τ       —— 近了才压下来
-##   所以「一路加速、快到才刹车」**不需要新逻辑**，只要把巡航上限抬够，
-##   让 √(2ad) 在远距离能报到那个量级。轨道 ×10 之后最远 9.2 万米，
-##   取 4000：92000 处 √(2×80×92000) ≈ 3800，刚好不被上限截断，
-##   全速段一直持续到约 1 万米才开始明显收油。
-const AUTOPILOT_CRUISE := 4000.0
+##   上一版取 4000 的理由是「让 √(2ad) 在 9.2 万米处报到 3800」。
+##   问题是那个 a 用的是**打完折**的 80 m/s²，而实际推力是 230。
+##   结果是：从 4000 刹停需要 10.9 万米，比最远轨道（9.2 万米）还长 ——
+##   等于**整个航程都在加速段，永远进不了刹车段**，直到贴脸才开始减。
+##
+##   现在降到 2000：
+##     · 从 2000 刹停约 2.7 万米（用打折后的 73.5 算）——
+##       在 9.2 万米外就进入刹车段，有充足余量反复修正
+##     · 2000 m/s 横穿星系（15 万米）约 75 秒，玩家不会觉得慢
+const AUTOPILOT_CRUISE := 2000.0
 ## 速度剖面按「可用减速度的多少比例」来设计。
 ##
 ## 这个值不能到 0.5，原因见 _autopilot_desired_speed 的注释：
 ## sqrt 剖面与蠕行剖面的交点处，减速需求恒等于「2 x 剖面减速度」。
 ## 取 0.35 就是「最坏情况下也只用掉 70% 的机动能力」，留 30% 给跟踪误差。
+##
+## ⚠ 别指望调大能「减速更早」—— 方向是反的：
+##   fraction 越大 → 剖面假设的刹车能力越强 → 允许速度越高 → 更晚才减速。
+##   要让它早点慢下来，应该调**小** fraction 或调**小** CRUISE。
+##   本次修「高速冲脸」用的是后者（CRUISE 4000→2000）。
 const AUTOPILOT_BRAKE_FRACTION := 0.35
 ## 可用减速度的下限。行星引力最大 32，留个地板免得剖面被压成 0 而卡死。
 const AUTOPILOT_BRAKE_FLOOR := 30.0
 ## 末端指数逼近的时间常数（秒）。d/tau 就是最后几米的下降速度。
 const AUTOPILOT_CREEP_TIME := 1.0
+## 「按时间收敛」的保守剖面时间常数（秒）。
+##
+## 用户截图反馈「快到星球才减速」：√(2ad) 在 9826 米处仍允许 1202 m/s，
+## 只剩 8.2 秒落地 —— 视觉上就是一路狂飙、最后猛刹。
+##
+## 这条剖面强制「离地面 d 米时，速度不超过 d / 本值」，等于给整段进近
+## 一个固定的时间预算：不管离多远，至少留这么多秒。
+##
+## 取 12 秒的实测效果（重力 20、brake 73.5）：
+##     30000 m: feasible 2100 > d/12=2500 → 取 2100（动力学更紧，不干预）
+##     20000 m: feasible 1715 vs 1667    → 取 1667（开始接管）
+##      9826 m: feasible 1202 vs  819    → 取  819（此前是 1202，降 32%）
+##      3000 m: feasible  664 vs  250    → 取  250
+## 关键：从 2 万米以下全程恒定「12 秒到地」，减速平摊在整段进近上，
+## 而不是集中在最后两三秒。这也是玩家能明确「感觉到在减速」的区间。
+const AUTOPILOT_APPROACH_TIME := 12.0
 ## 期望停在地表上方多高。留 2.6 米，落点判定（< 3.4 米）之前就已经几乎悬停。
 const AUTOPILOT_TOUCHDOWN_ALT := 2.6
 const MANUAL_FUEL_PER_DV := 0.00625
@@ -78,6 +144,9 @@ var engine_materials: Array = []
 var engine_lights: Array = []
 ## 外部模型的尾焰锥体（程序化几何那套没有这个）。用来按推力改长度。
 var engine_plumes: Array = []
+## 尾焰的**软壳**层（2026-11-11 新增）：比火舌更大更淡，负责糊掉硬边界。
+## 与 engine_plumes 分开存，因为 _update_engine 里两者缩放系数不同。
+var engine_halos: Array = []
 
 ## 腹部（向下）喷焰：升空 / 悬停用。
 ##
@@ -96,7 +165,7 @@ var ascend_level := 0.0
 ## 按材质分组的盒体批次，_build_model 末尾统一合并提交。
 var _batch := {}
 var hull_body: StaticBody3D
-var hull_shape: BoxShape3D
+var hull_shape: Shape3D
 var station_velocity := Vector3.ZERO
 var last_station_port := Vector3.ZERO
 var dock_cooldown := 0.0
@@ -121,7 +190,16 @@ const STATION_COLLISION_MASK := 5
 ##   · 速度不动   → 用同样的速度能飞到同样的相对位置，不会突然变难或变简单
 ##
 ## 这样「越靠近越危险」的梯度保持原样，只是空间尺度变大。
-const BH_PULL_RANGE := 72000.0
+## ⚠ 2026-11-11 第二次调整（用户：「黑洞吸引范围太大了」）。
+##
+##   上一版是 72000 —— 吸积盘外缘在视觉倍率 5 下只有 24220 米，
+##   引力却一直延伸到 72000 米，也就是「还没看清盘面就先被拽」。
+##   现在收到 30000，只比盘面外缘多约 6 千米，等于「进了盘区才开始受力」。
+##
+##   距离常量口径统一：位置 ×6、视觉 ×5 之后，
+##     BH_PULL_RANGE 30000  /  BH_HORIZON 1200  /  BH_FORCE_CAPTURE 6000
+##   加速度（BH_ACCEL_FAR/NEAR）不变 —— 那样「越近越危险」的梯度才保持原样。
+const BH_PULL_RANGE := 30000.0
 ## 视界半径（飞船在这个半径以内就被吞掉）。
 ## 随星系 ×10 同步放大：120 → 1200。
 const BH_HORIZON := 1200.0
@@ -381,7 +459,7 @@ const BH_SINK_TO_INWARD := 0.9
 ##   判定捕获，不管多快往哪飞都逃不掉。玩家感觉撞上了一堵看不见的墙。
 ##   现在缩到 1400（视界的 11.7 倍）：保留「进了就没救」的压迫感，
 ##   但在外面留出一段真正能挣扎的区间（1400~2400 之间不再硬判定）。
-const BH_FORCE_CAPTURE := 14000.0
+const BH_FORCE_CAPTURE := 6000.0
 ## 强制捕获时每秒最多砍掉多少 m/s 的切向速度（**固定量，不是比例**）。
 ##
 ## ⚠ 2026-11-10 用户实测「3200 和 1000 都是 3 秒失去速度」：
@@ -428,33 +506,46 @@ func _ready() -> void:
 	hull_body.collision_layer = 1
 	hull_body.collision_mask = 0
 	var hull_collision := CollisionShape3D.new()
-	hull_shape = BoxShape3D.new()
-	if ship_model_length > 0.01:
-		# ⚠ 2026-11-11 用户反馈「飞船碰撞不到位，我都钻进去了」。
-		#
-		#   旧版按「实测包围盒 × 0.72/0.85」估算碰撞盒，理由是「留出翼尖、天线
-		#   这类细枝末节」。实测覆盖率只有 X 72% / Y 85% / Z 58%（按机身算），
-		#   机头、机尾、机翼都有大块无碰撞区，玩家能直接走进模型里。
-		#
-		#   现在改成**机身包围盒 × 0.97** —— 只留 3% 收缩，避免碰撞面与可见面
-		#   完全重合时的抖动；覆盖率到 97%，人钻不进去了。
-		#
-		#   ⚠ 为什么用 ship_model_span/height/length 而不是「所有 mesh 的合并包围盒」：
-		#     那三个值是在 _build_external_exhaust 之前测的（见上方 bounds 计算），
-		#     所以**只含机身**。若改成现算全部 mesh，会把 6 束尾焰（伸到 Z=10.4）
-		#     也算进来，碰撞盒在机尾多出 3.4 米空气墙 —— 玩家没碰到飞船却被挡住，
-		#     比穿透更难受。探针里踩过这个坑，记在这里。
-		hull_shape.size = Vector3(
+	hull_collision.name = "Hull"
+	# ⚠ 2026-11-11 用户：「碰撞怎么还是长方形？不能低多边形覆盖吗？」
+	#
+	#   旧版一直是一个 BoxShape3D 罩住整艘船。历史沿革（都记在这里，别再往回改）：
+	#     · 第一版：包围盒 × 0.72/0.85 —— 覆盖率 X 72% / Y 85% / Z 58%，
+	#       机头、机尾、机翼都有大块无碰撞区，人能直接走进模型里；
+	#     · 第二版：提到 × 0.97，覆盖率够了，但中心按「高/2」放，整体悬在
+	#       机身上方 2.3 米（GLB 原点在机身中部偏上，AABB 的 y 是负的）；
+	#     · 第三版：改成用 AABB 中心，位置终于对了，**但形状仍然是长方形**。
+	#
+	#   为什么长方形必然不对：这艘船机头是尖的、机翼是薄的后掠三角翼、
+	#   机尾三个喷口内凹。盒子把这些全算成实心 —— 机头正前方两米就有空气墙，
+	#   机翼下方和机身之间的大块空气也被挡住，「碰撞手感」完全对不上眼睛。
+	#
+	#   现在：直接用**可见网格的三角面**当碰撞面（ConcavePolygonShape3D）。
+	#     · 形状 100% 等于看到的外形，没有空气墙，也钻不进去；
+	#     · hull_body 是 StaticBody3D，三角网碰撞正是它的标准用法，
+	#       不需要做凸包分解（凹面也能精确表达）；
+	#     · 站点碰撞查询需要一个「整体形状」，那里用同一批顶点抽稀出的
+	#       低多边形凸包（ConvexPolygonShape3D），比盒子贴合得多。
+	#
+	#   顶点只取 GLB 本体（model 子树）—— holder 下面还挂着程序化补的
+	#   尾焰与光环，那些是发光特效，绝不能算进碰撞。
+	if _build_mesh_collision(hull_collision):
+		pass
+	elif ship_model_length > 0.01:
+		var box := BoxShape3D.new()
+		box.size = Vector3(
 			maxf(0.6, ship_model_span * 0.97),
 			maxf(0.5, ship_model_height * 0.97),
 			maxf(0.8, ship_model_length * 0.97))
-		# 模型在 _build_external_model 里被平移成「XZ 居中、底部贴 y=0」，
-		# 所以碰撞盒中心就是机身高度的一半。
-		hull_collision.position = Vector3(0.0, ship_model_height * 0.5, 0.0)
+		hull_collision.position = ship_model_center
+		hull_collision.shape = box
+		hull_shape = box
 	else:
-		hull_shape.size = Vector3(3.0, 1.8, 4.6)
+		var box := BoxShape3D.new()
+		box.size = Vector3(3.0, 1.8, 4.6)
 		hull_collision.position = Vector3(0, -0.2, 0.2)
-	hull_collision.shape = hull_shape
+		hull_collision.shape = box
+		hull_shape = box
 	hull_body.add_child(hull_collision)
 	add_child(hull_body)
 	camera = Camera3D.new()
@@ -597,6 +688,18 @@ const SHIP_MODEL_GROUND_SINK := 2.3
 var ship_model_length := 0.0
 var ship_model_height := 0.0
 var ship_model_span := 0.0
+## 机身包围盒中心（ship 局部坐标）。
+##
+## ⚠ 碰撞盒必须用它当中心，不能假设「模型底部贴 y=0」。
+##   外部 GLB 的原点在机身中部偏上，AABB 的 y 是负数（实测 -2.30 ~ 1.00），
+##   按「高/2」放会让碰撞盒整体悬在机身**上方** 2.3 米，
+##   玩家能从底下直接走进模型里。
+var ship_model_center := Vector3.ZERO
+
+## GLB 实例根节点与它的 holder（ShipModel），碰撞形状要从这里取顶点。
+## 见 _build_mesh_collision / _collect_model_faces。
+var _ship_model_root: Node3D = null
+var _ship_model_holder: Node3D = null
 
 
 ## 尝试实例化外部模型。成功返回 true 并填好实测尺寸，失败返回 false 走程序化几何。
@@ -659,11 +762,113 @@ func _build_external_model() -> bool:
 		ship_model_length *= factor
 	holder.scale = Vector3.ONE * factor
 	holder.position = Vector3(-center.x * factor, -bounds.position.y * factor - SHIP_MODEL_GROUND_SINK, -center.z * factor)
+	# 机身包围盒在 **ship 局部空间**里的中心。
+	#
+	# holder 已经做了三件事：XZ 居中、底部对齐到 y=-GROUND_SINK、按 factor 缩放。
+	# 所以模型占的局部范围是：
+	#     x ∈ [-span/2, +span/2]        （已居中）
+	#     z ∈ [-length/2, +length/2]    （已居中）
+	#     y ∈ [-GROUND_SINK, height - GROUND_SINK]   （底部抬到 0 再下沉一点点）
+	# 中心就是下面这个。碰撞盒用它当中心才对得上机身。
+	ship_model_center = Vector3(0.0, ship_model_height * 0.5 - SHIP_MODEL_GROUND_SINK, 0.0)
 	# 外部模型只有网格和贴图，**没有尾焰** —— 程序化几何里那几块发光盘不会自动出现。
 	# 玩家反馈「飞船没尾焰吗」，就是这里缺了。补三束喷焰，坐标用模型局部空间
 	# 挂在 holder 下，自动跟着 factor 缩放。
+	_ship_model_root = model
+	_ship_model_holder = holder
 	_build_external_exhaust(holder, bounds)
 	return true
+
+
+## 把模型自己的三角面做成碰撞形状（见 _ready 里的说明）。
+##
+## 返回 true 表示成功；此时：
+##   · collider.shape   = ConcavePolygonShape3D（可见网格的三角面，船体局部空间）
+##   · hull_shape       = ConvexPolygonShape3D（同一批顶点抽稀的凸包，给站点查询用）
+## 返回 false 时调用方退回盒子。
+func _build_mesh_collision(collider: CollisionShape3D) -> bool:
+	var faces := _collect_model_faces()
+	if faces.size() < 36:
+		# 少于 12 个三角面就没意义（模型没加载 / 只有几张片），退回盒子。
+		return false
+	var concave := ConcavePolygonShape3D.new()
+	concave.set_faces(faces)
+	collider.shape = concave
+	collider.position = Vector3.ZERO
+	# 站点碰撞查询用的整体形状：同一批顶点按 1/16 米网格抽稀成低多边形凸包。
+	# ConvexPolygonShape3D 的点越少查询越快，3000 个点对一艘 14 米长的船足够贴合。
+	var pts := PackedVector3Array()
+	var seen := {}
+	var stride: int = maxi(1, int(faces.size() / 3000.0))
+	for i in range(0, faces.size(), stride):
+		var key := Vector3i((faces[i] * 16.0).round())
+		if seen.has(key):
+			continue
+		seen[key] = true
+		pts.append(faces[i])
+	if pts.size() >= 4:
+		var convex := ConvexPolygonShape3D.new()
+		convex.points = pts
+		hull_shape = convex
+	return true
+
+
+## 收集 GLB 本体全部三角面顶点，转换到 **ship 局部空间**（= 碰撞体所在空间）。
+##
+## holder 带了缩放与居中偏移，model 自己可能带朝向旋转，网格节点可能还有中间层，
+## 所以每个 MeshInstance3D 都要把「它到 model 的相对变换」乘上「model 到 ship 的变换」。
+## 这段 walker 写法和 _build_external_model 里量包围盒那段完全同源，改一处要改两处。
+func _collect_model_faces() -> PackedVector3Array:
+	var faces := PackedVector3Array()
+	var root: Node3D = _ship_model_root
+	if root == null or not is_instance_valid(root):
+		return faces
+	var holder_xform := Transform3D.IDENTITY
+	if _ship_model_holder != null and is_instance_valid(_ship_model_holder):
+		holder_xform = _ship_model_holder.transform
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D:
+			var mi := node as MeshInstance3D
+			if mi.mesh != null:
+				var rel := Transform3D.IDENTITY
+				var walker: Node = mi
+				while walker != null and walker != root:
+					rel = (walker as Node3D).transform * rel
+					walker = walker.get_parent()
+				if walker == root:
+					rel = root.transform * rel
+				var xform: Transform3D = holder_xform * rel
+				for s in range(mi.mesh.get_surface_count()):
+					var arrays: Array = mi.mesh.surface_get_arrays(s)
+					if arrays.size() <= Mesh.ARRAY_VERTEX:
+						continue
+					var verts = arrays[Mesh.ARRAY_VERTEX]
+					if verts == null:
+						continue
+					var vpack: PackedVector3Array = verts
+					var idx = arrays[Mesh.ARRAY_INDEX]
+					if idx != null:
+						var ipack: PackedInt32Array = idx
+						var n: int = ipack.size() - (ipack.size() % 3)
+						var k := 0
+						while k < n:
+							faces.append(xform * vpack[ipack[k]])
+							faces.append(xform * vpack[ipack[k + 1]])
+							faces.append(xform * vpack[ipack[k + 2]])
+							k += 3
+					else:
+						var n2: int = vpack.size() - (vpack.size() % 3)
+						var k2 := 0
+						while k2 < n2:
+							faces.append(xform * vpack[k2])
+							faces.append(xform * vpack[k2 + 1])
+							faces.append(xform * vpack[k2 + 2])
+							k2 += 3
+		for child in node.get_children():
+			stack.append(child)
+	return faces
 
 
 ## 按实测包围盒在机尾补三束喷焰（外部模型专用，见 _build_external_model）。
@@ -676,13 +881,45 @@ func _build_external_model() -> bool:
 ## 坐标全部用**模型局部空间**（挂在 holder 下）：
 ##   · holder.scale = factor，所以这里写 0.3 就是 0.3×factor 米；
 ##   · 改 SHIP_MODEL_TARGET_LENGTH 时这里不用动。
-## 横向排三束是因为机尾实测是一个宽 0.34（占翼展 25%）的喷口簇，
-## 截图里也看得出是三个并排的喷口。
+## 三个喷口的坐标 —— **ship 局部空间（米）**，从机身网格实测。
+##
+## ⚠ 2026-11-11 第四次修正（用户先圈喷口、再说「没看见火焰了位置完全错了」）。
+##
+##   上一版量错的原因：收集顶点时只排除了 engine_plumes / engine_halos，
+##   但**核心和喷口发光盘也算进去了** —— 那些顶点本来就在 z≈8.5（尾焰区域），
+##   于是量出 z=8.15、x=±0.97。等于「拿尾焰的位置当喷口位置」，
+##   结果火焰飘到飞船外面去了。
+##
+##   这次只取**机身主体网格**（AABB 10.1×3.3×14.0 那个），机尾最后 4% 切片，
+##   按 X 间隙 0.202 聚成三簇（tests/_probe_nozzle2.gd）：
+##     左: x=-1.417  y=-0.943  z=6.59（三簇 z 中心 6.57~6.76）
+##     中: x=-0.003  y=-0.938  z=6.76
+##     右: x=+1.456  y=-1.031  z=6.57
+##   机身 z 上限是 7.00，所以喷口面取 6.85（略内缩，让焰根扎进去不外露）。
+const EXHAUST_NOZZLES := [
+	Vector3(-1.417, -0.943, 6.85),   # 左
+	Vector3(-0.003, -0.938, 6.85),   # 中
+	Vector3(+1.456, -1.031, 6.85),   # 右
+]
+
+## EXHAUST_NOZZLES 已经是最终坐标（米），标志位。
+## _build_external_exhaust 见到它就跳过 ref_size 换算 —— 那套换算是给
+## 旧坐标体系用的，对新值只会把位置算歪。
+const EXHAUST_NOZZLES_ARE_FINAL := true
+
+
 func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 	var tail_z: float = bounds.position.z + bounds.size.z
-	var nozzle_y: float = bounds.position.y + bounds.size.y * 0.37
 	var length := bounds.size.z
 	var span := bounds.size.x
+	# 模型实际尺寸和探针量的时候可能不同（换了模型/改了缩放），
+	# 那就按比例把实测坐标缩放到当前包围盒，避免硬编码失效。
+	var ref_size := Vector3(1.3784, 0.4498, 1.9100)
+	var ref_pos := Vector3(-0.6892, 0.0000, -0.9550)
+	var scale_fix := Vector3(
+		span / ref_size.x,
+		bounds.size.y / ref_size.y,
+		length / ref_size.z)
 
 	# 外焰：加法混合。**必须用顶点色做沿轴渐变**，否则整根锥体亮度一致，
 	# 屏幕上就是一块白色实心板（第一版就栽在这）。
@@ -699,53 +936,119 @@ func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 	flame.cull_mode = BaseMaterial3D.CULL_DISABLED
 	engine_materials.append(flame)
 
-	# 内焰核心：更小更亮，接近白色
+	# 内焰核心：**不要再做成白色**。
+	#
+	# ⚠ 2026-11-11 用户反馈「去掉白光，只留三个蓝光」。
+	#   原来这里是 albedo (0.92, 0.98, 1.0) —— 几乎纯白 —— 再配合加法混合叠
+	#   三层（火舌 + 核心 + 光晕壳），屏幕上一加就过曝成一大片白，
+	#   连飞船都被糊住了（见用户截图）。
+	#
+	#   现在核心改成**高饱和蓝**：亮度压到 0.62，色相保持蓝。
+	#   加法混合下叠加三层也不会超过 1.0，就不会再出白。
 	var core_mat := StandardMaterial3D.new()
 	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	core_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	core_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	core_mat.vertex_color_use_as_albedo = true
-	core_mat.albedo_color = Color(0.92, 0.98, 1.0, 1.0)
+	core_mat.albedo_color = Color(0.30, 0.62, 1.0, 1.0)
 	core_mat.emission_enabled = true
-	core_mat.emission = Color(0.75, 0.93, 1.0)
-	core_mat.emission_energy_multiplier = 1.1
+	core_mat.emission = Color(0.16, 0.46, 1.0)
+	core_mat.emission_energy_multiplier = 0.45
 	core_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	engine_materials.append(core_mat)
 
-	# 三束喷口横向间距：实测机尾喷口簇宽度只占翼展约 25%
-	# （tests/probe_ship_nozzles.gd 量到 x ∈ ±0.172，翼展 1.378）。
-	# 取 0.075 让三束都落在簇内，超出就会从机翼上穿出去 —— 那是错的。
-	for i in range(3):
-		var side := float(i - 1)                    # -1 / 0 / +1
-		var nozzle := Vector3(side * span * 0.075, nozzle_y, tail_z)
+	# 软壳材质（2026-11-11 新增）：比外焰更大、更淡，专门糊掉硬边界。
+	# 用很低的 emission 能量 + 顶点色 alpha 压到 0.4 倍左右，
+	# 叠在火舌外面就是一圈柔和的光晕 —— 这是「看起来不像多边形」的关键一层。
+	# ⚠ 不要调亮：加法混合叠三层，亮度过高会把喷口糊成一个白球。
+	#   2026-11-11 用户反馈「去掉白光」后进一步压暗：alpha 0.40→0.22、
+	#   能量 0.30→0.14。这一层只是「让边界不硬」，不该有存在感。
+	var halo_mat := StandardMaterial3D.new()
+	halo_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	halo_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	halo_mat.vertex_color_use_as_albedo = true
+	halo_mat.albedo_color = Color(0.28, 0.62, 1.0, 0.22)
+	halo_mat.emission_enabled = true
+	halo_mat.emission = Color(0.14, 0.44, 1.0)
+	halo_mat.emission_energy_multiplier = 0.14
+	halo_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	engine_materials.append(halo_mat)
 
-		# 外层火舌：细长、尾端收尖并淡出
+	# 三束喷口：**逐束用实测坐标**，不再从包围盒估。
+	# 单束形状也按各喷口的粗细略作区分（中喷口实测 y 跨度 0.056，
+	# 左右各 0.005 —— 中喷口明显更粗，所以中束略粗一点）。
+	for i in range(EXHAUST_NOZZLES.size()):
+		# EXHAUST_NOZZLES 已经是 ship 局部空间的**米**坐标（实测），
+		# 不再做 ref_size/ref_pos 换算 —— 那套换算基于更早一版模型，
+		# 对新坐标只会把位置算歪（这正是「尾焰没对准喷口」的根因）。
+		var nozzle: Vector3 = EXHAUST_NOZZLES[i]
+		var is_center := i == 1
+		# ⚠ 2026-11-11 用户要求「三个蓝光中间大两边小」。
+		#   原来 1.35 只比两侧粗 35%，远看三束几乎一样大。
+		#   现在中间 2.0 倍、两侧压到 0.78 —— 中央主推力 + 两侧小姿控的观感。
+		var radius_k := 2.0 if is_center else 0.78
+
+		# ── 三层火舌（2026-11-11 精细版）──────────────────────────
+		# 用户：「飞船尾焰太粗糙，低模不好看，能不能精细一点或者渲染圆角」。
+		# 旧版只有 2 层（外焰 14 边 + 内芯 12 边），边界硬、多边形明显。
+		# 现在改成 3 层，由外到内一层比一层亮、细、短：
+		#   halo（软壳）→ 最外层，最大最淡，专门用来**糊掉硬边界**
+		#   plume（火舌）→ 主体形状
+		#   core（亮芯）→ 喷口处最亮的一点
+		# 三层都是加法混合，叠起来就有中心亮、边缘柔的「火焰」感。
+		#
+		# ⚠ 挂到 self（ship 根）而不是 holder：
+		#   实测坐标是 ship 局部空间的，holder 还带 factor 缩放和居中偏移，
+		#   挂 holder 下会再被缩放一次，位置必然偏。
+
+		# ① 软壳：半径**不跟 radius_k 放大** —— 之前跟了，中间那束的壳变成
+		#    半径翻倍的大球，在飞船外面糊出一个巨大的光圈（用户截图里那圈蓝）。
+		#    壳只负责柔化边界，尺寸固定为火舌的 1.3 倍即可。
+		#
+		# ⚠ 2026-11-11 用户反馈「小了」。原来火舌半径只有 14×0.042×0.78≈0.46 m，
+		#   而喷口本身跨度 2.87 m（左 -1.417 到右 +1.456）—— 火焰细得像针。
+		#   现在按「喷口间距」定基准：单个喷口直径约 0.95 m，
+		#   火舌半径取 0.62×0.95≈0.59 作为基准，中间 2.0 倍 → 1.18 m。
+		var nozzle_d: float = 0.95      # 实测单喷口直径（米）
+		var base_r: float = nozzle_d * 0.62
+
+		var halo := MeshInstance3D.new()
+		halo.mesh = _plume_mesh(length * 0.26, base_r * 1.30, 20, 8, 2.2)
+		halo.material_override = halo_mat
+		halo.position = nozzle
+		halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(halo)
+		engine_halos.append(halo)
+
+		# ② 火舌：侧面 24 边、纵向 12 段
 		var plume := MeshInstance3D.new()
-		plume.mesh = _plume_mesh(length * 0.26, length * 0.055, 14)
+		plume.mesh = _plume_mesh(length * 0.32, base_r * radius_k, 24, 12, 1.8)
 		plume.material_override = flame
 		plume.position = nozzle
 		plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		holder.add_child(plume)
+		add_child(plume)
 		engine_plumes.append(plume)
 
-		# 内层亮芯：短一半，贴合喷口
+		# ③ 亮芯：短一半，贴合喷口；侧面 20 边已足够圆
 		var core := MeshInstance3D.new()
-		core.mesh = _plume_mesh(length * 0.13, length * 0.028, 12)
+		core.mesh = _plume_mesh(length * 0.22, base_r * 0.62 * radius_k, 20, 10, 1.5)
 		core.material_override = core_mat
 		core.position = nozzle
 		core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		holder.add_child(core)
+		add_child(core)
 
 		# 尾灯：照亮机尾地面
 		var light := OmniLight3D.new()
-		light.position = nozzle + Vector3(0.0, 0.0, length * 0.10)
+		light.position = nozzle + Vector3(0.0, 0.0, length * 0.14)
 		light.light_color = Color("67dceb")
 		light.light_energy = 0.0
-		light.omni_range = span * 1.6
-		holder.add_child(light)
+		light.omni_range = span * 0.9
+		add_child(light)
 		engine_lights.append(light)
 
-	_build_ventral_exhaust(holder, bounds)
+	# 腹部喷焰的坐标同样是 ship 局部空间，也要挂 self —— 传 self 进去。
+	_build_ventral_exhaust(self, bounds)
 
 
 ## 底部（腹部）喷焰：升空 / 悬停时的向下推力。
@@ -773,8 +1076,10 @@ func _build_ventral_exhaust(holder: Node3D, bounds: AABB) -> void:
 
 	var length: float = bounds.size.z
 	var span: float = bounds.size.x
-	# 腹部高度：包围盒底部再往上一点点（喷口就在船底装甲上）
-	var belly_y: float = bounds.position.y + bounds.size.y * 0.06
+	# 腹部高度：用**实测的 ship 局部坐标**。
+	# 机身 AABB 的 y 是 [-SINK, height-SINK]（实测 -2.30 ~ 1.00），
+	# 船底就是 -SINK，喷口贴在船底上方一点。
+	var belly_y: float = -SHIP_MODEL_GROUND_SINK + 0.10
 
 	# 三个腹部喷口：前后各一 + 中间一（三角布局，悬停时看起来更稳）
 	var vent_nozzles := [
@@ -790,7 +1095,7 @@ func _build_ventral_exhaust(holder: Node3D, bounds: AABB) -> void:
 
 		# 外层火舌
 		var plume := MeshInstance3D.new()
-		plume.mesh = _plume_mesh(length * 0.22, r, 12)
+		plume.mesh = _plume_mesh(length * 0.22, r, 20, 10, 2.0)
 		plume.material_override = flame
 		plume.position = nozzle
 		# _plume_mesh 沿 +Z 长出；绕 X 转 -90° 后 +Z 变成 -Y → 朝下
@@ -802,7 +1107,7 @@ func _build_ventral_exhaust(holder: Node3D, bounds: AABB) -> void:
 
 		# 内层亮芯
 		var core := MeshInstance3D.new()
-		core.mesh = _plume_mesh(length * 0.11, r * 0.5, 10)
+		core.mesh = _plume_mesh(length * 0.11, r * 0.5, 18, 8, 1.6)
 		core.material_override = core_mat
 		core.position = nozzle
 		core.rotation.x = -PI * 0.5
@@ -826,22 +1131,33 @@ func _build_ventral_exhaust(holder: Node3D, bounds: AABB) -> void:
 ##
 ## 为什么要手搓 ArrayMesh：CylinderMesh 的顶点色全是一样���，
 ## 拿它做加法混合只能得到一块亮度均匀的实心板。
-func _plume_mesh(length: float, radius: float, sides: int) -> ArrayMesh:
+##
+## ⚠ 2026-11-11 用户：「飞船尾焰太粗糙，低模不好看，能不能精细一点或者渲染圆角」。
+##
+## 旧版三个问题：
+##   1. 侧面只有 14 边 —— 多边形一眼数得出来；
+##   2. 纵向只有 4 段（rings=4），半径按 (1-0.88t) **线性**收窄，
+##      于是从喷口到尾部只有 4 个台阶，是折线锥不是火焰；
+##   3. 没有软边，加法混合的锥体边界硬切，边界线本身就很「几何」。
+##
+## 现在：
+##   · 侧面默认 24 边、纵向 12 段（顶点约 24×12×6 ≈ 1728，很便宜）；
+##   · 半径走 1 - pow(t, taper_pow) 曲线：前段保持粗、后段快速收尖，比线性更像喷流；
+##   · 外焰再叠一层更淡的「软壳」（见 _build_external_exhaust），把硬边界糊掉。
+func _plume_mesh(length: float, radius: float, sides: int, rings := 12, taper_pow := 1.8) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# 沿长度分 4 段，让淡出是渐变而不是突变
-	var rings := 4
 	for r in range(rings):
-		var t0 := float(r) / rings
-		var t1 := float(r + 1) / rings
+		var t0 := float(r) / float(rings)
+		var t1 := float(r + 1) / float(rings)
 		var z0 := length * t0
 		var z1 := length * t1
-		# 半径往后收窄：喷口处最粗，尾端收到 12%
-		var rad0 := radius * (1.0 - 0.88 * t0)
-		var rad1 := radius * (1.0 - 0.88 * t1)
-		# 透明度：喷口 0.85 → 尾端 0
-		var a0 := 0.85 * (1.0 - t0) * (1.0 - t0)
-		var a1 := 0.85 * (1.0 - t1) * (1.0 - t1)
+		# 半径：t=0 满半径，t=1 收到 8%。pow 越大前段越粗、尾部收得越急。
+		var rad0: float = radius * (1.0 - pow(t0, taper_pow) * 0.92)
+		var rad1: float = radius * (1.0 - pow(t1, taper_pow) * 0.92)
+		# 透明度：喷口 0.85 → 尾端 0，平方曲线让前段亮、后段快速消失
+		var a0: float = 0.85 * (1.0 - t0) * (1.0 - t0)
+		var a1: float = 0.85 * (1.0 - t1) * (1.0 - t1)
 		for s in range(sides):
 			var ang0 := TAU * float(s) / sides
 			var ang1 := TAU * float(s + 1) / sides
@@ -1220,12 +1536,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			if third_person:
 				# 第三人称：滚轮调的是**跟随距离**（拉近拉远看飞船），
 				# 不是座舱那个长焦 —— 长焦在第三人称没意义。
-				orbit_distance = clampf(orbit_distance * 0.9, 4.5, 60.0)
+				# 只改**目标值**，实际距离由 _update_third_person_camera 插值追上。
+				# 步长比第一人称的 1.18 温和一些：相机距离对画面的影响是平方级的
+				# （远处几米的差别眼睛看不出来，近处一点就很明显），
+				# 所以用 1.12 让「靠近」和「拉远」手感对称、不会一顿一顿。
+				orbit_distance_target = clampf(orbit_distance_target * 0.88, 4.5, 60.0)
 			else:
 				zoom = clampf(zoom * 1.18, 1.0, 16.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			if third_person:
-				orbit_distance = clampf(orbit_distance * 1.1, 4.5, 60.0)
+				orbit_distance_target = clampf(orbit_distance_target * 1.12, 4.5, 60.0)
 			else:
 				zoom = clampf(zoom / 1.18, 1.0, 16.0)
 		if zoom < 1.01:
@@ -1296,6 +1616,16 @@ func apply_look(relative: Vector2) -> void:
 func _update_third_person_camera(_delta: float) -> void:
 	if not third_person:
 		return
+	# 距离插值：滚轮只改 target，这里每帧逼近。
+	# 用 1 - exp(-delta*speed) 而不是固定 lerp 系数 —— 这样帧率不同手感一致，
+	# 和第一人称 FOV 那条（lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 8.0))）
+	# 是同一个公式。
+	# _delta 传 0 时（切进第三人称那一帧）直接贴上去，避免镜头从旧距离慢慢飞过来。
+	if _delta <= 0.0:
+		orbit_distance = orbit_distance_target
+	else:
+		orbit_distance = lerpf(orbit_distance, orbit_distance_target,
+			1.0 - exp(-_delta * ORBIT_LERP_SPEED))
 	# 机头方向（飞船局部坐标里就是 -Z）
 	var forward_local := Vector3(0.0, 0.0, -1.0)
 	# 相机挂在飞船的**局部坐标**里，所以这里全用局部量算
@@ -1325,6 +1655,7 @@ func toggle_third_person() -> bool:
 		orbit_yaw = PI
 		orbit_pitch = 0.28
 		orbit_distance = 13.0
+		orbit_distance_target = 13.0
 		# 立刻把相机摆过去 —— 不能等下一帧 _physics_process，
 		# 否则切过去的第一帧镜头还留在座舱里（会闪一下）。
 		_update_third_person_camera(0.0)
@@ -1374,7 +1705,11 @@ func _physics_process(delta: float) -> void:
 		hull = minf(100.0, hull + delta * 2.0)
 		fuel_empty_time = 0.0
 		fuel_warning_cooldown = 0.0
-		game.player.oxygen = 100.0
+		# ⚠ 2026-11-11 用户要求：停靠/降落**只补能源，不补氧气也不修船体**。
+		#   氧气改成「进入飞船才回满」（见 main.gd 的 enter_ship），
+		#   船体改成必须下船对准飞船按 F 修理（见 begin_repair / repair_tick）。
+		#   这里原来有 `game.player.oxygen = 100.0`，已删除。
+		#   下面这行 hull += 也一并去掉，船体只能靠修理恢复。
 		# 对接后跟着站走：远景站会自转，不跟的话船会慢慢「掉」出停靠位。
 		# 归航站是绕星公转（位置在变），同理。做法是每帧重贴到站的停靠点。
 		if docked_station != null and is_instance_valid(docked_station):
@@ -1386,13 +1721,28 @@ func _physics_process(delta: float) -> void:
 	if landed:
 		velocity = Vector3.ZERO
 		thrust_level = 0.0
+		# ⚠ 2026-11-11 每帧重钉到地表：落地后飞船挂在行星下，但行星在
+		#   `_process` 里更新位置、飞船在 `_physics_process` 里读，两者不同步
+		#   会产生肉眼可见的微抖（实测世界坐标每帧 0.11~0.32 米）。
+		#   对接分支一直是这么做的，落地分支漏了。
+		if landed_planet != null and is_instance_valid(landed_planet):
+			global_position = landed_planet.global_position \
+				+ landed_planet.surface_position(landing_normal, LANDING_REST_ALT)
 		fuel = minf(100.0, fuel + delta * 12.0)
-		hull = minf(100.0, hull + delta * 2.0)
 		fuel_empty_time = 0.0
 		fuel_warning_cooldown = 0.0
-		game.player.oxygen = 100.0
+		# 同 docked：只补能源。氧气 → 上机才回满；船体 → 下船按 F 修理。
+		# 降落时在机内补能源的话，HUD 下方要提示「正在汲取星体能源」。
+		# 人在船上用 game.state == "ship" 判断（main.gd 里进出飞船改的就是它）。
+		if game.state == "ship":
+			game.hud.set_fuel_harvest_hint(true)
 		if Input.is_action_just_pressed("jump"):
 			takeoff()
+		_update_engine(delta)
+		return
+
+	# ── 降落状态机接管（全程按真实速度推进，无瞬移）──
+	if _process_landing(delta):
 		_update_engine(delta)
 		return
 
@@ -1622,7 +1972,15 @@ func _physics_process(delta: float) -> void:
 		# 所以现在两处一起改：剖面改成动力学可行的（见 _autopilot_desired_speed），
 		# 豁免删掉 —— 自动驾驶要是真撞快了，它也得挨这一下。
 		if impact_speed < 14.0:
-			land(planet)
+			# ⚠ 2026-11-11 不再直接 land() 贴地。
+			#   轻触只代表「够慢、可以落」，交给降落状态机从 FLARE 走完最后一段：
+			#   抬机头 → 反推降到 0 → 落稳，全程按真实速度推进，没有瞬移。
+			#   已经处在降落流程里就什么都不做（_process_landing 会接管）。
+			if land_phase == LandPhase.NONE:
+				request_landing(planet)
+				# 立刻切到 FLARE：这一刻已经在离地 3.4 米以内了，不需要再 APPROACH
+				land_phase = LandPhase.FLARE
+				land_impact_sink = maxf(0.0, impact_speed)
 		else:
 			global_position = planet.global_position + planet.surface_position(normal, 5.0)
 			velocity = ground_velocity + normal * maxf(12.0, impact_speed * 0.42)
@@ -1917,7 +2275,7 @@ func _move_with_station_collision(delta: float) -> void:
 func _station_blocked(at_position: Vector3) -> bool:
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = hull_shape
-	query.transform = Transform3D(global_transform.basis, at_position + global_transform.basis * Vector3(0.0, -0.2, 0.2))
+	query.transform = Transform3D(global_transform.basis, at_position)
 	query.collision_mask = STATION_COLLISION_MASK
 	query.exclude = [hull_body.get_rid()]
 	return not get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
@@ -1926,7 +2284,7 @@ func _station_blocked(at_position: Vector3) -> bool:
 func _station_rest(at_position: Vector3) -> Dictionary:
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = hull_shape
-	query.transform = Transform3D(global_transform.basis, at_position + global_transform.basis * Vector3(0.0, -0.2, 0.2))
+	query.transform = Transform3D(global_transform.basis, at_position)
 	query.collision_mask = STATION_COLLISION_MASK
 	query.exclude = [hull_body.get_rid()]
 	return get_world_3d().direct_space_state.get_rest_info(query)
@@ -1961,13 +2319,46 @@ func _station_rest(at_position: Vector3) -> Dictionary:
 ## 取 0.35 时最坏情况用掉 70% 的机动能力，剩下 30% 是跟踪余量。
 func _autopilot_desired_speed(altitude: float, gravity: Vector3) -> float:
 	# 可用减速度 = 机动能力 - 引力。下降时引力是反向的，会吃掉一部分减速能力。
+	# ⚠ 2026-11-11 改成「一路加速 + 末端急刹」，不再全程缓慢减速。
+	#
+	#   旧版 `sqrt(2·a·d)` 有个致命观感问题：它从出发那一刻就在压低目标速度，
+	#   于是自动驾驶**全程都在反推**压制速度 —— 玩家看到的是「一直缓慢减速」，
+	#   燃料也全耗在这上面（用户：「这样子太消耗燃料了」）。
+	#
+	#   新逻辑：
+	#     · 距离还很远 → 目标速度直接给巡航上限，**全力加速，不反向修正**
+	#     · 进入刹车距离（用真实可用减速度反算）→ 目标速度沿 √(2ad) 下降，
+	#       这一段就等价于「按住 S 硬刹」
+	#   刹车距离用**稍保守**的减速度算（BRAKE_FRACTION），留出跟踪余量。
+	#
+	# ⚠ 2026-11-11 第三次修正（用户截图：9826 米高度、1259 m/s，问「没改减速逻辑吗」）。
+	#
+	#   √(2ad) 这条剖面本身是**动力学正确**的，但它有个观感问题：
+	#   靠得越近降得越快，于是绝大部分减速集中在最后几秒。
+	#   实测：9826 米处允许 1202 m/s，而按这个速度只剩 8.2 秒就砸到地面 ——
+	#   玩家看到的就是「一路狂飙、最后一刻才猛刹」。
+	#
+	#   所以在 √(2ad) 之外**再叠一条按时间收敛的剖面**：
+	#       gentle = d / APPROACH_TIME
+	#   意思是「不管离地面多远，至少给自己 APPROACH_TIME 秒的余量」。
+	#   取 6 秒：9826 米处 → 1638，仍不生效（因为 feasible 更紧）；
+	#   真正起作用是在 1 万~3 万米这一段，让收油明显提前。
+	#   两条剖面取小，所以只是「更保守」，绝不会比动力学允许的更快。
 	var available: float = maxf(AUTOPILOT_ACCEL - gravity.length(), AUTOPILOT_BRAKE_FLOOR)
 	var brake: float = available * AUTOPILOT_BRAKE_FRACTION
 	var d: float = maxf(altitude - AUTOPILOT_TOUCHDOWN_ALT, 0.0)
+	# 从巡航速度刹停所需的距离
+	var stop_dist: float = (AUTOPILOT_CRUISE * AUTOPILOT_CRUISE) / (2.0 * brake)
+	if d > stop_dist:
+		# 还早：全力加速到巡航，不做任何减速修正
+		return AUTOPILOT_CRUISE
+	# 进入刹车段：按真实能力反算允许速度，并留一点下限保证能落地
 	var feasible: float = sqrt(2.0 * brake * d)
+	# 按时间的保守剖面：越远也留出「至少 X 秒到地面」的余量，
+	# 让减速在更远处就开始，而不是全压在最后几秒。
+	var gentle: float = d / AUTOPILOT_APPROACH_TIME
 	var creep: float = d / AUTOPILOT_CREEP_TIME
-	# 下限 1 m/s：低于这个数等于悬停不动，永远落不了地。
-	return clampf(minf(feasible, creep), 1.0, AUTOPILOT_CRUISE)
+	return clampf(minf(minf(feasible, gentle), creep), 1.0, AUTOPILOT_CRUISE)
 
 
 ## 当前目标脚下地面的高度（米）。
@@ -2105,25 +2496,322 @@ func try_land() -> void:
 	elif velocity.length() >= 45.0:
 		game.hud.show_toast("相对速度过高 · 按住 X 制动", 2.0)
 	else:
-		velocity = Vector3.ZERO
-		global_position = planet.global_position + planet.surface_position(normal, 3.4)
-		land(planet)
+		# ⚠ 2026-11-11：不再瞬移贴地。
+		#   只请求降落，由 _process_landing 依次演完
+		#   APPROACH → FLARE（缓慢抬机头）→ TOUCHDOWN（反推渐停）→ LANDED。
+		#   全程按真实速度推进位置，玩家能看到完整的落地过程。
+		request_landing(planet)
 
 
+# ── 下船修理（用户 2026-11-11 需求）──────────────────────────────────
+#
+# 「降落补充能源，但是不能修理飞机，必须下船对准飞机按 F 修理」
+# 「显示飞船修理进度，修理时暂时代替氧气的 ui」
+#
+# 判定三件事（缺一不可）：
+#   1. 玩家在 walk 状态（已经下船）
+#   2. 飞船已着陆或停靠（飞行中不能修）
+#   3. 玩家离飞船 < REPAIR_RANGE 且**视线对准飞船**
+#
+# 「对准」用玩家相机 forward 与「玩家→飞船」方向的点积判定。
+# 不用射线检测：飞船有多个 mesh + 碰撞体，射线容易漏；而且站在旁边时
+# 视线偏一点点就扫不到，手感很差。25° 的锥形判定宽容得多。
+
+## 返回 [能否修理, 提示文本]。提示文本给 HUD 用；空串表示不该提示。
+func repair_check() -> Array:
+	if game == null:
+		return [false, ""]
+	if game.state != "walk":
+		return [false, ""]
+	if not (landed or docked):
+		return [false, "先让飞船着陆"]
+	var player = game.player
+	if player == null or player.camera == null:
+		return [false, ""]
+	var cam_pos: Vector3 = player.camera.global_position
+	# 距离按**到船体包围盒**量，而不是到船体原点：
+	# 飞船半长 3.25 米、半高 1.0 米，站到机头/机尾旁边时原点其实不近。
+	var local: Vector3 = global_transform.affine_inverse() * cam_pos
+	var box := Vector3(HULL_X, HULL_Y, HULL_Z)
+	var outside := Vector3(
+		maxf(0.0, absf(local.x) - box.x),
+		maxf(0.0, absf(local.y) - box.y),
+		maxf(0.0, absf(local.z) - box.z))
+	var dist: float = outside.length()          # 0 = 已经在船体范围内
+	if dist > REPAIR_RANGE:
+		return [false, ""]                      # 太远就不提示，免得满屏字
+	var to_ship: Vector3 = global_position - cam_pos
+	# 贴近船身（包围盒距离 < REPAIR_CONTACT_RANGE）时**免掉瞄准判定** ——
+	# 都站到船边了，还要抬头对准船体中心太苛刻（用户：「判断范围太小」）。
+	if dist > REPAIR_CONTACT_RANGE and to_ship.length() > 0.001:
+		var fwd: Vector3 = -player.camera.global_transform.basis.z
+		var aim: float = fwd.normalized().dot(to_ship.normalized())
+		if aim < REPAIR_AIM_COS:
+			return [false, "对准飞船再按 F"]
+	if hull >= 99.95:
+		return [false, "船体完好"]
+	return [true, "按 F 修理 · 船体 %d%%" % int(hull)]
+
+
+## 玩家是否正对着飞船、且在修理距离内。
+func can_repair() -> bool:
+	var r: Array = repair_check()
+	return bool(r[0])
+
+
+## 每帧推进修理。held = 是否按住修理键。
+## 进度会保留：手松开只是暂停，不清零。
+func repair_tick(delta: float, held: bool) -> void:
+	if game == null:
+		return
+	if not held:
+		if repair_active:
+			repair_active = false
+			game.hud.show_toast("修理中断 · 进度已保留", 1.6)
+		return
+	if not can_repair():
+		if repair_active:
+			repair_active = false
+		return
+	if not repair_active:
+		repair_active = true
+		game.audio.play_ui(320.0)
+	repair_progress = minf(1.0, repair_progress + delta / REPAIR_DURATION)
+	hull = minf(100.0, repair_progress * 100.0)
+	if repair_progress >= 1.0:
+		hull = 100.0
+		repair_active = false
+		game.audio.play_ui(520.0)
+		game.hud.show_toast("船体修复完成 · 100%", 2.4)
+
+
+## 修理进度是否应该顶替氧气条显示。
+## 只要修过（进度 > 0）且没修满就显示 —— 比「只在按住时显示」更贴合
+## 用户说的「修理时暂时代替氧气的 UI」：松开手进度还在，UI 也该还在。
+func showing_repair_ui() -> bool:
+	return repair_progress > 0.001 and hull < 99.95
+
+
+## ── 降落全过程（四阶段，全程无瞬移）────────────────────────────────
+##
+## 用户 2026-11-11：「降落也没有降落过程，到了星球缓慢抬起机头，
+##   然后突然瞬间就停到地上了，我需要完整的全过程，中间不能瞬移包括手动降落也是」。
+##
+## 旧版 `land()` 在同一帧做完了三件事：速度清零、位置贴到地表 2.3 米、置 landed。
+## 所以玩家看到的是「啪一下贴在地上」——那根本不是降落，是瞬移。
+##
+## 现在拆成四个阶段，全部靠**真实速度推进位置**：
+##
+##   APPROACH  从高处持续下降，机头保持朝运动方向
+##   FLARE     离地 FLARE_ALT 米时开始拉平：俯仰逐渐抬到水平，下降速度压到
+##             接近悬停 —— 这一段就是用户要的「缓慢抬起机头」
+##   TOUCHDOWN 接地瞬间触发：发动机可劲儿反推，速度在 TOUCHDOWN_TIME 内平滑
+##             降到 0，机身在缓冲行程里继续下沉一点点（起落架压缩观感）
+##   LANDED    速度真的归零、且贴到停靠高度之后，才置 landed = true
+##
+## 任意阶段只要重新点火/按跳跃键就会中止降落，回到自由飞行。
+enum LandPhase { NONE, APPROACH, FLARE, TOUCHDOWN }
+
+## 开始拉平的高度（米）
+const LANDING_FLARE_ALT := 14.0
+## 完全贴地后，缓冲行程走完所需时间（秒）
+const LANDING_TOUCHDOWN_TIME := 0.45
+## 停靠高度：机腹离地表多高算「落稳」
+const LANDING_REST_ALT := 2.3
+## FLARE 阶段允许的最大下降速度（米/秒）
+const LANDING_FLARE_SINK := 5.5
+## APPROACH 阶段的下降速度上限（米/秒）
+const LANDING_APPROACH_SINK := 42.0
+## APPROACH 阶段的下降速度下限（米/秒）。
+## ⚠ 不能是 0：进入 APPROACH 时如果速度为 0（悬停后按降落、脚本调 try_land），
+##   min(0, 上限) = 0 会让飞船永远停在空中，卡死在这个阶段。
+##   取 6.0 是一个「看得出在下降、又不会砸地」的速度。
+const LANDING_APPROACH_MIN_SINK := 6.0
+
+var land_phase: int = LandPhase.NONE
+## 着陆时的地表法线（用于每帧重钉位置，消除帧间错拍）
+var landing_normal := Vector3.UP
+var land_target_planet = null
+## TOUCHDOWN 阶段的计时（0 → LANDING_TOUCHDOWN_TIME）
+var land_settle := 0.0
+## 接地瞬间的残余下沉速度（历史值，保留以兼容旧调用）
+var land_impact_sink := 0.0
+## 进入 FLARE 时的高度（用于拉平进度）
+var land_flare_start_alt := 0.0
+## 接地时的高度（缓冲行程从这里插值到 LANDING_REST_ALT）
+var land_touch_alt := 2.3
+
+
+## 请求降落。**不再瞬移**，只是进入降落状态机。
+func request_landing(planet) -> void:
+	if landed or land_phase != LandPhase.NONE:
+		return
+	land_target_planet = planet
+	land_phase = LandPhase.APPROACH
+	land_settle = 0.0
+	autopilot = false
+
+
+## 每帧推进降落过程。返回 true 表示本帧已被降落逻辑接管（调用方跳过常规飞行）。
+func _process_landing(delta: float) -> bool:
+	if land_phase == LandPhase.NONE or land_target_planet == null:
+		return false
+	var planet = land_target_planet
+	# 玩家主动点火 → 中止降落，回到自由飞行
+	if land_phase != LandPhase.TOUCHDOWN and Input.get_action_strength("move_forward") > 0.1:
+		_abort_landing("已中止降落")
+		return false
+
+	var normal: Vector3 = (global_position - planet.global_position).normalized()
+	var surface: Vector3 = planet.global_position + planet.surface_position(normal, 0.0)
+	var altitude: float = global_position.distance_to(surface)
+	# 地面速度（行星在公转，落地要跟上）
+	var ground_v: Vector3 = planet.orbital_velocity() if planet.has_method("orbital_velocity") else Vector3.ZERO
+
+	match land_phase:
+		LandPhase.APPROACH:
+			# ⚠ 只减速、不加速：目标下沉速度 = min(当前下沉, 上限)。
+			#   旧写法把「上限」当成了「目标」，于是从 12 m/s 一路涨到 40 m/s，
+			#   等于加速砸向地面（探针实测 12 → 40.6）。
+			#
+			# ⚠ 2026-11-11 补：min(0, 上限) = 0 —— 如果进入 APPROACH 时速度是 0
+			#   （悬停后按降落、或脚本直接调 try_land），sink_target 会是 0，
+			#   速度永远不动 → **高度不变 → 卡在 APPROACH 死循环**。
+			#   实测跑 900 帧（15 秒）仍在 APPROACH。
+			#   修法：给一个最小下沉速度 LANDING_APPROACH_MIN_SINK，
+			#   并且「已经在下降」时用它原本的速度（保持只减速的初衷）。
+			var sink_now: float = maxf(0.0, velocity.dot(-normal))
+			var sink_target: float
+			if sink_now > LANDING_APPROACH_MIN_SINK:
+				sink_target = minf(sink_now, LANDING_APPROACH_SINK)
+			else:
+				# 静止/悬停：给一个温和的下沉速度，保证能收敛到地面。
+				sink_target = LANDING_APPROACH_MIN_SINK
+			var want_v: Vector3 = -normal * sink_target + ground_v
+			velocity = velocity.move_toward(want_v, delta * 40.0)
+			if altitude <= LANDING_REST_ALT + LANDING_FLARE_ALT:
+				land_phase = LandPhase.FLARE
+				land_flare_start_alt = altitude
+		LandPhase.FLARE:
+			# 拉平：下降速度**按剩余高度成比例**给，而不是追一个固定值。
+			#
+			# ⚠ 追固定下沉速度（比如恒定 3.2 m/s）实测会卡死：行星在公转，
+			#   切向分量（青岚星 6.6 m/s）和法线不共线，move_toward 追到某个
+			#   平衡点后高度就不再下降了（探针实测卡在 14.4 米来回摆）。
+			#   改成 rate = clamp(剩余高度 × 0.9, 0.8, 3.2)：
+			#   高度越低速度越慢，指数式逼近，数学上保证一定收敛到地表。
+			var sink_target: float = clampf(
+				(altitude - LANDING_REST_ALT) * 0.9, 0.8, LANDING_FLARE_SINK)
+			var sink_v: Vector3 = -normal * sink_target
+			velocity = velocity.move_toward(sink_v + ground_v, delta * 28.0)
+			var t: float = clampf(1.0 - (altitude - LANDING_REST_ALT) / LANDING_FLARE_ALT, 0.0, 1.0)
+			_align_belly_to(normal, t, delta)
+			if altitude <= LANDING_REST_ALT + 0.30:
+				# 接地：进入缓冲行程。记下接地高度用于插值（不靠速度积分）。
+				land_phase = LandPhase.TOUCHDOWN
+				land_settle = 0.0
+				land_touch_alt = maxf(altitude, LANDING_REST_ALT)
+				game.audio.play_ui(300.0)
+			if altitude > LANDING_REST_ALT + LANDING_FLARE_ALT * 1.4:
+				land_phase = LandPhase.APPROACH
+		LandPhase.TOUCHDOWN:
+			# ⚠ 缓冲行程**用位置插值**，不靠速度积分。
+			#   旧写法按「残余下沉速度 × delta」推进位置，没有下界保护，
+			#   实测一路穿到地表以下 6.7 米，最后被 _finish_landing 拉回来 ——
+			#   那就是 9 米/帧的瞬移（用户说的「瞬间停到地上」）。
+			land_settle += delta
+			var p: float = clampf(land_settle / LANDING_TOUCHDOWN_TIME, 0.0, 1.0)
+			var ease: float = p * p * (3.0 - 2.0 * p)
+			# 高度从「接地高度」平滑插值到「停靠高度」，永不穿地
+			var alt_now: float = lerpf(land_touch_alt, LANDING_REST_ALT, ease)
+			global_position = planet.global_position + planet.surface_position(normal, alt_now)
+			velocity = ground_v
+			# 机腹完全贴平
+			_align_belly_to(normal, 1.0, delta)
+			thrust_level = 0.55 * (1.0 - ease)
+			if p >= 1.0:
+				_finish_landing()
+				return true
+	# 姿态：机头沿运动方向（APPROACH 阶段）
+	if land_phase == LandPhase.APPROACH:
+		var dir: Vector3 = velocity - ground_v
+		if dir.length() > 0.5:
+			var up_ref: Vector3 = normal
+			if absf(dir.normalized().dot(up_ref)) > 0.96:
+				up_ref = Vector3.FORWARD
+			var want := Basis.looking_at(dir.normalized(), up_ref)
+			var tr := global_transform
+			tr.basis = tr.basis.slerp(want, clampf(delta * 2.2, 0.0, 1.0)).orthonormalized()
+			global_transform = tr
+	_move_landing(delta)
+	return true
+
+
+## 让**机腹**（-Y 轴）对准地表法线。t=0 保持原姿态，t=1 完全贴平。
+func _align_belly_to(normal: Vector3, t: float, delta: float) -> void:
+	var inv: float = clampf(delta * 3.4, 0.0, 1.0) * t
+	if inv <= 0.0001:
+		return
+	var up_now: Vector3 = global_transform.basis.y.normalized()
+	var forward_now: Vector3 = -global_transform.basis.z.normalized()
+	# 目标 forward：把当前 forward 投影到地表切平面，保持机头朝向不乱转
+	var fwd_flat: Vector3 = (forward_now - normal * forward_now.dot(normal))
+	if fwd_flat.length_squared() < 0.0001:
+		fwd_flat = normal.cross(Vector3.RIGHT)
+		if fwd_flat.length_squared() < 0.0001:
+			fwd_flat = normal.cross(Vector3.FORWARD)
+	var want := Basis.looking_at(fwd_flat.normalized(), normal)
+	var tr := global_transform
+	tr.basis = tr.basis.slerp(want, inv).orthonormalized()
+	global_transform = tr
+
+
+## 按真实速度推进位置（不瞬移）。
+func _move_landing(delta: float) -> void:
+	global_position += velocity * delta
+
+
+## 落稳：这时候才真正置 landed。
+func _finish_landing() -> void:
+	var planet = land_target_planet
+	velocity = Vector3.ZERO
+	autopilot = false
+	landed_planet = planet
+	# TOUCHDOWN 已经把高度插值到停靠高度，这里只做父节点切换（不产生可见位移）
+	var normal: Vector3 = (global_position - planet.global_position).normalized()
+	reparent(planet, true)
+	global_position = planet.global_position + planet.surface_position(normal, LANDING_REST_ALT)
+	_align_belly_to(normal, 1.0, 1.0)
+	landed = true
+	land_phase = LandPhase.NONE
+	landing_normal = normal
+	thrust_level = 0.0
+	game.audio.play_ui(330.0)
+	game.hud.show_toast("已着陆 · " + planet.display_name + " · E 离船", 3.0)
+
+
+func _abort_landing(reason: String) -> void:
+	land_phase = LandPhase.NONE
+	land_target_planet = null
+	land_settle = 0.0
+	if reason != "":
+		game.hud.show_toast(reason, 2.0)
+
+
+## 兼容旧调用：立刻降落（开发者模式 / 测试用）。正常玩法请走 request_landing。
 func land(planet) -> void:
 	if landed:
 		return
-	var normal: Vector3 = (global_position - planet.global_position).normalized()
 	velocity = Vector3.ZERO
-	landed = true
 	autopilot = false
 	landed_planet = planet
 	reparent(planet, true)
-	global_position = planet.global_position + planet.surface_position(normal, 2.3)
-	var transform := global_transform
-	var align := Quaternion(transform.basis.y.normalized(), normal)
-	transform.basis = (Basis(align) * transform.basis).orthonormalized()
-	global_transform = transform
+	var normal: Vector3 = (global_position - planet.global_position).normalized()
+	global_position = planet.global_position + planet.surface_position(normal, LANDING_REST_ALT)
+	_align_belly_to(normal, 1.0, 1.0)
+	landed = true
+	land_phase = LandPhase.NONE
+	landing_normal = normal
 	game.audio.play_ui(330.0)
 	game.hud.show_toast("已着陆 · " + planet.display_name + " · E 离船", 3.0)
 
@@ -2143,20 +2831,42 @@ func land(planet) -> void:
 ##      所以帧率变化时观感一致。
 var _plume_phase := 0.0
 var _plume_sway_seed := [0.0, 0.0, 0.0]
+## 引擎点火的平滑包络（0~1）。
+## 用户要求「蓝光不要突然出现，是慢慢出现」—— 见 _update_engine 里的说明。
+var engine_level := 0.0
 
 
 func _update_engine(delta: float) -> void:
 	_plume_phase += delta
 
-	# 推力趋近 0 就算「没开」：尾焰整体隐藏，不留基线微光。
-	var firing: bool = thrust_level > 0.06
+	# ⚠ 2026-11-11 用户：「引擎启动蓝光不要突然出现，是慢慢出现」。
+	#
+	#   旧版是布尔开关：thrust_level 一过 0.06 就 firing=true，
+	#   三束尾焰同一帧从 invisible 跳到 visible —— 屏幕上是「啪」一下亮起来，
+	#   很生硬。
+	#
+	#   现在改成**平滑包络**：engine_level 按时间常数逼近目标（0 或 1），
+	#   尾焰的缩放同时乘以这个包络。所以点火是「由小到大淡入」，
+	#   熄火是「慢慢收细」，全程没有可见性突变。
+	#
+	#   包络还负责透明度：透明度 = 包络，所以即使形状在，亮度也是渐进的。
+	var want_firing: bool = thrust_level > 0.06
+	var target_level := 1.0 if want_firing else 0.0
+	# 起转快一点（0.22s 到 90%），熄火慢一点（0.45s），符合涡轮的惯性感
+	var tau := 0.10 if want_firing else 0.22
+	engine_level = lerpf(engine_level, target_level, 1.0 - exp(-delta / maxf(tau, 0.001)))
+
+	# 只有包络几乎归零时才彻底隐藏，避免常亮退化三角形
+	var firing: bool = engine_level > 0.01
 
 	for material in engine_materials:
-		var mat_target := 0.0 if not firing else (1.2 + thrust_level * 4.2)
+		# 亮度也跟包络走，不再用「非 0 即满」的二值跳变
+		var peak := 1.2 + thrust_level * 4.2
+		var mat_target := 0.0 if not firing else peak * engine_level
 		material.emission_energy_multiplier = lerpf(
 			material.emission_energy_multiplier, mat_target, delta * 10.0)
 	for light in engine_lights:
-		var light_target := 0.0 if not firing else (0.4 + thrust_level * 2.2)
+		var light_target := 0.0 if not firing else (0.4 + thrust_level * 2.2) * engine_level
 		light.light_energy = lerpf(light.light_energy, light_target, delta * 10.0)
 
 	# 尾焰本体
@@ -2172,7 +2882,8 @@ func _update_engine(delta: float) -> void:
 		var phase: float = _plume_phase * 18.0 + float(i) * 2.1
 
 		# 长度：跟随推力，叠一层高频抖动做出「燃烧不稳」的感觉
-		var base_len: float = 0.45 + thrust_level * 1.25
+		# 再乘 engine_level —— 刚点火时火舌是短的，慢慢拉长
+		var base_len: float = (0.45 + thrust_level * 1.25) * engine_level
 		var flicker: float = 1.0 + sin(phase) * 0.13 + sin(phase * 2.7) * 0.06
 		var target_len: float = base_len * flicker
 
@@ -2180,8 +2891,24 @@ func _update_engine(delta: float) -> void:
 		var sway: float = sin(_plume_phase * 6.0 + float(i) * 1.7) * 0.035
 
 		node.scale = node.scale.lerp(
-			Vector3(1.0 + sway, 1.0 + sway, target_len),
+			Vector3(1.0 + sway, 1.0 + sway, maxf(target_len, 0.02)),
 			1.0 - exp(-delta * 14.0))
+
+	# 软壳层：跟着火舌一起显隐，但**抖动幅度更小、变化更慢**。
+	# 它是「光晕」，不该像火焰一样跳 —— 抖得太厉害反而显得廉价。
+	# 横向给到 1.15 让壳始终比火舌胖一圈，边界才糊得住。
+	for i in range(engine_halos.size()):
+		var halo := engine_halos[i] as Node3D
+		if not firing:
+			halo.visible = false
+			continue
+		halo.visible = true
+		var hphase: float = _plume_phase * 11.0 + float(i) * 1.6
+		var hflicker: float = 1.0 + sin(hphase) * 0.07
+		var hlen: float = (0.45 + thrust_level * 1.15) * hflicker * engine_level
+		halo.scale = halo.scale.lerp(
+			Vector3(1.15, 1.15, maxf(hlen, 0.02)),
+			1.0 - exp(-delta * 9.0))
 
 	_update_ventral(delta)
 

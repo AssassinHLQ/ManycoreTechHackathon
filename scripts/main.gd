@@ -89,24 +89,39 @@ var prominence_materials: Array = []
 ## ⚠ 改这里之前先看 camera.far：放大后最远天体到相机约 20 万米，
 ##   `far = 60000` 会直接把远轨道裁掉（见 player.gd / ship.gd 的 far 注释）。
 const ORBIT_SCALE := 10.0
-const PLANET_RADIUS_SCALE := 3.0
+const PLANET_RADIUS_SCALE := 5.0
 const SUN_SCALE := 10.0
-## 黑洞整体位置的外移倍率。黑洞不属于行星系统，但要保持在系统外围，
-## 所以位置跟轨道同比例外移。
-const BH_POSITION_SCALE := 10.0
+## 黑洞整体位置的外移倍率。
+##
+## ⚠ 2026-11-11 第二次调整（用户：「黑洞是不是放太远了，靠近点」）。
+##   上一版被改成了 20 —— 黑洞飞到 (−236000, 104000, 192000)，
+##   离母星约 32 万米，比任何行星轨道（最外 9.2 万米）远 3 倍多，
+##   飞过去要很久，玩家根本不会去。现在降到 6（约 9.6 万米），
+##   刚好在行星系统外侧 —— 「抬头能看见、想去也去得起」。
+##
+##   基准：位置向量长度 ≈ 16076 米，×倍率就是实际距离。
+##     倍率 20 → 32.2 万米（太远）
+##     倍率 6  →  9.6 万米  ← 现在
+const BH_POSITION_SCALE := 6.0
 ## 黑洞的**视觉**尺寸倍率。
 ##
 ## ⚠ 2026-11-11 用户反馈「找不到黑洞了」。
-##   根因：位置 ×10 挪到 (−118000, 52000, 96000)（离母星约 17.7 万米），
-##   但 GARGANTUA_SCALE 仍是 4.0、外圈壳半径 1211 米 ——
-##   在 17.7 万米处它的**角尺寸只有约 0.78°**（满屏约 60°），
-##   加上吸积盘本来就暗，等于在天上隐形了。
+##   根因：位置外移后 GARGANTUA_SCALE 仍是 4.0、外圈壳半径 1211 米 ——
+##   角尺寸只有约 0.78°（满屏约 60°），吸积盘本来就暗，等于天上隐形。
 ##
-##   解法：只放大**视觉**（scale + 各级壳/盘半径），不放大引力。
-##   引力范围仍是 BH_PULL_RANGE = 7200 米这个玩法标定值，
-##   否则「靠近才被拽」的手感会被破坏。
-##   视觉 ×10 后角尺寸回到约 7.8°，和原来的观感一致。
-const BH_VISUAL_SCALE := 10.0
+## ⚠ 2026-11-11 再调：位置从 20 降到 6（近了 3.3 倍），视觉倍率也同步
+##   从 10 降到 5，让**角尺寸保持大致不变**（角尺寸 ∝ 视觉倍率 / 距离）。
+##   否则距离一近黑洞会显得过分巨大，糊住半个天空。
+const BH_VISUAL_SCALE := 5.0
+
+## 菜单相机的取景比例（相对母星半径）。
+##
+## 旧版是死写的 880 米水平 / 520 米高，星球半径放大到 2000 后就成了贴地视角。
+## 现在改成按半径的倍数，星球尺寸怎么变都自动跟随。
+##   半径倍数 2.4 → 相机离球心 2.4R、离地 1.4R，能把整颗星收进画面
+##   高度倍数 1.5 → 俯角约 32°，看得到球面弧度和地平线
+const MENU_CAM_RADIUS_K := 2.4
+const MENU_CAM_HEIGHT_K := 1.5
 
 ## ── Lux3D 生成的星球表面 ────────────────────────────────────────────
 ## 键 = 行星 id，值 = GLB 路径。不在表里的行星继续用程序化球面。
@@ -139,6 +154,16 @@ const LUX3D_PLANET_MODELS := {
 	"taiyuan": "res://assets/models/taiyuan-lux3d-v2/model.glb",
 	"liuwu": "res://assets/models/liuwu-lux3d-v2/model.glb",
 	"jianmo": "res://assets/models/jianmo-lux3d-v2/model.glb",
+	"jiangxiao": "res://assets/models/jiangxiao-lux3d/model.glb",
+	"cangwu": "res://assets/models/cangwu-lux3d/model.glb",
+	"jinwu": "res://assets/models/jinwu-lux3d/model.glb",
+	"yuheng": "res://assets/models/yuheng-lux3d/model.glb",
+	"sue": "res://assets/models/sue-lux3d/model.glb",
+	"danxia": "res://assets/models/danxia-lux3d/model.glb",
+	"biluo": "res://assets/models/biluo-lux3d/model.glb",
+	"youdu": "res://assets/models/youdu-lux3d/model.glb",
+	"yaoguang": "res://assets/models/yaoguang-lux3d/model.glb",
+	"xuanpu": "res://assets/models/xuanpu-lux3d/model.glb",
 }
 
 var sun_radius := 260.0 * SUN_SCALE
@@ -200,6 +225,9 @@ var fire_flame_bases: Array = []
 var fire_flame_offsets: Array = []
 var scan_target: Node3D
 var scan_progress := 0.0
+## 下船修理的提示文本（空串 = 不显示）。由 _update_ship_repair 每帧写入，
+## HUD 读它决定要不要在底部提示「按 F 修理 / 对准飞船再按 F」。
+var repair_hint := ""
 var target_index := 0
 var supernova_active := false
 var supernova_timer := 0.0
@@ -869,28 +897,28 @@ func _build_planets() -> void:
 		},
 		{
 			"id": "zheya", "name": "赭崖星",
-			"radius": 300.0 * PLANET_RADIUS_SCALE, "orbit": 4560.0 * ORBIT_SCALE, "gravity": 32.0,
+			"radius": 300.0 * PLANET_RADIUS_SCALE, "orbit": 6900.0 * ORBIT_SCALE, "gravity": 32.0,
 			"phase": 2.15, "speed": -0.004, "height": 180.0 * ORBIT_SCALE, "kind": "zheya",
 			"color": Color("9c9384"), "accent": Color("d8c9a3"),
 			"description": "1.6 G · 盐碱裂谷、间歇喷泉与断裂观测环。"
 		},
 		{
 			"id": "cangbo", "name": "沧波星",
-			"radius": 430.0 * PLANET_RADIUS_SCALE, "orbit": 6520.0 * ORBIT_SCALE, "gravity": 13.0,
+			"radius": 430.0 * PLANET_RADIUS_SCALE, "orbit": 10400.0 * ORBIT_SCALE, "gravity": 13.0,
 			"phase": 3.75, "speed": 0.0022, "height": -160.0 * ORBIT_SCALE, "kind": "cangbo",
 			"color": Color("8fb6c9"), "accent": Color("cfeef7"),
 			"description": "0.65 G · 冰架、潮汐裂缝与浮冰研究站。"
 		},
 		{
 			"id": "xuanjing", "name": "悬晶星",
-			"radius": 280.0 * PLANET_RADIUS_SCALE, "orbit": 4160.0 * ORBIT_SCALE, "gravity": 7.0,
+			"radius": 280.0 * PLANET_RADIUS_SCALE, "orbit": 6200.0 * ORBIT_SCALE, "gravity": 7.0,
 			"phase": 4.95, "speed": 0.0055, "height": 320.0 * ORBIT_SCALE, "kind": "xuanjing",
 			"color": Color("565a60"), "accent": Color("e0a063"),
 			"description": "0.35 G · 环站残骸、磁性矿石与低空碎片。"
 		},
 		{
 			"id": "xuanyuan", "name": "玄渊星",
-			"radius": 170.0 * PLANET_RADIUS_SCALE, "orbit": 8040.0 * ORBIT_SCALE, "gravity": 25.0,
+			"radius": 170.0 * PLANET_RADIUS_SCALE, "orbit": 13900.0 * ORBIT_SCALE, "gravity": 25.0,
 			"phase": 5.72, "speed": -0.003, "height": 80.0 * ORBIT_SCALE, "kind": "xuanyuan",
 			"color": Color("0b0d12"), "accent": Color("ff7a3c"),
 			"description": "1.25 G · 黑金巨门与坍缩前的暗核。"
@@ -898,38 +926,109 @@ func _build_planets() -> void:
 		# ---- 次天体：五颗不承载主线棱镜、但可着陆观测的次级星球 ----
 		{
 			"id": "baiyao", "name": "白曜星",
-			"radius": 240.0 * PLANET_RADIUS_SCALE, "orbit": 3200.0 * ORBIT_SCALE, "gravity": 9.0,
+			"radius": 240.0 * PLANET_RADIUS_SCALE, "orbit": 4100.0 * ORBIT_SCALE, "gravity": 9.0,
 			"phase": 1.05, "speed": 0.0031, "height": 240.0 * ORBIT_SCALE, "kind": "baiyao",
 			"color": Color("b9c6cc"), "accent": Color("eaf7ff"),
 			"description": "0.45 G · 白垩冰原、冰棱塔林与霜蚀沟槽。"
 		},
 		{
 			"id": "pansha", "name": "磐砂星",
-			"radius": 330.0 * PLANET_RADIUS_SCALE, "orbit": 5400.0 * ORBIT_SCALE, "gravity": 22.0,
+			"radius": 330.0 * PLANET_RADIUS_SCALE, "orbit": 8300.0 * ORBIT_SCALE, "gravity": 22.0,
 			"phase": 2.78, "speed": -0.0026, "height": -240.0 * ORBIT_SCALE, "kind": "pansha",
 			"color": Color("a8794a"), "accent": Color("f0d9a8"),
 			"description": "1.1 G · 风蚀沙海、石柱阵与流沙谷。"
 		},
 		{
 			"id": "taiyuan", "name": "苔垣星",
-			"radius": 290.0 * PLANET_RADIUS_SCALE, "orbit": 6200.0 * ORBIT_SCALE, "gravity": 16.0,
+			"radius": 290.0 * PLANET_RADIUS_SCALE, "orbit": 9700.0 * ORBIT_SCALE, "gravity": 16.0,
 			"phase": 4.18, "speed": 0.0019, "height": 120.0 * ORBIT_SCALE, "kind": "taiyuan",
 			"color": Color("3f5a45"), "accent": Color("9fd68a"),
 			"description": "0.8 G · 苔原、石垣迷宫与湿雾低地。"
 		},
 		{
 			"id": "liuwu", "name": "硫坞星",
-			"radius": 310.0 * PLANET_RADIUS_SCALE, "orbit": 7100.0 * ORBIT_SCALE, "gravity": 27.0,
+			"radius": 310.0 * PLANET_RADIUS_SCALE, "orbit": 12500.0 * ORBIT_SCALE, "gravity": 27.0,
 			"phase": 5.35, "speed": -0.0035, "height": -80.0 * ORBIT_SCALE, "kind": "liuwu",
 			"color": Color("6d6a3a"), "accent": Color("d8e05a"),
 			"description": "1.35 G · 硫磺喷气孔、废弃船坞与酸雾沟。"
 		},
 		{
 			"id": "jianmo", "name": "缄默星",
-			"radius": 150.0 * PLANET_RADIUS_SCALE, "orbit": 9200.0 * ORBIT_SCALE, "gravity": 6.0,
+			"radius": 150.0 * PLANET_RADIUS_SCALE, "orbit": 15300.0 * ORBIT_SCALE, "gravity": 6.0,
 			"phase": 6.42, "speed": 0.0042, "height": 300.0 * ORBIT_SCALE, "kind": "jianmo",
 			"color": Color("1b1620"), "accent": Color("9c7bd0"),
 			"description": "0.3 G · 黑曜石暗面、静默门阵与无声风。"
+		},
+		# ---- 第二批十颗：Lux3D 写实星球，各按名字取配色 ----
+		{
+			"id": "jiangxiao", "name": "绛霄星",
+			"radius": 260.0 * PLANET_RADIUS_SCALE, "orbit": 4800.0 * ORBIT_SCALE, "gravity": 18.0,
+			"phase": 0.90, "speed": 0.0028, "height": 160.0 * ORBIT_SCALE, "kind": "jiangxiao",
+			"color": Color("8c2f1e"), "accent": Color("e8663c"),
+			"description": "0.9 G · 赤铁矿红沙、血色台地与铁锈雾。"
+		},
+		{
+			"id": "cangwu", "name": "苍梧星",
+			"radius": 350.0 * PLANET_RADIUS_SCALE, "orbit": 9000.0 * ORBIT_SCALE, "gravity": 14.0,
+			"phase": 2.40, "speed": -0.0021, "height": -120.0 * ORBIT_SCALE, "kind": "cangwu",
+			"color": Color("173a2a"), "accent": Color("7fc79a"),
+			"description": "0.7 G · 墨绿林海、翡翠高地与谷中青雾。"
+		},
+		{
+			"id": "jinwu", "name": "金乌星",
+			"radius": 220.0 * PLANET_RADIUS_SCALE, "orbit": 3400.0 * ORBIT_SCALE, "gravity": 30.0,
+			"phase": 3.30, "speed": 0.0038, "height": 260.0 * ORBIT_SCALE, "kind": "jinwu",
+			"color": Color("a86a12"), "accent": Color("ffc94a"),
+			"description": "1.5 G · 焦金沙海、灼白盐盘与不落的烈日。"
+		},
+		{
+			"id": "yuheng", "name": "玉衡星",
+			"radius": 380.0 * PLANET_RADIUS_SCALE, "orbit": 13200.0 * ORBIT_SCALE, "gravity": 11.0,
+			"phase": 1.60, "speed": 0.0017, "height": 200.0 * ORBIT_SCALE, "kind": "yuheng",
+			"color": Color("3f7a68"), "accent": Color("d6efe2"),
+			"description": "0.55 G · 玉青平原、奶白石英脉与矿物台地。"
+		},
+		{
+			"id": "sue", "name": "素娥星",
+			"radius": 190.0 * PLANET_RADIUS_SCALE, "orbit": 7600.0 * ORBIT_SCALE, "gravity": 5.0,
+			"phase": 5.10, "speed": -0.0029, "height": -300.0 * ORBIT_SCALE, "kind": "sue",
+			"color": Color("b9b8b2"), "accent": Color("f2f1ea"),
+			"description": "0.25 G · 素白月壤、珍珠灰环形山与静默石桩。"
+		},
+		{
+			"id": "danxia", "name": "丹霞星",
+			"radius": 340.0 * PLANET_RADIUS_SCALE, "orbit": 11100.0 * ORBIT_SCALE, "gravity": 21.0,
+			"phase": 0.55, "speed": 0.0023, "height": 140.0 * ORBIT_SCALE, "kind": "danxia",
+			"color": Color("9e2f22"), "accent": Color("f0a06a"),
+			"description": "1.05 G · 丹红条纹岩层、彩色阶地与赭白砂岩台。"
+		},
+		{
+			"id": "biluo", "name": "碧落星",
+			"radius": 400.0 * PLANET_RADIUS_SCALE, "orbit": 14600.0 * ORBIT_SCALE, "gravity": 8.0,
+			"phase": 4.40, "speed": -0.0019, "height": 340.0 * ORBIT_SCALE, "kind": "biluo",
+			"color": Color("1a6f86"), "accent": Color("7fe6e0"),
+			"description": "0.4 G · 碧空浅海、环礁白环与无风的潟湖。"
+		},
+		{
+			"id": "youdu", "name": "幽都星",
+			"radius": 200.0 * PLANET_RADIUS_SCALE, "orbit": 5500.0 * ORBIT_SCALE, "gravity": 26.0,
+			"phase": 6.00, "speed": 0.0045, "height": -200.0 * ORBIT_SCALE, "kind": "youdu",
+			"color": Color("141a2a"), "accent": Color("5f7fa8"),
+			"description": "1.3 G · 幽蓝玄岩、冷光冰川与朝内的灯。"
+		},
+		{
+			"id": "yaoguang", "name": "瑶光星",
+			"radius": 230.0 * PLANET_RADIUS_SCALE, "orbit": 11800.0 * ORBIT_SCALE, "gravity": 4.0,
+			"phase": 1.90, "speed": 0.0032, "height": 60.0 * ORBIT_SCALE, "kind": "yaoguang",
+			"color": Color("7fb9c8"), "accent": Color("eafcff"),
+			"description": "0.2 G · 青白晶原、耀眼晶脊与朝下的镜面。"
+		},
+		{
+			"id": "xuanpu", "name": "玄圃星",
+			"radius": 320.0 * PLANET_RADIUS_SCALE, "orbit": 16000.0 * ORBIT_SCALE, "gravity": 19.0,
+			"phase": 5.60, "speed": -0.0024, "height": -60.0 * ORBIT_SCALE, "kind": "xuanpu",
+			"color": Color("2a1f3a"), "accent": Color("9fe0a8"),
+			"description": "0.95 G · 暗紫岩台、幽绿苔原与自发的微光。"
 		}
 	]
 	var anomaly_text := {
@@ -943,7 +1042,17 @@ func _build_planets() -> void:
 		"pansha": ["被风写坏的碑文", "磐砂星的石柱阵按风向排列。风换了十七次方向，柱阵就重排了十七次。最后一代记录者放弃刻字，只留下柱子的高度：那是他们记得的每一次风向。"],
 		"taiyuan": ["苔垣里的人", "苔垣迷宫不是防御工事，是练习题。走通它需要记住三件事：墙会移动、灯会灭、出口从不标注。灯塔顶上留着一句：走不出来的人，就住在里面。"],
 		"liuwu": ["下水的船没有名字", "硫坞星的船坞造过十一艘船，全部没有下水。龙骨还挂在龙门吊上，喷气孔在下面嘶嘶作响。最后一块钢板上的批注只有一行：等海回来。"],
-		"jianmo": ["门后没有空气", "缄默星的三座门立了多久，没人算得清——这颗星没有声音，也无法留下回声。门框内侧刻着一句被磨平的话，只剩末尾可辨：……所以别关门。"]
+		"jianmo": ["门后没有空气", "缄默星的三座门立了多久，没人算得清——这颗星没有声音，也无法留下回声。门框内侧刻着一句被磨平的话，只剩末尾可辨：……所以别关门。"],
+		"jiangxiao": ["红色的第一课", "绛霄星的沙是锈的。这里下过一次铁雨，从那以后所有东西都在慢慢变红。记录者把测得的含铁量刻在崖壁上，最后一行的字迹很新：我们也是会锈的。"],
+		"cangwu": ["树没有名字", "苍梧星的人不给树起名。他们说树活得比名字久，起名是给自己留念想。林下留有半截木牌，正面空白，背面刻着一行小字：这棵是我们一起种的。"],
+		"jinwu": ["正午不会结束", "金乌星的日照长得不像话。这里的钟表全部停在同一个时刻，因为不需要别的时刻。白色盐盘上有一串脚印，走了很远，最后停在正中央。"],
+		"yuheng": ["称过的玉", "玉衡星的每一块石英都被称过重量，数字写在旁边的石台上。没有人解释为什么需要这些数字，但石台被擦得很干净——像是有人一直在这里等一个答案。"],
+		"sue": ["灰色的纪念", "素娥星什么都没有，只有灰。灰下面埋着整整齐齐的一排排石桩，没有字。看久了会发现它们的间距完全一致——这是有人在数什么，数了很久。"],
+		"danxia": ["一层就是一万年", "丹霞星的岩壁是一本竖着放的书。红色是一层，赭色是一层，白的是中间那次长久的停顿。有人在某一层的高度上凿了一个小龛，里面空的，但龛口朝东。"],
+		"biluo": ["浅水里的回声", "碧落星的水浅得能看见自己的影子。环礁围出的湖里没有风，声音传不出去，喊一句要等很久才回来——回来的时候已经不是同一句了。"],
+		"youdu": ["这里不需要光", "幽都星的光很弱，弱到只能看清脚下。这里的人把灯都朝内放，说是为了不惊动外面的暗。最后一份记录只有半句：暗不是敌人，是——"],
+		"yaoguang": ["亮得看不清", "瑶光星太亮了。晶石把光反复折射，让人分不清远近。观测站的镜面全部朝下，据说这样才看得清星星；镜面朝上的那些，都已经熔了。"],
+		"xuanpu": ["长在暗处的", "玄圃星的植被只在阴影里发光，越暗越亮。整片园子像是有人精心打理过——修剪整齐、留有步道——但没有脚印，也没有门。"],
 	}
 	for definition in definitions:
 		var planet := PlanetScript.new()
@@ -1091,24 +1200,24 @@ func _planet_by_id(id: String) -> Node3D:
 	return null
 
 
-func _create_orbit_lines(definitions: Array) -> void:
-	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.albedo_color = Color(0.28, 0.54, 0.64, 0.12)
-	for definition in definitions:
-		var immediate := ImmediateMesh.new()
-		immediate.surface_begin(Mesh.PRIMITIVE_LINES, material)
-		for i in range(128):
-			var a := float(i) / 128.0 * TAU
-			var b := float(i + 1) / 128.0 * TAU
-			immediate.surface_add_vertex(Vector3(cos(a), 0, sin(a)) * definition.orbit + Vector3.UP * definition.height)
-			immediate.surface_add_vertex(Vector3(cos(b), 0, sin(b)) * definition.orbit + Vector3.UP * definition.height)
-		immediate.surface_end()
-		var lines := MeshInstance3D.new()
-		lines.mesh = immediate
-		lines.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(lines)
+## 3D 世界里的行星轨道线 —— **已停用**（2026-11-11 用户要求去掉）。
+##
+## 原来给 12 颗行星各画一圈 128 段的线（albedo 0.28,0.54,0.64 alpha 0.12），
+## 本意是「帮玩家理解行星怎么绕」。但实测观感很差：
+##
+##   · 轨道尺寸是 2.6 万 ~ 15 万米，而相机 far = 40 万米，所以这些圈
+##     会横跨整个画面、从画面一头拉到另一头；
+##   · 距离一远、加上环面几乎侧视，整圈退化成**几条平行的淡蓝细线**，
+##     看着像编辑器里画的辅助线跑进了成品，不像太空里的东西；
+##   · 用户原话：「还真是线,能去掉吗」「这不是虚拟线吗不能看见的」。
+##
+## 关键判断：**这些线在 3D 世界里没有物理对应物** —— 轨道是数学轨迹，
+## 不是可见实体。星图（M 键）里的轨道线是 UI，那才该留（见 hud_draw._draw_map）。
+##
+## 所以这里保留函数但不再调用，也不删代码 —— 万一以后想做成
+## 「星图模式才显示」的开关，直接在这儿加条件即可。
+func _create_orbit_lines(_definitions: Array) -> void:
+	return
 
 
 func _build_campfire() -> void:
@@ -1761,9 +1870,25 @@ func _process(delta: float) -> void:
 	_update_distant_stations(delta)
 	_update_sun_detail()
 	if state == "menu":
+		# 菜单相机：绕母星缓慢环绕，要能看到整个星球 + 远处的太阳与黑洞。
+		#
+		# ⚠ 2026-11-11 用户反馈「开始界面的实时渲染不要镜头这么低，要拉远
+		#   看整个空间」。旧值是死写的 880 米水平 / 520 米高 ——
+		#   那是在星球半径还没放大时定的。现在 `PLANET_RADIUS_SCALE = 5`，
+		#   青岚星半径 400×5 = 2000 米，相机离地只有 880 米，
+		#   等于贴着地表平视，星球占了整个画面、看不到空间。
+		#
+		#   改成按行星半径推算，星球放大/缩小都自动跟随：
+		#     水平距离 = 半径 × MENU_CAM_RADIUS_K（2.4 → 离地约 1.4 个半径）
+		#     高度     = 半径 × MENU_CAM_HEIGHT_K（1.5 → 俯角约 32°，能看到
+		#                星球的球面与地平线弧度，又不至于变成俯视图）
 		var center := home.global_position
+		var pr: float = maxf(home.radius, 1.0)
+		var orbit_r: float = pr * MENU_CAM_RADIUS_K
+		var orbit_h: float = pr * MENU_CAM_HEIGHT_K
 		var angle := visual_time * 0.035
-		menu_camera.global_position = center + Vector3(cos(angle) * 880.0, 520.0, sin(angle) * 880.0)
+		menu_camera.global_position = center + Vector3(
+			cos(angle) * orbit_r, orbit_h, sin(angle) * orbit_r)
 		menu_camera.look_at(center, Vector3.UP)
 	if supernova_active:
 		_update_supernova(delta)
@@ -1790,6 +1915,30 @@ func _process(delta: float) -> void:
 		_trigger_supernova()
 		return
 	_update_scanner(delta)
+	_update_ship_repair(delta)
+
+
+## 下船修理的每帧驱动（用户 2026-11-11）。
+##
+## 飞船在 walk 状态下不再自动回船体：必须走开到船边、对准、按住 F。
+## 判据与推进都在 ship.gd（repair_check / repair_tick），这里只负责
+## 「什么时候把按键传下去」和「提示文本怎么显示」。
+##
+## 注意按住 F 有冲突：`scan` 也是 F。所以这里只在**确实可以修理**时才
+## 接管这个键 —— 否则站在船边扫描异常点会被修理抢掉。
+func _update_ship_repair(delta: float) -> void:
+	if ship == null or state != "walk":
+		return
+	if map_open or paused or supernova_active:
+		return
+	var check: Array = ship.repair_check()
+	var can: bool = bool(check[0])
+	var hint: String = String(check[1])
+	repair_hint = hint
+	if can:
+		ship.repair_tick(delta, Input.is_action_pressed("scan"))
+	else:
+		ship.repair_tick(delta, false)
 
 
 func _animate_fire() -> void:
@@ -2329,6 +2478,12 @@ func _interact() -> void:
 			state = "ship"
 			player.visible = false
 			ship.camera.current = true
+			# 用户 2026-11-11：「必须进入飞机才回满」氧气与喷气燃料。
+			# 这是**唯一**的氧气补充途径（除了站内/阁楼/篝火那几个安全区），
+			# 站在飞船旁边回不了 —— 见 player.gd 的氧气规则。
+			player.oxygen = 100.0
+			player.fuel = 100.0
+			hud.show_toast("已登船 · 氧气与喷气燃料已补满", 2.0)
 			audio.play_ui(420.0)
 			return
 		if player.global_position.distance_to(campfire.global_position) < 5.0:
@@ -2613,6 +2768,10 @@ func get_prompt() -> String:
 
 
 func _update_scanner(delta: float) -> void:
+	# ⚠ F 键与「下船修理」共用（2026-11-11）。修理是可修理时接管 F，
+	#   所以扫描这边要先让路：能修的时候不推进扫描进度，也不清已有进度，
+	#   免得玩家刚扫一半跑去修船、回来发现进度被抹了。
+	var repairing_key: bool = ship != null and state == "walk" and ship.can_repair()
 	var next_target := _find_scan_target()
 	if next_target != scan_target:
 		scan_target = next_target
@@ -2626,7 +2785,7 @@ func _update_scanner(delta: float) -> void:
 	if scan_target.anomaly_id == "xuanyuan" and not missing_clues().is_empty():
 		scan_progress = 0.0
 		return
-	if Input.is_action_pressed("scan"):
+	if Input.is_action_pressed("scan") and not repairing_key:
 		scan_progress += delta / scan_target.scan_time
 		if scan_progress >= 1.0:
 			discover(scan_target.anomaly_id)

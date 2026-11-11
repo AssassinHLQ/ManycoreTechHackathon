@@ -58,6 +58,25 @@ var bar_b_label: Label
 var bar_a: ProgressBar
 var bar_b: ProgressBar
 var ship_stats: Label
+## 右下角「飞行读数」面板的外壳（2026-11-11 新增）。
+## 原来是裸 Label，现在包一层半透明底板，与左下 status_panel 同一套视觉语言。
+var ship_stats_panel: PanelContainer
+## 读数面板左侧那条 2px 强调竖条。
+## 必须挂在 hud_root 下而不是 panel 下 —— 见 _build_hud 里的注释
+## （PanelContainer 会把它拉伸成一大块，糊住读数）。
+var ship_stats_accent: ColorRect
+## 修理进度是否正在顶替氧气条（用户 2026-11-11：
+## 「修理时暂时代替氧气的 ui」）。true 时 bar_a 显示船体修理进度而不是氧气。
+var repair_mode := false
+## 修理条的填充样式（绿色，和氧气的青色区分开）。
+## _bar() 只建一次样式，所以这里存一份，切模式时换 stylebox。
+var _repair_fill: StyleBoxFlat
+## 底部小字：机上补能源时提示「正在汲取星体能源」。
+var fuel_harvest_hint: Label
+## 该提示的持有时间：ship.gd 每帧刷新，停手后约这么久自动消失。
+## 取 0.4 秒，比一帧长、比眨眼短，玩家看不到闪烁。
+const HARVEST_HINT_HOLD := 0.4
+var _fuel_harvest_timer := 0.0
 var journal_entries: VBoxContainer
 var journal_objective: Label
 var end_body: Label
@@ -212,6 +231,15 @@ func _build_hud() -> void:
 	solar_warning.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	solar_warning.visible = false
 
+	# 「正在汲取星体能源」——用户 2026-11-11：
+	# 「在飞机上时，飞机补充能源时下方小字提示正在汲取星体能源」
+	# 放在底部控制提示之上（screen 底部居中偏上），字号比 toast 小一档，
+	# 因为它是一条持续状态，不该盖过正常提示。
+	fuel_harvest_hint = _label(hud_root, "", Rect2(-360, -86, 720, 26), 15, Color(0.62, 0.92, 0.86))
+	_center_anchor(fuel_harvest_hint, true)
+	fuel_harvest_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	fuel_harvest_hint.visible = false
+
 	# 卡冈图雅的引力警告：放在恒星警告下面一条，两者可以同时出现（理论上不会，但不必互斥）。
 	bh_warning = _label(hud_root, "", Rect2(-500, 192, 1000, 34), 17, Color("e8c07a"))
 	_center_anchor(bh_warning, false)
@@ -229,7 +257,7 @@ func _build_hud() -> void:
 	status_panel.anchor_bottom = 1.0
 	status_panel.offset_left = 24
 	status_panel.offset_top = -300
-	status_panel.offset_right = 352
+	status_panel.offset_right = 404
 	status_panel.offset_bottom = -24
 	# 状态面板用素材贴图（SelectPanel01 竖版 157×339，正好配左下角竖条）
 	# ⚠ 变量必须声明成 StyleBox 而不是 StyleBoxFlat ——
@@ -270,14 +298,14 @@ func _build_hud() -> void:
 		_row_icons.append(icon)
 
 	bar_a_label = _label(status_panel, "船体", Rect2(44, r0_y(), 150, 20), 14, Color("d9e8e5"))
-	bar_a_value = _label(status_panel, "100.0 %", Rect2(180, r0_y(), 150, 20), 13, Color("8fe3e8"))
+	bar_a_value = _label(status_panel, "100.0 %", Rect2(196, r0_y(), 176, 20), 13, Color("8fe3e8"))
 	bar_a_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	bar_a = _bar(status_panel, Rect2(16, 60, 306, 7), Color("69cbd2"))
+	bar_a = _bar(status_panel, Rect2(16, 60, 348, 7), Color("69cbd2"))
 
 	bar_b_label = _label(status_panel, "推进剂", Rect2(44, r1_y(), 150, 20), 14, Color("d9e8e5"))
-	bar_b_value = _label(status_panel, "100.0 %", Rect2(180, r1_y(), 150, 20), 13, Color("f0cb8a"))
+	bar_b_value = _label(status_panel, "100.0 %", Rect2(196, r1_y(), 176, 20), 13, Color("f0cb8a"))
 	bar_b_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	bar_b = _bar(status_panel, Rect2(16, 110, 306, 7), Color("e5b873"))
+	bar_b = _bar(status_panel, Rect2(16, 110, 348, 7), Color("e5b873"))
 
 	# 状态灯阵：8 个小方块，亮灭反映各子系统是否正常。
 	# 这些是真实状态，不是装饰 —— 见 _process 里的 _update_system_lights。
@@ -334,12 +362,78 @@ func _build_hud() -> void:
 		deco.bar_ticks = _bar_ticks
 		deco.queue_redraw()
 
-	ship_stats = _label(hud_root, "", Rect2(-390, -214, 360, 180), 15, Color("b9d9d7"))
-	ship_stats.anchor_left = 1.0
+	# ── 右下角「飞行读数」面板（用户 2026-11-11 重新设计）────────────────
+	#
+	# 原来这里是一个**裸 Label**，靠右对齐贴在画面右下角，什么底板都没有；
+	# 而 hud_draw.gd 的 _draw_cockpit 又在同一带画了一个实心三角形「切角」，
+	# 于是文字正好被那块深色三角压住。用户原话：
+	#   「左右两侧的三角形不需要，去掉这个 ui，做 ui 应该覆盖这些文字部分」
+	#   「两个三角底板去掉，重新设计右下文字的 ui」
+	#
+	# 现在改成和左下「生命维持系统」同一种面板语言：
+	#   · 半透明深底 + 1px 青色描边 + 3px 圆角（与 status_panel 完全一致）
+	#   · 顶部一行小标题（带一条渐隐分隔线，交给 hud_deco 的 edge label）
+	#   · 左侧一条强调色竖条
+	#   · 读数分「标签 / 数值」两栏，标签暗、数值亮，右对齐
+	ship_stats_panel = PanelContainer.new()
+	var stats_style := StyleBoxFlat.new()
+	stats_style.bg_color = Color(0.015, 0.028, 0.047, 0.72)
+	stats_style.border_color = Color(0.26, 0.53, 0.55, 0.42)
+	stats_style.set_border_width_all(1)
+	stats_style.set_corner_radius_all(3)
+	ship_stats_panel.add_theme_stylebox_override("panel", stats_style)
+	ship_stats_panel.anchor_left = 1.0
+	ship_stats_panel.anchor_right = 1.0
+	ship_stats_panel.anchor_top = 1.0
+	ship_stats_panel.anchor_bottom = 1.0
+	ship_stats_panel.offset_left = -286
+	ship_stats_panel.offset_right = -18
+	ship_stats_panel.offset_top = -206
+	ship_stats_panel.offset_bottom = -18
+	ship_stats_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_root.add_child(ship_stats_panel)
+
+	# 左侧强调竖条：2px 宽，从上到下渐隐，像仪器面板的「供电指示」。
+	#
+	# ⚠ 2026-11-11 用户反馈「太丑了」—— 这块变成了一整片半透明青绿，
+	#   把读数全糊住了。根因不是配色，是**父节点类型选错了**：
+	#   PanelContainer 是 Container，会对所有直接子节点做布局（拉伸填满），
+	#   所以 `accent_bar.size = Vector2(2, 174)` 被无视，实际渲染成 266×186。
+	#
+	#   修法：竖条不挂在 PanelContainer 下，而是挂到它的父级（hud_root），
+	#   位置由读数面板的锚点自己算。这样它就只是个普通 Control，
+	#   尺寸写多少就是多少，不会被容器改写。
+	var accent_bar := ColorRect.new()
+	accent_bar.color = Color(0.27, 0.72, 0.76, 0.55)
+	accent_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	accent_bar.anchor_left = 1.0
+	accent_bar.anchor_right = 1.0
+	accent_bar.anchor_top = 1.0
+	accent_bar.anchor_bottom = 1.0
+	# 与 ship_stats_panel 左边缘对齐（offset_left = -286），宽 2px。
+	accent_bar.offset_left = -286
+	accent_bar.offset_right = -284
+	accent_bar.offset_top = -206
+	accent_bar.offset_bottom = -32
+	hud_root.add_child(accent_bar)
+	ship_stats_accent = accent_bar
+
+	# 小标题
+	var stats_title := _label(ship_stats_panel, "飞行读数", Rect2(12, 6, 200, 18), 11, Color("70c7c3"))
+	stats_title.anchor_right = 1.0
+	stats_title.offset_right = -14
+	stats_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	# 正文：保留一个 Label 放多行读数（内容由 _update_status 拼），
+	# 但把字号和行距调开，并留出标题的位置。
+	ship_stats = _label(ship_stats_panel, "", Rect2(12, 30, 248, 140), 14, Color("c8e4e2"))
 	ship_stats.anchor_right = 1.0
-	ship_stats.anchor_top = 1.0
 	ship_stats.anchor_bottom = 1.0
+	ship_stats.offset_right = -14
+	ship_stats.offset_bottom = -10
 	ship_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ship_stats.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	ship_stats.add_theme_constant_override("line_spacing", 6)
 
 
 func _build_menu() -> void:
@@ -794,6 +888,11 @@ func _process(delta: float) -> void:
 		return
 	if toast_timer > 0.0:
 		toast_timer -= delta
+	# 「正在汲取星体能源」：ship.gd 每帧刷新计时器，这里负责到点隐藏。
+	if fuel_harvest_hint != null and fuel_harvest_hint.visible:
+		_fuel_harvest_timer -= delta
+		if _fuel_harvest_timer <= 0.0:
+			fuel_harvest_hint.visible = false
 	# 菜单里默认不弹提示；开发者模式要能看到「已开启」这类反馈，所以给它放行
 	var toast_allowed: bool = game.state not in ["menu", "end"]
 	if game.state == "menu" and game.dev_mode:
@@ -912,15 +1011,37 @@ func _process(delta: float) -> void:
 			status_title.text = "宇航服 · %.2f G" % (game.station.artificial_gravity / 20.0)
 		else:
 			status_title.text = "宇航服 · %.2f G" % (planet.gravity_strength / 20.0)
-		bar_a_label.text = "氧气"
-		bar_a_value.text = "%.1f kPa" % (game.player.oxygen * 0.21)
-		bar_b_label.text = "喷气燃料"
-		bar_b_value.text = "%.1f kg" % (game.player.fuel * 0.12)
-		bar_a.value = game.player.oxygen
-		bar_b.value = game.player.fuel
+		# 用户 2026-11-11：「修理时暂时代替氧气的 ui」。
+		# 只要还在修（进度 > 0 且没修满）就让 bar_a 显示修理进度，
+		# 标签和单位一起换，别只换数值 —— 否则玩家会以为氧气 62%。
+		var repairing: bool = game.ship != null and game.ship.showing_repair_ui()
+		if repairing != repair_mode:
+			repair_mode = repairing
+			_apply_bar_a_color()
+		if repair_mode:
+			bar_a_label.text = "船体修理"
+			bar_a_value.text = "%d%%" % int(game.ship.hull)
+			bar_a.value = game.ship.hull
+			bar_b_label.text = "喷气燃料"
+			bar_b_value.text = "%.1f kg" % (game.player.fuel * 0.12)
+			bar_b.value = game.player.fuel
+		else:
+			bar_a_label.text = "氧气"
+			bar_a_value.text = "%.1f kPa" % (game.player.oxygen * 0.21)
+			bar_b_label.text = "喷气燃料"
+			bar_b_value.text = "%.1f kg" % (game.player.fuel * 0.12)
+			bar_a.value = game.player.oxygen
+			bar_b.value = game.player.fuel
 		_row_icons[0].modulate = Color(0.55, 0.90, 0.95, 0.95) if game.player.oxygen > 25.0 \
 				else Color(1.0, 0.45, 0.30, 1.0)
 		ship_stats.text = ""
+	# 面板外壳跟着走：ship_stats 现在是它的子节点，单独控制会漏出空底板。
+	# 强调竖条挂在 hud_root 下（不在面板里），所以要单独同步可见性，
+	# 否则不驾驶飞船时右侧会残留一根悬空的青线。
+	if ship_stats_panel != null:
+		ship_stats_panel.visible = game.state == "ship"
+	if ship_stats_accent != null:
+		ship_stats_accent.visible = game.state == "ship"
 	ship_stats.visible = game.state == "ship"
 	_update_system_lights()
 	_update_gauge()
@@ -934,6 +1055,22 @@ func show_toast(text: String, duration := 3.0) -> void:
 		return
 	toast.text = text
 	toast_timer = duration
+
+
+## 「正在汲取星体能源」——用户在机上补能源时，飞船每帧调它。
+##
+## 为什么用「刷新计时器」而不是直接 show：
+##   ship.gd 是在 **landed 分支每帧**调用的，如果直接显示会一直在闪。
+##   这里每次调用只把计时器推到 HARVEST_HINT_HOLD 秒，_process 里递减，
+##   所以「一直在补能源」就一直显示，「一停机」约 0.4 秒后自动消失。
+func set_fuel_harvest_hint(active: bool) -> void:
+	if fuel_harvest_hint == null:
+		return
+	if active:
+		_fuel_harvest_timer = HARVEST_HINT_HOLD
+		if not fuel_harvest_hint.visible:
+			fuel_harvest_hint.text = "正在汲取星体能源…"
+			fuel_harvest_hint.visible = true
 
 
 func show_help() -> void:
@@ -1137,6 +1274,21 @@ func _bar(parent: Control, rect: Rect2, color: Color) -> ProgressBar:
 	bar.add_theme_stylebox_override("fill", fill)
 	parent.add_child(bar)
 	return bar
+
+
+## 给氧气条换填充色：氧气=青，修理=琥珀金。
+## 用金色而不是绿色，是因为「船体」在系统灯里一直用琥珀色（见 _update_system_lights），
+## 同一套颜色语言，玩家不用重新学。
+func _apply_bar_a_color() -> void:
+	if bar_a == null:
+		return
+	var c := Color("e5b873") if repair_mode else Color("69cbd2")
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = c
+	fill.set_corner_radius_all(2)
+	fill.border_color = c.lightened(0.25)
+	fill.border_width_top = 1
+	bar_a.add_theme_stylebox_override("fill", fill)
 
 
 ## 8 颗子系统状态灯。
