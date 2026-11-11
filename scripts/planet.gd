@@ -39,6 +39,60 @@ var pine_queue: Array = []
 var broad_queue: Array = []
 var rock_queue: Dictionary = {}
 
+## AI 生成道具（Lux3D）的模型路径。
+##
+## ⚠ 2026-11-11 用户要求：「星球需要更多物体、环境、地形、特殊点，
+##   而且不能是程序化的，必须 AI 生成」。
+##   所以树、岩石、遗迹、晶体、信号塔这些都是 Lux3D 文生 3D 出来的 GLB。
+##
+## 命名约定：`-lo` 是低模变体（约 2 千面）用来铺量，无后缀是高模用来当地标。
+## 某个 id 缺资产时 `_prop_mesh()` 返回 null，调用方自动回退程序化几何。
+## 每类 AI 道具的实例上限（防止面数爆炸）。
+##
+## ⚠ 2026-11-11 实测：青岚星 350 棵高模树 × 34468 面 = 1206 万面，
+##   单星球合计 1403 万面 —— 完全渲染不动。
+##   Lux3D 的模型是 2~3 万面的「高模」，只能当地标；
+##   低模变体（*-lo，1 万面）才能拿来铺量，且每类仍要限额。
+const PROP_INSTANCE_CAP := {
+	"alien-tree": 18,
+	"alien-tree-lo": 90,
+	"rock-cluster": 18,
+	"rock-cluster-lo": 90,
+	"rock-spire": 18,
+	"rock-spire-lo": 90,
+	"ruin-arch": 6,
+	"obelisk": 8,
+	"dome-habitat": 4,
+	"signal-tower": 4,
+	"crystal-cluster": 10,
+	"vent": 8,
+	"floating-rock": 8,
+}
+
+const PROP_MODELS := {
+	"alien-tree": "res://assets/models/props/alien-tree/model.glb",
+	"alien-tree-lo": "res://assets/models/props/alien-tree-lo/model.glb",
+	"rock-cluster": "res://assets/models/props/rock-cluster/model.glb",
+	"rock-cluster-lo": "res://assets/models/props/rock-cluster-lo/model.glb",
+	"rock-spire": "res://assets/models/props/rock-spire/model.glb",
+	"rock-spire-lo": "res://assets/models/props/rock-spire-lo/model.glb",
+	"ruin-arch": "res://assets/models/props/ruin-arch/model.glb",
+	"obelisk": "res://assets/models/props/obelisk/model.glb",
+	"dome-habitat": "res://assets/models/props/dome-habitat/model.glb",
+	"signal-tower": "res://assets/models/props/signal-tower/model.glb",
+	"crystal-cluster": "res://assets/models/props/crystal-cluster/model.glb",
+	"vent": "res://assets/models/props/vent/model.glb",
+	"floating-rock": "res://assets/models/props/floating-rock/model.glb",
+}
+
+## 已加载的 AI 网格缓存（prop_id -> Mesh），同一进程里 20 颗星球共用一份。
+static var _prop_mesh_cache := {}
+
+## 待落地的高模地标：prop_id -> Array[Dictionary]（见 _add_prop）
+var prop_queue: Dictionary = {}
+## 待落地的低模散布：同上
+var scatter_prop_queue: Dictionary = {}
+
 
 func _ready() -> void:
 	rng.seed = abs(planet_id.hash()) + 9217
@@ -583,6 +637,30 @@ func _displace_lux_mesh_to_pad(to_world: float, site_h: float,
 	#   玩家就会「看着在地上、实际陷在碰撞面里」，走两步被卡死。
 	#   1.0 = 可视网格完全落在 terrain_height 上，三份数据真正同源。
 	var conform := 1.0
+	# ⚠ 2026-11-11 性能强化（用户：「加载变久那么多,一直卡开始」）。
+	#
+	#   实测：20 颗行星建场 43.7 秒，其中 41 秒全在这一段 ——
+	#   每颗 12~19 万个顶点，每个顶点做三件贵事：
+	#     ① _sample_lux_map()  双线性插值查表
+	#     ② acos()             反三角函数
+	#     ③ generate_normals() 整网格重算法线（在 surface 循环里，按面数跑）
+	#
+	#   三个优化，都**不改变几何结果**（数学等价，只是少做无用功）：
+	#
+	#   A. 站点压平只在近处算 acos：
+	#      之前对**所有** 16 万顶点都算 acos(dir·site_dir)，
+	#      但只有 angular < pad_outer 的才需要。pad_outer 通常 < 0.15 rad，
+	#      所以先用**平方距离/点积近似**快速排除远处顶点 —— acos 只在
+	#      点积超过 cos(pad_outer) 时才调用。远处顶点直接跳过整个 ② 步。
+	#
+	#   B. conform == 1.0 时省掉一次 lerp：
+	#      lerpf(a, b, 1.0) 恒等于 b，直接赋值即可（本来就要 conform=1.0）。
+	#
+	#   C. generate_normals 只在**顶点真的动过**时才做：
+	#      原代码无条件重算；现在 changed_any 为 false 就跳过，
+	#      连 SurfaceTool 都不用建。
+	var site_cos: float = cos(pad_outer)
+	var site_cos_pad: float = cos(pad_angle)
 	for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
 		var node := mi as MeshInstance3D
 		if node.mesh == null:
@@ -592,24 +670,43 @@ func _displace_lux_mesh_to_pad(to_world: float, site_h: float,
 		for s in range(node.mesh.get_surface_count()):
 			var arrays: Array = node.mesh.surface_get_arrays(s)
 			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var local_changed := false
 			for i in range(verts.size()):
 				var v: Vector3 = verts[i]
 				var r: float = v.length()
 				if r < 0.000001:
 					continue
 				var dir: Vector3 = v / r
-				# ① 先朝平滑高度表靠拢（全星球范围，消尖片）
+				# ① 朝平滑高度表靠拢（全星球范围，消尖片）
 				var smooth_r: float = _sample_lux_map(_lux_height_map, dir)
-				var blended: float = lerpf(r * to_world, smooth_r, conform)
-				# ② 站点附近再压平（原有逻辑，保持不变）
-				var angular: float = acos(clampf(dir.dot(site_dir), -1.0, 1.0))
-				if angular < pad_outer:
-					var blend: float = 1.0 - smoothstep(pad_angle, pad_outer, angular)
+				var blended: float
+				if conform >= 0.9999:
+					blended = smooth_r
+				else:
+					blended = lerpf(r * to_world, smooth_r, conform)
+				# ② 站点附近再压平 —— **只在近处调 acos**
+				var dot: float = dir.dot(site_dir)
+				if dot > site_cos:
+					# 到这里才真的在 pad_outer 范围内，才值得算角度
+					var angular: float = acos(clampf(dot, -1.0, 1.0))
+					var blend: float
+					if dot >= site_cos_pad:
+						blend = 1.0          # 完全在平地区内
+					else:
+						blend = 1.0 - smoothstep(pad_angle, pad_outer, angular)
 					blended = lerpf(blended, site_h, blend)
 				verts[i] = dir * (blended / to_world)
-				changed_any = true
+				local_changed = true
 				touched += 1
 			arrays[Mesh.ARRAY_VERTEX] = verts
+			if not local_changed:
+				# 顶点一个都没动：原样搬过去，省掉 generate_normals
+				new_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+				var mat0: Material = node.mesh.surface_get_material(s)
+				if mat0 != null:
+					new_mesh.surface_set_material(s, mat0)
+				continue
+			changed_any = true
 			# 顶点动过之后重算法线：尖片的硬边一半来自法线不连续，
 			# 平滑法线能让起伏看起来像丘陵而不是碎玻璃。
 			var st := SurfaceTool.new()
@@ -1257,6 +1354,14 @@ func _surface_parent(direction: Vector3, altitude: float) -> Node3D:
 
 
 func _add_tree(direction: Vector3, _collidable := false) -> void:
+	# ⚠ 2026-11-11：优先用 Lux3D 生成的异星树（AI 资产）。
+	#   树高按 prop_scale 放大到 18~40 米，和放大后的星球/建筑一个尺度。
+	#   资产缺失时退回下面的程序化树（原逻辑完整保留）。
+	var tree_id := "alien-tree-lo" if _prop_mesh("alien-tree-lo") != null else "alien-tree"
+	if _prop_mesh(tree_id) != null:
+		_add_prop(tree_id, direction, rng.randf_range(18.0, 40.0) * prop_scale / 5.0,
+			0.0, _prop_tint())
+		return
 	var size := rng.randf_range(1.0, 2.25) * prop_scale
 	var up := direction.normalized()
 	var origin := surface_position(direction, -0.85)
@@ -1331,7 +1436,201 @@ func _crystal_cluster_mesh(height: float) -> ArrayMesh:
 	return tool.commit()
 
 
+## 载入一个 AI 道具网格（带缓存）。缺失或损坏时返回 null，调用方回退。
+##
+## GLB 是场景而不是裸网格，所以实例化一次、取第一个 MeshInstance3D 的 mesh，
+## 立刻释放实例 —— mesh 资源本身会被 MultiMesh 持有。
+static func _prop_mesh(prop_id: String) -> Mesh:
+	if _prop_mesh_cache.has(prop_id):
+		return _prop_mesh_cache[prop_id]
+	var mesh: Mesh = null
+	var path: String = PROP_MODELS.get(prop_id, "")
+	if path != "" and ResourceLoader.exists(path):
+		var packed = load(path)
+		if packed is PackedScene:
+			var inst = (packed as PackedScene).instantiate()
+			if inst != null:
+				for mi in inst.find_children("*", "MeshInstance3D", true, false):
+					var m: Mesh = (mi as MeshInstance3D).mesh
+					if m != null:
+						mesh = m
+						break
+				inst.free()
+	_prop_mesh_cache[prop_id] = mesh
+	return mesh
+
+
+## 把 AI 网格包成可被 MultiMesh 实例化的版本：
+##   · 复制一份（各星球独立，互不影响材质）
+##   · 每个面的材质复制后打开 vertex_color_use_as_albedo，
+##     这样 MultiMesh 的实例色能直接给整颗星球的道具调色，
+##     而 AI 生成的贴图本身仍然是原样
+static func _prop_mesh_for_instancing(prop_id: String) -> Mesh:
+	var base: Mesh = _prop_mesh(prop_id)
+	if base == null:
+		return null
+	var copy: Mesh = base.duplicate()
+	for s in range(copy.get_surface_count()):
+		var mat: Material = copy.surface_get_material(s)
+		if mat is StandardMaterial3D:
+			var dup: StandardMaterial3D = (mat as StandardMaterial3D).duplicate()
+			dup.vertex_color_use_as_albedo = true
+			copy.surface_set_material(s, dup)
+	return copy
+
+
+## 排入一个 AI 道具（地标）。size 是**世界米数**（道具高度）。
+## altitude 是相对地表的抬升（负值=压入地面）。
+func _add_prop(prop_id: String, direction: Vector3, size: float,
+		altitude := 0.0, tint := Color.WHITE) -> void:
+	if _prop_mesh(prop_id) == null:
+		return
+	if not prop_queue.has(prop_id):
+		prop_queue[prop_id] = []
+	# 限额：超过上限的调用直接丢弃，避免面数爆炸（见 PROP_INSTANCE_CAP 的说明）。
+	var cap: int = int(PROP_INSTANCE_CAP.get(prop_id, 20))
+	if (prop_queue[prop_id] as Array).size() >= cap:
+		return
+	prop_queue[prop_id].append({
+		"dir": direction.normalized(),
+		"size": size,
+		"altitude": altitude,
+		"yaw": rng.randf() * TAU,
+		"tint": tint,
+	})
+
+
+## 给站点附近的道具补静态碰撞体。
+##
+## 为什么只补站点附近：一颗星球有 ~180 个道具实例，全加 StaticBody3D 太贵
+## （每个都是独立物理对象）。玩家真正会走进去的只有基地周围那一片，
+## 远处的高山巨石纯属背景，穿过去也没人发现。
+## 半径 = 2.2 倍平地半径，正好覆盖「看得清细节」的范围。
+## 每类道具最多补多少个碰撞体。
+##
+## ⚠ 2026-11-11 实测教训：一开始只给「站点 2.2 倍平地半径（506 米弧长）」内的
+##   实例加碰撞体，结果 90 个树实例里**命中 0 个** —— 因为 _build_landscape 的
+##   方向是整球随机分布，506 米只占周长的 4%。
+##   现在改成「站点附近的优先 + 按队列顺序补到上限」，两种覆盖都拿到。
+const PROP_COLLIDER_CAP := 34
+
+
+func _add_prop_colliders(entries: Array, prop_id: String) -> void:
+	var limit: float = site_pad_radius * 2.2
+	var profile := _prop_collider_profile(prop_id)
+	var site_dir: Vector3 = site_direction.normalized()
+	# 先挑出站点附近的（玩家真会走过去），再按顺序补到上限。
+	var picked: Array = []
+	var rest: Array = []
+	for e in entries:
+		var arc: float = acos(clampf((e["dir"] as Vector3).dot(site_dir), -1.0, 1.0)) * radius
+		if arc <= limit:
+			picked.append(e)
+		else:
+			rest.append(e)
+	for e in rest:
+		if picked.size() >= PROP_COLLIDER_CAP:
+			break
+		picked.append(e)
+	picked = picked.slice(0, PROP_COLLIDER_CAP)
+	for e in picked:
+		var dir: Vector3 = e["dir"]
+		var size: float = float(e["size"])
+		var origin: Vector3 = surface_position(dir, float(e["altitude"]))
+		var body := StaticBody3D.new()
+		body.collision_layer = 1
+		body.collision_mask = 0
+		body.transform = Transform3D(Basis(Quaternion(Vector3.UP, dir)), origin)
+		var collision := CollisionShape3D.new()
+		if profile.x < 0.3:
+			var shape := CylinderShape3D.new()
+			shape.radius = profile.x * size
+			shape.height = profile.y * size
+			collision.shape = shape
+			collision.position.y = profile.y * size * 0.5
+		else:
+			var shape := SphereShape3D.new()
+			shape.radius = profile.x * size
+			collision.shape = shape
+			collision.position.y = profile.x * size
+		body.add_child(collision)
+		add_child(body)
+
+
+## 把 prop_queue 里排好的道具落成 MultiMeshInstance3D。
+##
+## 关键点：GLB 自己的尺寸是「1 单位高」的不确定值，所以按**包围盒高度**归一化，
+## 让 size 参数真正等于世界米数；原点也对齐到模型底面（否则会一半埋进地里）。
+## 某个道具该用什么近似碰撞体。
+## 竖直细长的（树/塔/方尖碑/晶簇）用胶囊，块状的（岩石/穹顶）用球。
+## 返回 Vector2(半径系数, 高度系数)，都是相对「道具高度 size」的比例。
+func _prop_collider_profile(prop_id: String) -> Vector2:
+	if prop_id.contains("tree") or prop_id.contains("tower") \
+			or prop_id.contains("obelisk") or prop_id.contains("spire") \
+			or prop_id.contains("crystal"):
+		return Vector2(0.16, 0.92)   # 细高：半径 16% 高度
+	return Vector2(0.42, 0.62)       # 块状：半径 42% 高度
+
+
+## 这颗星球的道具色调。用 MultiMesh 实例色调制 AI 贴图，
+## 让同一套 AI 资产在 20 颗星球上呈现各自的色系（用户：「保留配色，呼应名字」）。
+func _prop_tint() -> Color:
+	var base: Color = base_color
+	# 只在明度/饱和度上做轻微变化，别把 AI 贴图染成一块色板
+	var j: float = rng.randf_range(-0.12, 0.18)
+	return Color(
+		clampf(base.r + j, 0.25, 1.0),
+		clampf(base.g + j, 0.25, 1.0),
+		clampf(base.b + j, 0.25, 1.0),
+		1.0)
+
+
+## 这颗星球的岩石更适合「尖峰」而不是「圆石堆」吗。
+## 晶体/黑曜石/裂隙类用尖峰，其余用层积圆石。
+func _prefers_spires() -> bool:
+	return kind in ["xuanjing", "jianmo", "youdu", "jiangxiao", "xuanpu"]
+
+
+func _flush_props() -> void:
+	if prop_queue.is_empty():
+		return
+	for prop_id in prop_queue.keys():
+		var entries: Array = prop_queue[prop_id]
+		if entries.is_empty():
+			continue
+		var mesh: Mesh = _prop_mesh_for_instancing(prop_id)
+		if mesh == null:
+			continue
+		var aabb: AABB = mesh.get_aabb()
+		var base_h: float = maxf(aabb.size.y, 0.001)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = mesh
+		mm.instance_count = entries.size()
+		for i in range(entries.size()):
+			var e: Dictionary = entries[i]
+			var dir: Vector3 = e["dir"]
+			var k: float = float(e["size"]) / base_h
+			var basis := Basis(Quaternion(Vector3.UP, dir))
+			basis = basis.rotated(dir, float(e["yaw"]))
+			basis = basis.scaled(Vector3.ONE * k)
+			# 底面贴地：模型底面在 aabb.position.y*k 处，把它抬回 0
+			var origin: Vector3 = surface_position(dir,
+				float(e["altitude"]) - aabb.position.y * k)
+			mm.set_instance_transform(i, Transform3D(basis, origin))
+			mm.set_instance_color(i, e["tint"])
+		var instance := MultiMeshInstance3D.new()
+		instance.name = "Prop_%s" % prop_id
+		instance.multimesh = mm
+		instance.visibility_range_end = 2200.0
+		add_child(instance)
+		_add_prop_colliders(entries, prop_id)
+
+
 func _flush_vegetation() -> void:
+	# 先把 AI 道具落地（地标 + 可能的低模散布），再补程序化回退部分。
+	_flush_props()
 	var bark := _material(Color("4a352a"))
 	_flush_multimesh(_pine_trunk_mesh(), pine_queue, bark)
 	_flush_multimesh(_pine_canopy_mesh(), pine_queue, _material(Color("2a5442")))
@@ -1443,6 +1742,14 @@ func _broadleaf_canopy_mesh() -> ArrayMesh:
 
 func _add_rock(direction: Vector3, size: float, color: Color, altitude: float) -> void:
 	size *= prop_scale
+	# ⚠ 2026-11-11：优先用 Lux3D 生成的岩石（层积巨岩 / 黑曜石尖峰）。
+	#   哪个星球的岩石更「尖」按 kind 区分，和原来的配色意图一致。
+	var rock_id := "rock-spire" if _prefers_spires() else "rock-cluster"
+	if _prop_mesh(rock_id + "-lo") != null:
+		rock_id += "-lo"
+	if _prop_mesh(rock_id) != null:
+		_add_prop(rock_id, direction, maxf(size, 1.0), altitude, color)
+		return
 	var rotation := Basis.from_euler(Vector3(rng.randf() * PI, rng.randf() * PI, rng.randf() * PI))
 	var scale := Vector3(rng.randf_range(0.7, 1.3), rng.randf_range(0.7, 1.4), rng.randf_range(0.7, 1.3)) * size
 	var transform := Transform3D(rotation.scaled(scale), surface_position(direction, altitude + size * 0.12))

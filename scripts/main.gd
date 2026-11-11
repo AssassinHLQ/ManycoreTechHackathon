@@ -28,6 +28,9 @@ var state := "menu"
 var previous_state := "walk"
 ## 世界是否已构建完成。跨帧渐进式建场期间为 false，供测试与外部脚本等待。
 var world_ready := false
+## 是否还在后台补建其余行星（world_ready 之后）。
+## 星图/自动驾驶等界面可用它提示「还有 N 颗在生成」。
+var world_build_remaining := false
 ## 世界构建完成时发出；`await_world_ready()` 依赖它。
 signal world_ready_finished
 var paused := false
@@ -43,6 +46,14 @@ var visual_time := 0.0
 var loop_count := 1
 var discovered: Dictionary = {}
 var planets: Array = []
+## 已经建过的行星 id。
+## ⚠ 2026-11-11 修「母星被建两遍」：_build_planets 分两段调用
+## （先 home_only=true 建母星、world_ready 后再建其余），
+## 旧版第二段用 `if home_only and id != "qinglan"` 判断，
+## home_only=false 时对**所有**星球都成立 → qinglan 被建了第二次，
+## planets.size() 变成 21、数组里有两个 qinglan（重影 + 双份建筑/道具）。
+## 现在改成按 id 去重，调用几次都不会重复。
+var built_planet_ids: Dictionary = {}
 var anomalies: Array = []
 var quantum: Node3D
 var station: Node3D
@@ -260,8 +271,11 @@ func _build_world_progressive() -> void:
 	_build_environment()
 	_stage_end("environment")
 	await _yield_frame()
-	await _build_planets()
-	_stage_end("planets")
+	# ⚠ 只建母星（约 2 秒），其余 19 颗在 world_ready 之后补 ——
+	#   否则菜单相机要等 44 秒才建得出来，玩家看到纯黑屏。
+	#   详见 _build_planets 头部注释。
+	await _build_planets(true)
+	_stage_end("planet home")
 	await _yield_frame()
 	_stage_begin()
 	_build_campfire()
@@ -362,6 +376,22 @@ func _build_world_progressive() -> void:
 	_stage_end("touch+knowledge")
 	world_ready = true
 	world_ready_finished.emit()
+
+	# ── 第二阶段：补建其余 19 颗行星 ────────────────────────────────
+	#
+	# 放在 world_ready **之后**，所以菜单/操作已经可用，玩家能立刻进游戏。
+	# 这里仍然逐颗让出一帧，不会卡住画面；建好一颗就能在星图上看到一颗。
+	#
+	# ⚠ 依赖注意：第二段末尾会跑 _build_extra_anomalies / _build_quantum /
+	#   _build_one_dim_star，它们需要某些行星就位（内部都有 null 保护）。
+	world_build_remaining = true
+	await _yield_frame()
+	_stage_begin()
+	print("[BUILD] 开始补建其余行星（当前 %d 颗）" % planets.size())
+	await _build_planets(false)
+	print("[BUILD] 补建完成，行星总数 %d" % planets.size())
+	_stage_end("planets remaining")
+	world_build_remaining = false
 
 
 ## 让出一帧，供渐进式建场分片。
@@ -883,7 +913,20 @@ func _update_sky_pixel_angle() -> void:
 	sky_material.set_shader_parameter("pixel_angle", angle)
 
 
-func _build_planets() -> void:
+## 构建行星。
+##
+## ⚠ 2026-11-11 拆成两阶段（用户：「为什么加载变久那么多,一直卡开始」→「A,先保证能够玩」）。
+##
+##   实测：20 颗 Lux3D 行星建场 44 秒。而 `_build_menu_camera()` 排在
+##   `_build_planets()` **之后**、`world_ready` 又排在最后 ——
+##   于是这 44 秒里菜单相机根本不存在，玩家看到的就是纯黑屏。
+##
+##   现在拆成：
+##     `home_only = true`  → 只建母星（青岚星）+ 它的事件体，约 2 秒
+##     `home_only = false` → 建其余 19 颗
+##   调用方先跑第一段 → 建菜单相机/HUD → 置 world_ready（玩家能进游戏）
+##   → 再在后台跑第二段。**几何与最终结果完全不变**，只是顺序变了。
+func _build_planets(home_only := false) -> void:
 	# ⚠ 轨道距离统一 ×ORBIT_SCALE、半径统一 ×PLANET_RADIUS_SCALE、
 	#   垂直起伏 ×ORBIT_SCALE（否则星系拉大后起伏会缩成一条平线）。
 	#   数字本身保持「设计值」不变，缩放只在下面几步乘一次，方便回退和再调。
@@ -1055,6 +1098,13 @@ func _build_planets() -> void:
 		"xuanpu": ["长在暗处的", "玄圃星的植被只在阴影里发光，越暗越亮。整片园子像是有人精心打理过——修剪整齐、留有步道——但没有脚印，也没有门。"],
 	}
 	for definition in definitions:
+		# 第一段只建母星：其余 19 颗留到 world_ready 之后再补，
+		# 否则菜单要等 44 秒才出得来（见本函数头部的说明）。
+		if home_only and definition.id != "qinglan":
+			continue
+		# 已经建过就跳过 —— 第二段（home_only=false）不能把母星再建一遍。
+		if built_planet_ids.has(definition.id):
+			continue
 		var planet := PlanetScript.new()
 		planet.game = self
 		planet.planet_id = definition.id
@@ -1090,6 +1140,7 @@ func _build_planets() -> void:
 		planet.description = definition.description
 		add_child(planet)
 		planets.append(planet)
+		built_planet_ids[planet.planet_id] = true
 		if planet.planet_id == "qinglan":
 			home = planet
 
@@ -1112,6 +1163,10 @@ func _build_planets() -> void:
 		_stage_end("planet " + planet.planet_id)
 		await _yield_frame()
 		_stage_begin()
+	# 第一段（只建母星）到此为止：这些收尾步骤需要**全部**行星就位，
+	# 放到第二段末尾统一跑。
+	if home_only:
+		return
 	_create_orbit_lines(definitions)
 	_build_extra_anomalies()
 	_build_quantum()
