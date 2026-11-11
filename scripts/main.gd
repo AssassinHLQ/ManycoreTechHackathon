@@ -95,6 +95,29 @@ const SUN_SCALE := 10.0
 ## 所以位置跟轨道同比例外移（尺寸不动 —— 它的 7200 米引力范围是玩法标定值）。
 const BH_POSITION_SCALE := 10.0
 
+## ── Lux3D 生成的星球表面 ────────────────────────────────────────────
+## 键 = 行星 id，值 = GLB 路径。不在表里的行星继续用程序化球面。
+##
+## ⚠ 目前**故意留空**。接入管线已经写好并验证过（planet.gd 里
+##   `_build_lux3d_surface` / `_sample_lux_height` / `_fill_lux_gaps`，
+##   连接口探针 `tests/probe_lux3d_planet.gd` 都有），但**现有的青岚星 GLB
+##   不适合当可着陆表面**：
+##
+##     实测顶点半径 0.137 ~ 0.625（比值 4.56），中位数 0.437；
+##     56% 的方向格只有不到 5 个顶点。
+##
+##   也就是说它不是「一张连续球面 + 轻微起伏」，而是**散开的树/岩石 +
+##   一个很崎岖的基体**。「按方向取高度」取到的是树顶和岩尖：
+##   高度表平均 1022 米（< 行星半径 1200）、最大偏离半径 49%。
+##   接上去的实测后果：`walk_test` 里进门、门框、螺旋坡道三条直接翻红。
+##
+##   要真正接上，得先有一版**闭合、平滑、连续**的星球 GLB
+##   （地表起伏控制在半径的 ±3% 以内、不要有散落的独立植被）。
+##   到时候只要在这里加一行：
+##     "qinglan": "res://assets/models/qinglan-planet/model.glb",
+const LUX3D_PLANET_MODELS := {
+}
+
 var sun_radius := 260.0 * SUN_SCALE
 ## 太阳细节层（米面）的生效范围。太阳放大了 10 倍，这一层也要跟着推远，
 ## 否则飞到原来那圈距离上细节就整片消失。
@@ -909,6 +932,11 @@ func _build_planets() -> void:
 		# 否则行星 ×3 之后地表也 ×3 崎岖，人类尺度的建筑接缝会出现米级落差、
 		# 贴地行走被判成瞬移（walk_test 三条会翻红）。详见 planet.gd 的注释。
 		planet.terrain_reference_radius = definition.radius / PLANET_RADIUS_SCALE
+		# Lux3D 生成的星球表面（Aholo Lux3D text-to-3D）。
+		# 设了就用模型当可见表面 + 从模型顶点烘出的高度表当地形查询；
+		# 没设的星球继续走程序化球面。逐颗接入，接一颗验一颗。
+		if LUX3D_PLANET_MODELS.has(definition.id):
+			planet.lux_model_path = LUX3D_PLANET_MODELS[definition.id]
 		planet.gravity_strength = definition.gravity
 		planet.orbit_radius = definition.orbit
 		planet.orbit_phase = definition.phase

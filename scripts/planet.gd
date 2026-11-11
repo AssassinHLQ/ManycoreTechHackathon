@@ -71,6 +71,12 @@ func _ready() -> void:
 	_setup_cave()
 	_update_orbit()
 	_build_surface()
+	# ⚠ Lux3D 星球的高度表是在 `_build_surface()` 里烘焙的，上面那次 `site_height`
+	# 走的是程序化噪声（表还没就绪）。烘焙完必须**重算一次** ——
+	# 建筑平地的基准高度、`terrain_height` 的平地混合都以它为准，
+	# 差了几十米的话观测塔会整栋悬空或埋进地里。
+	if _lux_height_ready:
+		site_height = _raw_terrain_height(site_direction)
 	_build_atmosphere()
 	_build_landscape()
 	ArchitectureScript.build(self, kind)
@@ -142,6 +148,9 @@ func terrain_height(direction: Vector3) -> float:
 
 func _raw_terrain_height(direction: Vector3) -> float:
 	var dir := direction.normalized()
+	# Lux3D 星球：高度直接查烘焙好的表（见 _build_lux3d_surface）
+	if _lux_height_ready:
+		return _sample_lux_height(dir)
 	var continental := terrain_noise.get_noise_3d(dir.x * 5.2, dir.y * 5.2, dir.z * 5.2)
 	var detail := detail_noise.get_noise_3d(dir.x * 37.0, dir.y * 37.0, dir.z * 37.0)
 	# 起伏按参考半径算（世界放大后 = 设计半径），球面本身仍按 radius。
@@ -165,7 +174,38 @@ func surface_position(direction: Vector3, altitude := 0.0) -> Vector3:
 	return dir * (terrain_height(dir) + altitude)
 
 
+## ── Lux3D 生成的星球模型（Aholo Lux3D text-to-3D）──────────────────
+##
+## 用户 2026-11-11：「青岚星接入 + 其余 9 颗也走 Lux3D」。
+##
+## 设了 `lux_model_path` 就用它当**可见表面**，否则用程序化球面。
+##
+## ⚠ 关键约束：游戏里所有地面交互都走 `_raw_terrain_height(direction) -> float`
+##   （着陆、玩家贴地、撞击、建筑平地、洞穴裁剪），也就是说星球必须能
+##   「按方向取一个高度」。而 Lux3D 给的是一坨静态网格，没有这个函数。
+##
+##   实测青岚星那颗 GLB：36 万面、最近/最远顶点半径比 4.56（**有内部壳层**）、
+##   19.9% 的方向格里有表面折叠（风车塔、洞穴口）。所以不能简单套「星形体」假设。
+##
+##   做法：从模型**顶点**按方向分格烘一张高度表，每格取 `max r`（最外层表面），
+##   空洞用邻格扩散补齐，查询时双线性插值。内部壳层（r=0.137 那层）自然被
+##   max 丢掉 —— 玩家要落的是外壳。
+var lux_model_path := ""
+## 方向 → 高度 的表（单位：米，已是行星世界半径）。空 = 未就绪。
+var _lux_height_map := PackedFloat32Array()
+var _lux_height_ready := false
+## 纬度分格数；经度是它的两倍（经线在极点收敛，这样格子近似方正）。
+const LUX_LAT_BINS := 96
+const LUX_LON_BINS := 192
+## Lux3D 模型的挂载根（缩放后挂在行星下）。
+var _lux_root: Node3D
+
+
 func _build_surface() -> void:
+	if lux_model_path != "":
+		if _build_lux3d_surface():
+			return
+		push_warning("Lux3D 星球加载失败，退回程序化地形：%s" % lux_model_path)
 	surface = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = radius
@@ -211,17 +251,189 @@ func _build_surface() -> void:
 func _ensure_terrain_collision() -> void:
 	# 地形碰撞的 trimesh 是启动阶段最贵的一项（三个大星球各约 155 ms，五颗共约 530 ms，
 	# 占整场构建的两成）。改成飞船或玩家靠近本星球时再建，落地前早就建好了。
-	if terrain_collision_done or surface == null or surface.mesh == null:
+	if terrain_collision_done:
+		return
+	# ── Lux3D 分支：模型可能拆成多个 MeshInstance3D，逐个建碰撞 ──
+	if _lux_root != null:
+		terrain_collision_done = true
+		var body := StaticBody3D.new()
+		body.name = "TerrainCollision"
+		body.collision_layer = 1
+		body.collision_mask = 0
+		var inv: Transform3D = global_transform.affine_inverse()
+		var count := 0
+		for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
+			var node := mi as MeshInstance3D
+			if node.mesh == null:
+				continue
+			var shape := node.mesh.create_trimesh_shape()
+			if shape == null:
+				continue
+			var col := CollisionShape3D.new()
+			col.shape = shape
+			# 子网格相对**本行星**的变换（碰撞体挂在行星下）
+			col.transform = inv * node.global_transform
+			body.add_child(col)
+			count += 1
+		if count > 0:
+			add_child(body)
+		else:
+			push_warning("Lux3D 行星没有任何可建碰撞的子网格：%s" % planet_id)
+		return
+	if surface == null or surface.mesh == null:
 		return
 	terrain_collision_done = true
-	var body := StaticBody3D.new()
-	body.name = "TerrainCollision"
-	body.collision_layer = 1
-	body.collision_mask = 0
+	var body2 := StaticBody3D.new()
+	body2.name = "TerrainCollision"
+	body2.collision_layer = 1
+	body2.collision_mask = 0
 	var collision := CollisionShape3D.new()
 	collision.shape = surface.mesh.create_trimesh_shape()
-	body.add_child(collision)
-	add_child(body)
+	body2.add_child(collision)
+	add_child(body2)
+
+
+## 加载 Lux3D 模型当可见表面，并烘出「方向 → 高度」表。
+##
+## 返回 true 表示接成功了；失败返回 false，调用方会退回程序化地形。
+func _build_lux3d_surface() -> bool:
+	var packed: PackedScene = load(lux_model_path)
+	if packed == null:
+		push_warning("Lux3D 模型加载失败：%s" % lux_model_path)
+		return false
+	var inst := packed.instantiate() as Node3D
+	if inst == null:
+		push_warning("Lux3D 模型实例化失败：%s" % lux_model_path)
+		return false
+
+	_lux_root = Node3D.new()
+	_lux_root.name = "Lux3dSurface"
+	_lux_root.add_child(inst)
+	add_child(_lux_root)
+
+	# ── 收集顶点到 _lux_root 的局部空间 ──
+	var verts := PackedVector3Array()
+	var inv: Transform3D = _lux_root.global_transform.affine_inverse()
+	for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
+		var node := mi as MeshInstance3D
+		if node.mesh == null:
+			continue
+		var rel: Transform3D = inv * node.global_transform
+		for s in range(node.mesh.get_surface_count()):
+			var arrays: Array = node.mesh.surface_get_arrays(s)
+			var vv: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			for v in vv:
+				verts.append(rel * v)
+	if verts.is_empty():
+		push_warning("Lux3D 模型没有顶点：%s" % lux_model_path)
+		return false
+
+	# ── 按方向分格取每格最大的 r（= 最外层表面）──
+	var cells := LUX_LAT_BINS * LUX_LON_BINS
+	var map := PackedFloat32Array()
+	map.resize(cells)
+	map.fill(-1.0)
+	for v in verts:
+		var r: float = v.length()
+		if r < 0.000001:
+			continue
+		var d: Vector3 = v / r
+		var li := clampi(int((asin(clampf(d.y, -1.0, 1.0)) / PI + 0.5) * LUX_LAT_BINS),
+			0, LUX_LAT_BINS - 1)
+		var oi := clampi(int((atan2(d.z, d.x) / TAU + 0.5) * LUX_LON_BINS),
+			0, LUX_LON_BINS - 1)
+		var k := li * LUX_LON_BINS + oi
+		if r > map[k]:
+			map[k] = r
+
+	# ── 取中位数当「单位半径」，这样起伏围绕行星半径对称 ──
+	var filled: Array[float] = []
+	for i in range(cells):
+		if map[i] > 0.0:
+			filled.append(map[i])
+	if filled.is_empty():
+		push_warning("Lux3D 高度表全空：%s" % lux_model_path)
+		return false
+	filled.sort()
+	var unit: float = filled[filled.size() / 2]
+
+	# ── 缩放到行星世界半径，并补空洞 ──
+	var to_world: float = radius / unit
+	for i in range(cells):
+		if map[i] > 0.0:
+			map[i] = map[i] * to_world
+	_fill_lux_gaps(map)
+	_lux_height_map = map
+	_lux_height_ready = true
+
+	# ── 缩放并挂上模型（模型单位 → 米）──
+	_lux_root.scale = Vector3.ONE * to_world
+	# surface 变量指向第一个网格，供外部只读引用（碰撞走 _lux_root 分支）
+	for mi in _lux_root.find_children("*", "MeshInstance3D", true, false):
+		surface = mi as MeshInstance3D
+		break
+	return true
+
+
+## 把高度表里的空洞（没有顶点的方向格）用邻格扩散补上。
+##
+## 83% 填充率意味着约 17% 的格子是空的：不补的话那些方向采样会得到 -1，
+## 玩家走到那里就会掉下去或者瞬移回原点。
+func _fill_lux_gaps(map: PackedFloat32Array) -> void:
+	var cells := LUX_LAT_BINS * LUX_LON_BINS
+	# 最多扩散这么多轮；每轮把「有值格」的邻居填上。
+	# 96×192 的格子，17% 空洞最多几轮就能全部覆盖。
+	for _pass in range(24):
+		var changed := 0
+		var snapshot := map.duplicate()
+		for li in range(LUX_LAT_BINS):
+			for oi in range(LUX_LON_BINS):
+				var k: int = li * LUX_LON_BINS + oi
+				if snapshot[k] > 0.0:
+					continue
+				var sum := 0.0
+				var n := 0
+				# 四邻域；经度环绕，纬度夹紧
+				var lon_l: int = (oi - 1 + LUX_LON_BINS) % LUX_LON_BINS
+				var lon_r: int = (oi + 1) % LUX_LON_BINS
+				var up: int = clampi(li + 1, 0, LUX_LAT_BINS - 1)
+				var dn: int = clampi(li - 1, 0, LUX_LAT_BINS - 1)
+				for nk in [li * LUX_LON_BINS + lon_l, li * LUX_LON_BINS + lon_r,
+						up * LUX_LON_BINS + oi, dn * LUX_LON_BINS + oi]:
+					if snapshot[nk] > 0.0:
+						sum += snapshot[nk]
+						n += 1
+				if n > 0:
+					map[k] = sum / float(n)
+					changed += 1
+		if changed == 0:
+			break
+	# 兜底：极端情况下（整行都空）用行星半径填
+	for i in range(cells):
+		if map[i] <= 0.0:
+			map[i] = radius
+
+
+## 按方向双线性插值取 Lux3D 高度表里的值。
+func _sample_lux_height(dir: Vector3) -> float:
+	var lat: float = asin(clampf(dir.y, -1.0, 1.0)) / PI + 0.5     # 0..1
+	var lon: float = atan2(dir.z, dir.x) / TAU + 0.5                 # 0..1
+	var fy: float = lat * float(LUX_LAT_BINS) - 0.5
+	var fx: float = lon * float(LUX_LON_BINS) - 0.5
+	var y0 := clampi(int(floorf(fy)), 0, LUX_LAT_BINS - 1)
+	var y1 := clampi(y0 + 1, 0, LUX_LAT_BINS - 1)
+	var ty: float = clampf(fy - float(y0), 0.0, 1.0)
+	var x0i := int(floorf(fx))
+	var tx: float = fx - float(x0i)
+	var x0 := (x0i % LUX_LON_BINS + LUX_LON_BINS) % LUX_LON_BINS
+	var x1 := (x0 + 1) % LUX_LON_BINS
+	var v00: float = _lux_height_map[y0 * LUX_LON_BINS + x0]
+	var v01: float = _lux_height_map[y0 * LUX_LON_BINS + x1]
+	var v10: float = _lux_height_map[y1 * LUX_LON_BINS + x0]
+	var v11: float = _lux_height_map[y1 * LUX_LON_BINS + x1]
+	var a: float = lerpf(v00, v01, tx)
+	var b: float = lerpf(v10, v11, tx)
+	return lerpf(a, b, ty)
 
 
 func _cut_cave_hole(arrays: Array, vertices: PackedVector3Array) -> PackedInt32Array:
