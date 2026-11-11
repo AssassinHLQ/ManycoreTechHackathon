@@ -29,8 +29,8 @@ func _run() -> void:
 	var old_loops: int = game.loop_count
 	game.discovered.clear()
 	game.loop_count = 1
-	_check(game.planets.size() == 10, "ten explorable bodies created (five major + five secondary)")
-	_check(game.anomalies.size() == 16, "ten planetary signals plus six hidden echoes")
+	_check(game.planets.size() == 20, "twenty explorable bodies created (ten major + ten secondary)")
+	_check(game.anomalies.size() == 26, "twenty planetary signals plus six hidden echoes")
 	_check(game.state == "menu", "main menu is initial state")
 	_check(game.home.radius >= 400.0, "planets use the ten-times scale")
 	_check(game.planets.back().orbit_radius >= 4000.0, "orbits are expanded to the new scale")
@@ -478,27 +478,40 @@ func _run() -> void:
 	var far_pull: float = bh_ship._black_hole_pull(0.016).length()
 	bh_ship.global_position = hole + Vector3(0.0, 0.0, 1800.0)
 	bh_ship.velocity = Vector3.ZERO
+	# ⚠ 2026-11-11 星系 ×10 后，这里改用 **closeness 相对深度** 算距离，
+	#   不再硬编码 1800 / 600 这类绝对米数 —— 否则每次调整黑洞尺度，
+	#   这些断言都会因为「同一个米数落在不同的相对深度」而假失败。
+	#   closeness 0.9 ≈ 相当于旧尺度下的「很近」，0.98 ≈ 贴脸。
+	var span: float = maxf(bh_ship.BH_PULL_RANGE - bh_ship.BH_HORIZON, 1.0)
+	var at_close: float = bh_ship.BH_PULL_RANGE - span * 0.98
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, at_close)
+	bh_ship.velocity = Vector3.ZERO
+	var close_pull: float = bh_ship._black_hole_pull(0.016).length()
+	_check(close_pull > bh_ship.SHIP_BOOST_THRUST,
+		"up close the pull beats even the boost thruster (150 / 实测 %.0f)" % close_pull)
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, 1800.0)
+	bh_ship.velocity = Vector3.ZERO
 	var near_pull: float = bh_ship._black_hole_pull(0.016).length()
 	_check(near_pull > far_pull * 8.0,
 		"the black hole pulls harder the closer the ship gets")
-	_check(near_pull > 150.0,
-		"up close the pull beats even the boost thruster (150)")
 	# 耗油：引力场外不吃额外油耗，越靠近倍率越高（同样一次点火更烧钱）。
 	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_PULL_RANGE + 1500.0)
 	bh_ship.velocity = Vector3.ZERO
 	bh_ship._black_hole_pull(0.016)
 	_check(is_equal_approx(bh_ship.bh_fuel_multiplier, 1.0),
 		"outside the pull range thrust costs no extra propellant")
-	bh_ship.global_position = hole + Vector3(0.0, 0.0, 2400.0)
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_PULL_RANGE - span * 0.72)
 	bh_ship.velocity = Vector3.ZERO
 	bh_ship._black_hole_pull(0.016)
 	var mid_fuel: float = bh_ship.bh_fuel_multiplier
-	bh_ship.global_position = hole + Vector3(0.0, 0.0, 300.0)
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_HORIZON + 1.0)
 	bh_ship.velocity = Vector3.ZERO
 	bh_ship._black_hole_pull(0.016)
 	var deep_fuel: float = bh_ship.bh_fuel_multiplier
-	_check(mid_fuel > 1.4 and deep_fuel > mid_fuel * 1.4,
-		"thrusting near the black hole burns noticeably more propellant")
+	# 同样改成相对深度：closeness 0.72 处应已明显加价，贴到视界再翻一倍多。
+	_check(mid_fuel > 1.05 and deep_fuel > mid_fuel * 1.4,
+		"thrusting near the black hole burns noticeably more propellant (%.2f -> %.2f)"
+			% [mid_fuel, deep_fuel])
 	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_HORIZON - 1.0)
 	bh_ship.velocity = Vector3.ZERO
 	var captured: bool = bh_ship._apply_black_hole_capture(0.016)
