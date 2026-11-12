@@ -65,6 +65,29 @@ const PROP_INSTANCE_CAP := {
 	"crystal-cluster-lo": 40,
 	"vent-lo": 40,
 	"stone-bridge": 4,
+	"lm2-qinglan": 2,
+	"lm2-zheya": 2,
+	"lm2-cangbo": 2,
+	"lm2-xuanjing": 2,
+	"lm2-xuanyuan": 2,
+	"lm2-baiyao": 2,
+	"lm2-pansha": 2,
+	"lm2-taiyuan": 2,
+	"lm2-liuwu": 2,
+	"lm2-jianmo": 2,
+	"lm2-jiangxiao": 2,
+	"lm2-cangwu": 2,
+	"lm2-jinwu": 2,
+	"lm2-yuheng": 2,
+	"lm2-sue": 2,
+	"lm2-danxia": 2,
+	"lm2-biluo": 2,
+	"lm2-youdu": 2,
+	"lm2-yaoguang": 2,
+	"lm2-xuanpu": 2,
+	"creature-glider": 6,
+	"creature-burrower": 6,
+	"creature-ruin-guardian": 6,
 	"creature-grazer": 6,
 	"creature-tall-walker": 6,
 	"med-station": 3,
@@ -287,26 +310,26 @@ const PROP_FLOATING := ["floating-rock"]
 ## 数量刻意压得很少（每球 3~5 只）—— 星球是无人区，生物该是稀客而不是动物园。
 ## 体型用「设计米数」：食草兽约 2.2~3.2，高足行者约 4.5~6（细高，比人高一头到两头）。
 const CREATURE_PROPS := {
-	"qinglan": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.5]],
-	"zheya": [["creature-grazer", 2, 2.0, 2.8]],
-	"cangbo": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.8, 5.8]],
-	"xuanjing": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 2, 4.5, 5.5]],
-	"xuanyuan": [["creature-tall-walker", 2, 5.0, 6.0]],
-	"baiyao": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.5, 5.5]],
-	"pansha": [["creature-grazer", 4, 2.0, 2.8]],
-	"taiyuan": [["creature-grazer", 3, 2.2, 3.0], ["creature-tall-walker", 1, 4.5, 5.2]],
-	"liuwu": [["creature-grazer", 2, 2.0, 2.8]],
-	"jianmo": [["creature-tall-walker", 3, 4.8, 6.0]],
-	"jiangxiao": [["creature-grazer", 3, 2.0, 2.8]],
-	"cangwu": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 2, 4.5, 5.5]],
-	"jinwu": [["creature-grazer", 2, 2.0, 2.6]],
-	"yuheng": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 1, 4.5, 5.2]],
-	"sue": [["creature-grazer", 3, 2.0, 2.8]],
-	"danxia": [["creature-grazer", 3, 2.0, 2.8], ["creature-tall-walker", 1, 4.8, 5.6]],
-	"biluo": [["creature-grazer", 2, 2.2, 3.0]],
-	"youdu": [["creature-tall-walker", 3, 5.0, 6.0]],
-	"yaoguang": [["creature-tall-walker", 2, 4.5, 5.5], ["creature-grazer", 1, 2.0, 2.6]],
-	"xuanpu": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.2]],
+	"qinglan": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.5], ["creature-glider", 2, 3.0, 4.0]],
+	"zheya": [["creature-grazer", 2, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5]],
+	"cangbo": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.8, 5.8], ["creature-glider", 1, 3.0, 4.0]],
+	"xuanjing": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 2, 4.5, 5.5], ["creature-ruin-guardian", 1, 4.0, 5.0]],
+	"xuanyuan": [["creature-tall-walker", 2, 5.0, 6.0], ["creature-ruin-guardian", 1, 4.2, 5.2]],
+	"baiyao": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.5, 5.5], ["creature-glider", 1, 3.0, 3.8]],
+	"pansha": [["creature-grazer", 4, 2.0, 2.8], ["creature-burrower", 3, 2.5, 3.5]],
+	"taiyuan": [["creature-grazer", 3, 2.2, 3.0], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-glider", 2, 3.0, 4.0]],
+	"liuwu": [["creature-grazer", 2, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5]],
+	"jianmo": [["creature-tall-walker", 3, 4.8, 6.0], ["creature-ruin-guardian", 2, 4.0, 5.2]],
+	"jiangxiao": [["creature-grazer", 3, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5]],
+	"cangwu": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 2, 4.5, 5.5], ["creature-glider", 2, 3.2, 4.2]],
+	"jinwu": [["creature-grazer", 2, 2.0, 2.6], ["creature-burrower", 2, 2.4, 3.2]],
+	"yuheng": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-glider", 1, 3.0, 3.8]],
+	"sue": [["creature-grazer", 3, 2.0, 2.8], ["creature-ruin-guardian", 1, 4.0, 5.0]],
+	"danxia": [["creature-grazer", 3, 2.0, 2.8], ["creature-tall-walker", 1, 4.8, 5.6], ["creature-burrower", 2, 2.5, 3.4]],
+	"biluo": [["creature-grazer", 2, 2.2, 3.0], ["creature-glider", 2, 3.0, 3.8]],
+	"youdu": [["creature-tall-walker", 3, 5.0, 6.0], ["creature-ruin-guardian", 1, 4.2, 5.2]],
+	"yaoguang": [["creature-tall-walker", 2, 4.5, 5.5], ["creature-grazer", 1, 2.0, 2.6], ["creature-glider", 1, 3.0, 3.8]],
+	"xuanpu": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-burrower", 2, 2.5, 3.5]],
 }
 
 ## 构图模式装饰组：[prop_id, 数量, 模式, 尺寸下限, 尺寸上限]
@@ -501,6 +524,29 @@ const PROP_MODELS := {
 	"crystal-cluster-lo": "res://assets/models/props/crystal-cluster-lo/model.glb",
 	"vent-lo": "res://assets/models/props/vent-lo/model.glb",
 	"stone-bridge": "res://assets/models/props/stone-bridge/model.glb",
+	"lm2-qinglan": "res://assets/models/props/lm2-qinglan/model.glb",
+	"lm2-zheya": "res://assets/models/props/lm2-zheya/model.glb",
+	"lm2-cangbo": "res://assets/models/props/lm2-cangbo/model.glb",
+	"lm2-xuanjing": "res://assets/models/props/lm2-xuanjing/model.glb",
+	"lm2-xuanyuan": "res://assets/models/props/lm2-xuanyuan/model.glb",
+	"lm2-baiyao": "res://assets/models/props/lm2-baiyao/model.glb",
+	"lm2-pansha": "res://assets/models/props/lm2-pansha/model.glb",
+	"lm2-taiyuan": "res://assets/models/props/lm2-taiyuan/model.glb",
+	"lm2-liuwu": "res://assets/models/props/lm2-liuwu/model.glb",
+	"lm2-jianmo": "res://assets/models/props/lm2-jianmo/model.glb",
+	"lm2-jiangxiao": "res://assets/models/props/lm2-jiangxiao/model.glb",
+	"lm2-cangwu": "res://assets/models/props/lm2-cangwu/model.glb",
+	"lm2-jinwu": "res://assets/models/props/lm2-jinwu/model.glb",
+	"lm2-yuheng": "res://assets/models/props/lm2-yuheng/model.glb",
+	"lm2-sue": "res://assets/models/props/lm2-sue/model.glb",
+	"lm2-danxia": "res://assets/models/props/lm2-danxia/model.glb",
+	"lm2-biluo": "res://assets/models/props/lm2-biluo/model.glb",
+	"lm2-youdu": "res://assets/models/props/lm2-youdu/model.glb",
+	"lm2-yaoguang": "res://assets/models/props/lm2-yaoguang/model.glb",
+	"lm2-xuanpu": "res://assets/models/props/lm2-xuanpu/model.glb",
+	"creature-glider": "res://assets/models/props/creature-glider/model.glb",
+	"creature-burrower": "res://assets/models/props/creature-burrower/model.glb",
+	"creature-ruin-guardian": "res://assets/models/props/creature-ruin-guardian/model.glb",
 	"creature-grazer": "res://assets/models/props/creature-grazer/model.glb",
 	"creature-tall-walker": "res://assets/models/props/creature-tall-walker/model.glb",
 	"med-station": "res://assets/models/props/med-station/model.glb",
@@ -2293,6 +2339,18 @@ func _build_landmark_props() -> void:
 			# 悬浮的抬高到半空；其余底部微沉入地表，避免悬空缝。
 			var altitude: float = size * 0.35 if floating else -size * 0.04
 			_add_prop(prop_id, dir, size, altitude, _prop_tint(), false)
+	# 每颗星球的**第二地标**（lm2-* ）：主地标另一侧的另一处遗迹。
+	# 尺寸比主地标小一圈（18~32 vs 22~40），位置全球随机（不贴基地），
+	# 这样从不同方位落地都能碰到一处没见过的建筑。
+	var sig2_id := "lm2-%s" % kind
+	if _prop_mesh(sig2_id) != null:
+		for _i in range(2):
+			var s2_size: float = rng.randf_range(18.0, 32.0) * prop_scale
+			var s2_dir := _pick_prop_direction(false, s2_size * 0.5)
+			if s2_dir == Vector3.ZERO:
+				continue
+			_add_prop(sig2_id, s2_dir, s2_size, -2.0 * prop_scale,
+				_prop_tint(), false)
 	# 每颗星球的**签名地标**：一颗一个，尺寸最大、最醒目，一眼能认出是哪颗星。
 	# 命名约定 lm-<kind>，见 PROP_MODELS。
 	var sig_id := "lm-%s" % kind
