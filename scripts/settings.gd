@@ -15,7 +15,8 @@ var values := {
 	"grass": 1,
 	"sky_detail": 3,
 	"volume": 80,
-	"sensitivity": 1.0
+	"sensitivity": 1.0,
+	"lod": 2
 }
 
 const RESOLUTIONS := [Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080)]
@@ -51,6 +52,7 @@ func load_settings() -> void:
 	values["sky_detail"] = clampi(int(values["sky_detail"]), 0, 3)
 	values["volume"] = clampi(int(values["volume"]), 0, 100)
 	values["sensitivity"] = clampf(float(values["sensitivity"]), 0.4, 2.5)
+	values["lod"] = clampi(int(values["lod"]), 0, 3)
 	values["vsync"] = bool(values["vsync"])
 
 
@@ -69,6 +71,7 @@ func apply_all() -> void:
 	_apply_shadows()
 	_apply_distance()
 	_apply_grass()
+	_apply_lod()
 	_apply_sky_detail()
 	_apply_volume()
 
@@ -120,6 +123,42 @@ func _apply_distance() -> void:
 			node.visibility_range_end = entry[1] * factor
 
 
+## 每个 LOD 档位的 [绘制距离(米), 铺量密度系数]
+## 0 低 / 1 中 / 2 高 / 3 极致
+const LOD_DISTANCE := [900.0, 1500.0, 2400.0, 3600.0]
+const LOD_DENSITY := [0.45, 0.7, 1.0, 1.0]
+
+
+## 玩家可调的 LOD：同时控制「道具画多远」和「铺量画多少」。
+##
+## 只影响 planet.gd 生成的 Prop_* 节点（AI 道具的 MultiMesh）。
+## lm-* 是每颗星球的签名地标、lf-* 是大地貌件，数量很少，
+## 它们不做密度削减（否则远处地标会突然消失），只跟随距离档位。
+func _apply_lod() -> void:
+	if game == null or game.planets == null:
+		return
+	var level: int = clampi(int(values.lod), 0, 3)
+	var distance: float = LOD_DISTANCE[level]
+	var density: float = LOD_DENSITY[level]
+	for planet in game.planets:
+		if planet == null or not is_instance_valid(planet):
+			continue
+		for node in planet.find_children("Prop_*", "MultiMeshInstance3D", true, false):
+			var mmi := node as MultiMeshInstance3D
+			if mmi == null or mmi.multimesh == null:
+				continue
+			var n: String = String(mmi.name)
+			# 地标/地貌件：只有距离档位，不削密度
+			if n.contains("lm-") or n.contains("lf-"):
+				mmi.visibility_range_end = distance * 1.6
+				mmi.multimesh.visible_instance_count = -1
+				continue
+			mmi.visibility_range_end = distance
+			var total: int = mmi.multimesh.instance_count
+			mmi.multimesh.visible_instance_count = (
+				-1 if density >= 0.999 else maxi(1, int(float(total) * density)))
+
+
 func _apply_grass() -> void:
 	if not collected:
 		_collect_runtime_nodes()
@@ -164,12 +203,14 @@ func set_quality(quality: String) -> void:
 			values.view_distance = 0
 			values.grass = 0
 			values.sky_detail = 0
+			values.lod = 0
 		"high":
 			values.msaa = 2
 			values.shadows = 2
 			values.view_distance = 2
 			values.grass = 1
 			values.sky_detail = 3
+			values.lod = 3
 		_:
 			values.quality = "medium"
 			values.msaa = 1
@@ -177,6 +218,7 @@ func set_quality(quality: String) -> void:
 			values.view_distance = 1
 			values.grass = 1
 			values.sky_detail = 1
+			values.lod = 2
 	apply_all()
 	save_settings()
 
@@ -217,6 +259,14 @@ func set_view_distance(level: int) -> void:
 	values.view_distance = clampi(level, 0, 2)
 	values.quality = "custom"
 	_apply_distance()
+	save_settings()
+
+
+## 0 低 / 1 中 / 2 高 / 3 极致
+func set_lod(level: int) -> void:
+	values.lod = clampi(level, 0, 3)
+	values.quality = "custom"
+	_apply_lod()
 	save_settings()
 
 

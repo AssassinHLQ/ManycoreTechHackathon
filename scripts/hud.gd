@@ -752,6 +752,9 @@ func _build_settings() -> void:
 	_add_cycle_setting(rows, "阴影", "shadows", [0, 1, 2], ["关", "低", "标准"], func(value): game.settings.set_shadows(value))
 	_add_cycle_setting(rows, "视野距离", "view_distance", [0, 1, 2], ["近", "标准", "远"], func(value): game.settings.set_view_distance(value))
 	_add_cycle_setting(rows, "草地密度", "grass", [0, 1], ["稀疏", "标准"], func(value): game.settings.set_grass(value))
+	# 模型细节（LOD）：玩家自己调「道具画多远 / 铺量画多少」。
+	# 低配机器调低能明显提帧；高配机器调高能把远处铺量的细节开出来。
+	_add_cycle_setting(rows, "模型细节（LOD）", "lod", [0, 1, 2, 3], ["低", "中", "高", "极致"], func(value): game.settings.set_lod(value))
 	# 星空精细度：控 fbm 倍频数、星层数、像素内超采样倍率与闪烁/星芒/流星/流转的开关
 	_add_cycle_setting(rows, "星空精细度", "sky_detail", [0, 1, 2, 3], ["低", "中", "高", "极致"], func(value): game.settings.set_sky_detail(value))
 	var volume_row := _settings_row(rows, "主音量")

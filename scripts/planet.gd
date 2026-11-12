@@ -35,9 +35,6 @@ var cave_mouth_radius := 0.0
 var cave_hole_angle := 0.0
 var water_shell: MeshInstance3D
 var terrain_collision_done := false
-var pine_queue: Array = []
-var broad_queue: Array = []
-var rock_queue: Dictionary = {}
 
 ## AI 生成道具（Lux3D）的模型路径。
 ##
@@ -417,7 +414,6 @@ func _ready() -> void:
 	_build_landscape()
 	ArchitectureScript.build(self, kind)
 	UndergroundScript.build(self, kind)
-	_build_ground_scatter()
 	# 目标 ③：按星球类型布置 AI 地标（少而大，和铺量的树/岩石分工不同）
 	_build_landmark_props()
 	if kind in ["xuanjing", "xuanyuan"]:
@@ -1521,131 +1517,6 @@ func _build_site_cluster() -> void:
 					_add_rock(direction, rng.randf_range(0.6, 2.8), Color("2a2433"), 0.0)
 
 
-func _build_ground_scatter() -> void:
-	var site := Vector3.UP
-	if kind == "qinglan":
-		site = Vector3(-0.06, 1.0, -0.04).normalized()
-	var mesh: Mesh
-	var color := Color.WHITE
-	var emission := 0.0
-	var emission_color := Color.WHITE
-	var height := 1.0
-	var count := 700
-	var grass := false
-	match kind:
-		"qinglan":
-			mesh = _grass_tuft_mesh()
-			color = Color("4a7d6a")
-			height = 0.8
-			count = 5600
-			grass = true
-		"zheya":
-			mesh = _cylinder(0.0, 0.11, 1.5, 4)
-			color = Color("e8e2d2")
-			emission = 0.0
-			height = 1.5
-			count = 2200
-		"cangbo":
-			mesh = _cylinder(0.02, 0.15, 1.4, 4)
-			color = Color("dff4fb")
-			height = 1.4
-			count = 1800
-		"xuanjing":
-			mesh = _cylinder(0.0, 0.11, 1.8, 4)
-			color = Color("c8cdd4")
-			emission = 0.35
-			emission_color = Color("ffab5e")
-			height = 1.8
-			count = 2600
-		"baiyao":
-			# 白垩冰原：细冰针。
-			mesh = _cylinder(0.0, 0.09, 1.2, 4)
-			color = Color("f2fbff")
-			height = 1.2
-			count = 2400
-		"pansha":
-			# 沙海：低矮的干砾与枯草根。
-			mesh = _box(Vector3(0.12, 0.62, 0.12))
-			color = Color("a28a5f")
-			height = 0.62
-			count = 2000
-		"taiyuan":
-			# 苔原：真正的草簇。
-			mesh = _grass_tuft_mesh()
-			color = Color("5d8a5c")
-			height = 0.72
-			count = 4200
-			grass = true
-		"liuwu":
-			# 硫磺带：黄色晶针，微微自发光。
-			mesh = _cylinder(0.0, 0.10, 1.4, 4)
-			color = Color("ccc45c")
-			emission = 0.25
-			emission_color = Color("e2e46a")
-			height = 1.4
-			count = 2000
-		"jianmo":
-			# 黑曜石地：细碎玻璃棱。
-			mesh = _box(Vector3(0.10, 0.75, 0.10))
-			color = Color("2a2433")
-			emission = 0.12
-			emission_color = Color("8a6fc0")
-			height = 0.75
-			count = 1200
-		_:
-			mesh = _box(Vector3(0.14, 1.3, 0.14))
-			color = Color("3a3d46")
-			height = 1.3
-			count = 1600
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color.WHITE
-	material.vertex_color_use_as_albedo = true
-	material.roughness = 0.9
-	if grass:
-		material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	if emission > 0.0:
-		material.emission_enabled = true
-		material.emission = emission_color if emission_color != Color.WHITE else color
-		material.emission_energy_multiplier = emission
-	if mesh is PrimitiveMesh:
-		mesh.material = material
-	else:
-		mesh.surface_set_material(0, material)
-	var multimesh := MultiMesh.new()
-	multimesh.transform_format = MultiMesh.TRANSFORM_3D
-	multimesh.use_colors = true
-	multimesh.mesh = mesh
-	multimesh.instance_count = count
-	for i in range(count):
-		var angle := rng.randf() * TAU
-		var radius_offset := sqrt(rng.randf()) * 0.24
-		var tangent_a := site.cross(Vector3.UP)
-		if tangent_a.length_squared() < 0.02:
-			tangent_a = site.cross(Vector3.RIGHT)
-		tangent_a = tangent_a.normalized()
-		var tangent_b := site.cross(tangent_a).normalized()
-		var direction := (site + (tangent_a * cos(angle) + tangent_b * sin(angle)) * radius_offset).normalized()
-		if _near_cave(direction, 0.018):
-			continue
-		var ground_up := _terrain_normal(direction)
-		var scale_xz := rng.randf_range(0.75, 1.45)
-		var scale_y := scale_xz * rng.randf_range(0.8, 1.35)
-		var align := Basis(Quaternion(Vector3.UP, ground_up)).scaled(Vector3(scale_xz, scale_y, scale_xz))
-		var base := surface_position(direction, 0.0) - ground_up * 0.24
-		var position := base
-		if not grass:
-			position += ground_up * (height * scale_y * 0.5 - 0.28)
-		multimesh.set_instance_transform(i, Transform3D(align, position))
-		var tint := color.lightened(rng.randf_range(-0.14, 0.22))
-		multimesh.set_instance_color(i, tint)
-	var scatter := MultiMeshInstance3D.new()
-	scatter.multimesh = multimesh
-	scatter.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	scatter.visibility_range_end = 340.0
-	scatter.add_to_group("ground_scatter")
-	add_child(scatter)
-
-
 func _terrain_normal(direction: Vector3) -> Vector3:
 	var dir := direction.normalized()
 	var tangent_a := dir.cross(Vector3.UP)
@@ -1705,68 +1576,16 @@ func _surface_parent(direction: Vector3, altitude: float) -> Node3D:
 
 
 func _add_tree(direction: Vector3, _collidable := false) -> void:
-	# ⚠ 2026-11-11：优先用 Lux3D 生成的异星树（AI 资产）。
-	#   树高按 prop_scale 放大到 18~40 米，和放大后的星球/建筑一个尺度。
-	#   资产缺失时退回下面的程序化树（原逻辑完整保留）。
+	# ⚠ 2026-11-12 用户：「程序化的就完全不用了」。
+	#   这里只走 Lux3D 的异星树，程序化树已删除。
+	#   资产缺失时直接不长树（宁可空一点，也不再拿程序化几何充数）。
 	var tree_id := "alien-tree-lo" if _prop_mesh("alien-tree-lo") != null else "alien-tree"
-	if _prop_mesh(tree_id) != null:
-		_add_prop(tree_id, direction, rng.randf_range(18.0, 40.0) * prop_scale / 5.0,
-			0.0, _prop_tint())
+	if _prop_mesh(tree_id) == null:
 		return
-	var size := rng.randf_range(1.0, 2.25) * prop_scale
-	var up := direction.normalized()
-	var origin := surface_position(direction, -0.85)
-	var transform := Transform3D(Basis(Quaternion(Vector3.UP, up)).scaled(Vector3.ONE * size), origin)
-	if rng.randf() < 0.28:
-		broad_queue.append(transform)
-	else:
-		pine_queue.append(transform)
-	var body := StaticBody3D.new()
-	body.collision_layer = 1
-	body.collision_mask = 0
-	body.transform = Transform3D(Basis(Quaternion(Vector3.UP, up)), origin)
-	var collision := CollisionShape3D.new()
-	var shape := CylinderShape3D.new()
-	shape.radius = 0.42 * size
-	shape.height = 3.6 * size
-	collision.shape = shape
-	collision.position.y = 1.8 * size
-	body.add_child(collision)
-	add_child(body)
+	_add_prop(tree_id, direction, rng.randf_range(18.0, 40.0) * prop_scale,
+		0.0, _prop_tint())
 
 
-
-
-## 多面体碎块岩石：低多边形球体做径向抖动 + 去索引，得到硬棱面。
-func _rock_mesh(tint: Color) -> ArrayMesh:
-	var source := SphereMesh.new()
-	source.radius = 1.0
-	source.height = 2.0
-	source.radial_segments = 8
-	source.rings = 5
-	var arrays := source.get_mesh_arrays()
-	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var noise := FastNoiseLite.new()
-	noise.seed = int(tint.r * 1000.0) + int(tint.g * 100.0) + 517
-	noise.frequency = 1.0
-	for i in range(vertices.size()):
-		var dir := vertices[i].normalized()
-		if dir == Vector3.ZERO:
-			continue
-		var wobble := noise.get_noise_3d(dir.x * 2.6, dir.y * 2.6, dir.z * 2.6)
-		var tier := 0.22 * sin(dir.y * 5.4)
-		vertices[i] = dir * (1.0 + wobble * 0.38 + tier)
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	var displaced := ArrayMesh.new()
-	displaced.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var tool := SurfaceTool.new()
-	tool.create_from(displaced, 0)
-	tool.deindex()  # 去索引后重算法线 → 硬边棱面，而不是光滑球
-	tool.generate_normals()
-	return tool.commit()
-
-
-## 多棱柱晶簇：一根主棱 + 三四根副棱 + 底部碎晶座。
 func _crystal_cluster_mesh(height: float) -> ArrayMesh:
 	var tool := _merged_tool()
 	var main_basis := Basis(Vector3.BACK, 0.06)
@@ -2119,49 +1938,8 @@ func _flush_props() -> void:
 
 
 func _flush_vegetation() -> void:
-	# 先把 AI 道具落地（地标 + 可能的低模散布），再补程序化回退部分。
+	# 只落 AI 道具。程序化的树/岩石/草丛已全部删除（2026-11-12）。
 	_flush_props()
-	var bark := _material(Color("4a352a"))
-	_flush_multimesh(_pine_trunk_mesh(), pine_queue, bark)
-	_flush_multimesh(_pine_canopy_mesh(), pine_queue, _material(Color("2a5442")))
-	_flush_multimesh(_broadleaf_trunk_mesh(), broad_queue, bark)
-	_flush_multimesh(_broadleaf_canopy_mesh(), broad_queue, _material(Color("33684b")))
-	for color in rock_queue.keys():
-		var transforms: Array = rock_queue[color]
-		if transforms.is_empty():
-			continue
-		var tool := _merged_tool()
-		tool.append_from(_rock_mesh(color), 0, Transform3D(Basis.IDENTITY.scaled(Vector3(1.0, 1.05, 1.0)), Vector3.ZERO))
-		tool.generate_normals()
-		_flush_multimesh(tool.commit(), transforms, _material(color))
-		for transform in transforms:
-			var body := StaticBody3D.new()
-			body.collision_layer = 1
-			body.collision_mask = 0
-			var scale: Vector3 = transform.basis.get_scale()
-			body.transform = Transform3D(transform.basis.orthonormalized(), transform.origin)
-			var collision := CollisionShape3D.new()
-			var shape := SphereShape3D.new()
-			shape.radius = (scale.x + scale.y + scale.z) / 3.0
-			collision.shape = shape
-			body.add_child(collision)
-			add_child(body)
-
-
-func _flush_multimesh(mesh: Mesh, transforms: Array, material: Material) -> void:
-	if transforms.is_empty():
-		return
-	var multimesh := MultiMesh.new()
-	multimesh.transform_format = MultiMesh.TRANSFORM_3D
-	multimesh.mesh = mesh
-	multimesh.instance_count = transforms.size()
-	for i in range(transforms.size()):
-		multimesh.set_instance_transform(i, transforms[i])
-	var instance := MultiMeshInstance3D.new()
-	instance.multimesh = multimesh
-	instance.material_override = material
-	instance.visibility_range_end = 320.0
-	add_child(instance)
 
 
 func _merged_tool() -> SurfaceTool:
@@ -2170,163 +1948,31 @@ func _merged_tool() -> SurfaceTool:
 	return tool
 
 
-func _pine_trunk_mesh() -> ArrayMesh:
-	var tool := _merged_tool()
-	tool.append_from(_cylinder(0.21, 0.38, 4.2, 9), 0, Transform3D(Basis.IDENTITY, Vector3(0, 2.1, 0)))
-	# 三根板根：从树干基部向外撇开，扎进地表
-	for i in range(3):
-		var angle := TAU * float(i) / 3.0 + 0.35
-		var root_basis := Basis(Vector3.UP, angle) * Basis(Vector3.BACK, 0.62)
-		tool.append_from(_cylinder(0.05, 0.17, 1.15, 6), 0,
-			Transform3D(root_basis, Vector3(cos(angle) * 0.42, 0.30, sin(angle) * 0.42)))
-	# 两根侧枝 + 一根上枝
-	for entry in [[-0.62, 0.55, 2.6], [0.74, -0.50, 3.15], [0.11, 0.58, 3.6]]:
-		var lean: float = entry[0]
-		var yaw: float = entry[1]
-		tool.append_from(_cylinder(0.04, 0.10, 1.7, 6), 0,
-			Transform3D(Basis(Vector3.BACK, lean) * Basis(Vector3.UP, yaw), Vector3(cos(yaw) * 0.5, float(entry[2]), sin(yaw) * 0.5)))
-	tool.generate_normals()
-	return tool.commit()
-
-
-func _pine_canopy_mesh() -> ArrayMesh:
-	var tool := _merged_tool()
-	for i in range(5):
-		var width := 1.72 - i * 0.26
-		var height := 2.6 - i * 0.18
-		tool.append_from(_cylinder(0.0, width, height, 10), 0, Transform3D(Basis(Vector3.UP, i * 0.6), Vector3(0, 3.7 + i * 1.05, 0)))
-	tool.generate_normals()
-	return tool.commit()
-
-
-func _broadleaf_trunk_mesh() -> ArrayMesh:
-	var tool := _merged_tool()
-	tool.append_from(_cylinder(0.25, 0.44, 4.8, 9), 0, Transform3D(Basis.IDENTITY, Vector3(0, 2.4, 0)))
-	# 板根
-	for i in range(4):
-		var angle := TAU * float(i) / 4.0 + 0.2
-		tool.append_from(_cylinder(0.06, 0.19, 1.25, 6), 0,
-			Transform3D(Basis(Vector3.UP, angle) * Basis(Vector3.BACK, 0.70),
-				Vector3(cos(angle) * 0.48, 0.32, sin(angle) * 0.48)))
-	# 四根主枝 + 两根细枝
-	for side in [-1.0, 1.0]:
-		tool.append_from(_cylinder(0.07, 0.18, 2.5, 7), 0, Transform3D(Basis(Vector3.BACK, side * 0.72), Vector3(side * 0.65, 3.8, 0.12)))
-		tool.append_from(_cylinder(0.05, 0.12, 1.9, 6), 0, Transform3D(Basis(Vector3.BACK, side * 0.95) * Basis(Vector3.UP, 1.3),
-			Vector3(side * 0.95, 3.05, -0.35)))
-	tool.append_from(_cylinder(0.04, 0.10, 1.6, 6), 0, Transform3D(Basis(Vector3.FORWARD, 0.42), Vector3(-0.18, 4.35, 0.30)))
-	tool.append_from(_cylinder(0.035, 0.09, 1.4, 6), 0, Transform3D(Basis(Vector3.RIGHT, -0.55), Vector3(0.22, 4.55, -0.25)))
-	tool.generate_normals()
-	return tool.commit()
-
-
-func _broadleaf_canopy_mesh() -> ArrayMesh:
-	var tool := _merged_tool()
-	for i in range(4):
-		var radius := 1.65 - i * 0.16
-		var position := Vector3(cos(i * 2.2) * 1.0, 5.0 + (i % 2) * 0.75, sin(i * 2.2) * 1.0)
-		var basis := Basis.IDENTITY.scaled(Vector3(1.15, 0.72, 1.1))
-		tool.append_from(_sphere_mesh(radius, 10, 6), 0, Transform3D(basis, position))
-	tool.generate_normals()
-	return tool.commit()
-
-
 func _add_rock(direction: Vector3, size: float, color: Color, altitude: float) -> void:
+	# 同 _add_tree：只走 AI 岩石，程序化岩石已删除。
 	size *= prop_scale
-	# ⚠ 2026-11-11：优先用 Lux3D 生成的岩石（层积巨岩 / 黑曜石尖峰）。
-	#   哪个星球的岩石更「尖」按 kind 区分，和原来的配色意图一致。
 	var rock_id := "rock-spire" if _prefers_spires() else "rock-cluster"
 	if _prop_mesh(rock_id + "-lo") != null:
 		rock_id += "-lo"
-	if _prop_mesh(rock_id) != null:
-		_add_prop(rock_id, direction, maxf(size, 1.0), altitude, color)
+	if _prop_mesh(rock_id) == null:
 		return
-	var rotation := Basis.from_euler(Vector3(rng.randf() * PI, rng.randf() * PI, rng.randf() * PI))
-	var scale := Vector3(rng.randf_range(0.7, 1.3), rng.randf_range(0.7, 1.4), rng.randf_range(0.7, 1.3)) * size
-	var transform := Transform3D(rotation.scaled(scale), surface_position(direction, altitude + size * 0.12))
-	if not rock_queue.has(color):
-		rock_queue[color] = []
-	rock_queue[color].append(transform)
-
-
-func _add_basalt(direction: Vector3) -> void:
-	var root := _prop_parent(direction, 0.0)
-	var height := rng.randf_range(6.0, 24.0)
-	root.rotation.y = rng.randf() * TAU
-	root.add_child(_mesh(_cylinder(1.4, 2.1, height, 6), _material(Color("372d31")), Vector3(0, height * 0.42, 0)))
-	if rng.randf() > 0.35:
-		root.add_child(_mesh(_cylinder(0.7, 1.2, height * 0.65, 6), _material(Color("493139")), Vector3(2.4, height * 0.28, 0.7)))
-	var body := StaticBody3D.new()
-	body.collision_layer = 1
-	body.collision_mask = 0
-	var collision := CollisionShape3D.new()
-	var shape := CylinderShape3D.new()
-	shape.radius = 2.0
-	shape.height = height * 0.8
-	collision.shape = shape
-	collision.position.y = height * 0.4
-	body.add_child(collision)
-	root.add_child(body)
-	_limit_range(root, 1600.0)
+	_add_prop(rock_id, direction, maxf(size, 1.0), altitude, color)
 
 
 func _add_crystal(direction: Vector3, color: Color, altitude: float) -> void:
-	# ⚠ 2026-11-11 用户：「不能是程序化的，必须 AI 生成」。
-	#   优先用 Lux3D 的发光晶簇（低模变体铺量用），缺失时回退下面的程序化晶簇。
-	if _prop_mesh("crystal-cluster-lo") != null:
-		_add_prop("crystal-cluster-lo", direction,
-			rng.randf_range(16.0, 34.0) * prop_scale, altitude, color)
+	# 只走 AI 发光晶簇（低模变体铺量用）。
+	if _prop_mesh("crystal-cluster-lo") == null:
 		return
-	var root := _prop_parent(direction, altitude)
-	var height := rng.randf_range(6.0, 18.0)
-	var material := _material(color.darkened(0.2), 1.3)
-	# 晶簇：一根主棱 + 三到四根副棱 + 底部碎晶座，不再是单锥
-	var cluster := _mesh(_crystal_cluster_mesh(height), material, Vector3(0, height * 0.42, 0))
-	cluster.rotation.z = rng.randf_range(-0.16, 0.16)
-	root.add_child(cluster)
-	# 散落的碎晶
-	for i in range(rng.randi_range(2, 4)):
-		var shard_angle := rng.randf_range(0.0, TAU)
-		var shard := _mesh(_cylinder(0.0, rng.randf_range(0.25, 0.55), rng.randf_range(1.2, 3.0), 5), material,
-			Vector3(cos(shard_angle) * rng.randf_range(1.4, 2.6), 0.5, sin(shard_angle) * rng.randf_range(1.4, 2.6)))
-		shard.rotation = Vector3(rng.randf_range(-0.4, 0.4), shard_angle, rng.randf_range(-0.4, 0.4))
-		root.add_child(shard)
-	if rng.randf() > 0.65:
-		var light := OmniLight3D.new()
-		light.light_color = color
-		light.light_energy = 1.2
-		light.omni_range = 18.0
-		light.position.y = height * 0.6
-		root.add_child(light)
-	var body := StaticBody3D.new()
-	body.collision_layer = 1
-	body.collision_mask = 0
-	var collision := CollisionShape3D.new()
-	var shape := CylinderShape3D.new()
-	shape.radius = 1.4
-	shape.height = height * 0.8
-	collision.shape = shape
-	collision.position.y = height * 0.4
-	body.add_child(collision)
-	root.add_child(body)
-	_limit_range(root, 1600.0)
+	_add_prop("crystal-cluster-lo", direction,
+		rng.randf_range(16.0, 34.0) * prop_scale, altitude, color)
 
 
 func _add_spout(direction: Vector3) -> void:
-	# 同 _add_crystal：优先 AI 喷口（低模变体），缺失时回退程序化。
-	if _prop_mesh("vent-lo") != null:
-		_add_prop("vent-lo", direction,
-			rng.randf_range(14.0, 28.0) * prop_scale, -1.0 * prop_scale, _prop_tint())
+	# 只走 AI 喷口（低模变体）。
+	if _prop_mesh("vent-lo") == null:
 		return
-	var root := _prop_parent(direction, -1.0)
-	root.scale = Vector3.ONE * rng.randf_range(3.5, 7.0)
-	var material := _material(Color(0.38, 0.76, 0.85, 0.24))
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	for i in range(4):
-		var cone := _mesh(_cylinder(2.4 - i * 0.45, 0.35 + i * 0.25, 7.0, 16), material, Vector3(0, 3.0 + i * 5.4, 0))
-		cone.rotation.y = i * 0.8
-		root.add_child(cone)
-	_limit_range(root, 1600.0)
+	_add_prop("vent-lo", direction,
+		rng.randf_range(14.0, 28.0) * prop_scale, -1.0 * prop_scale, _prop_tint())
 
 
 func _limit_range(node: Node, end: float) -> void:
@@ -2337,89 +1983,66 @@ func _limit_range(node: Node, end: float) -> void:
 
 
 func _add_landing_island() -> void:
-	var root := _prop_parent(Vector3.UP, -2.5)
-	var stone := SphereMesh.new()
-	stone.radius = 34.0
-	stone.height = 68.0
-	stone.radial_segments = 32
-	stone.rings = 16
-	var island := _mesh(stone, _material(Color("397a78")), Vector3.ZERO)
-	island.scale.y = 0.12
-	root.add_child(island)
+	# ⚠ 2026-11-12：沧波星的 site_direction 就是 Vector3.UP，
+	#   着陆石岛和潮汐站**同位置**。实验对照：
+	#     石岛开着 → walk_test「the player enters the tide station」红
+	#     石岛关掉 → 0 失败
+	#   所以任何「够大能看见」的模型都会把站包进去。
+	#   现在改成：偏离站点约 120 米的 AI 平顶方山
+	#   （50 米级），**不加碰撞** —— 站点平地本来就被
+	#   terrain_height 压平了，玩家走的是地形面。既满足「不用程序化几何」，
+	#   也不会挡住基地。
+	var pid := "lf-mesa-plateau" if _prop_mesh("lf-mesa-plateau") != null else ""
+	if pid == "":
+		return
+	var site: Vector3 = site_direction.normalized()
+	var perp: Vector3 = site.cross(Vector3.FORWARD)
+	if perp.length_squared() < 0.01:
+		perp = site.cross(Vector3.RIGHT)
+	perp = perp.normalized()
+	var dir: Vector3 = site.rotated(perp, 120.0 / radius).normalized()
+	_add_prop(pid, dir, 10.0 * prop_scale, -2.0 * prop_scale,
+		base_color.lightened(0.2), false)
+
+
+func _add_home_ruin() -> void:
+	# 青岚星的巨石遗迹 → AI 遗迹拱门。
+	var direction := Vector3(0.68, 0.65, -0.3).normalized()
+	var size: float = 30.0 * prop_scale
+	if _prop_mesh("ruin-arch") != null:
+		_add_prop("ruin-arch", direction, size, -1.0 * prop_scale,
+			base_color.lightened(0.25), false)
+	var root := _surface_parent(direction, 0.0)
+	if root == null:
+		return
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
 	body.collision_mask = 0
 	var collision := CollisionShape3D.new()
 	var shape := CylinderShape3D.new()
-	shape.radius = 33.0
-	shape.height = 7.0
+	shape.radius = size * 0.22
+	shape.height = size * 0.8
 	collision.shape = shape
+	collision.position.y = size * 0.4
 	body.add_child(collision)
 	root.add_child(body)
-	_limit_range(root, 3000.0)
-
-
-func _add_home_ruin() -> void:
-	var direction := Vector3(0.68, 0.65, -0.3).normalized()
-	var root := _prop_parent(direction, 0.0)
-	var stone := _material(Color("7c8175"))
-	var body := StaticBody3D.new()
-	body.collision_layer = 1
-	body.collision_mask = 0
-	for i in range(7):
-		var angle := float(i) / 7.0 * TAU
-		var height := 12.0 + float(i % 2) * 6.0
-		root.add_child(_mesh(_box(Vector3(1.4, height, 1.4)), stone, Vector3(cos(angle) * 10.0, height * 0.5, sin(angle) * 10.0)))
-		var collision := CollisionShape3D.new()
-		var shape := BoxShape3D.new()
-		shape.size = Vector3(1.4, height, 1.4)
-		collision.shape = shape
-		collision.position = Vector3(cos(angle) * 10.0, height * 0.5, sin(angle) * 10.0)
-		body.add_child(collision)
-	root.add_child(_mesh(_cylinder(10.5, 11.5, 1.2, 24), stone, Vector3(0, 0.2, 0)))
-	var floor_collision := CollisionShape3D.new()
-	var floor_shape := CylinderShape3D.new()
-	floor_shape.radius = 11.5
-	floor_shape.height = 1.2
-	floor_collision.shape = floor_shape
-	floor_collision.position.y = 0.2
-	body.add_child(floor_collision)
-	root.add_child(body)
-	_limit_range(root, 3000.0)
+	_limit_range(root, 1600.0)
 
 
 func _add_eye_spires() -> void:
+	# 玄渊星的 11 根尖塔环 → AI 黑曜石尖峰环形排列。
+	# ⚠ 用 -lo 版：11 个实例，高模会白吃 20 万面。
+	var pid := "rock-spire-lo" if _prop_mesh("rock-spire-lo") != null else "rock-spire"
+	if _prop_mesh(pid) == null:
+		return
 	for i in range(11):
 		var angle := float(i) / 11.0 * TAU
 		var direction := Vector3(cos(angle) * 0.36, 1.0, sin(angle) * 0.36).normalized()
-		var root := _prop_parent(direction, 0.0)
-		var height := 22.0 + i * 2.2
-		var spire := _mesh(_cylinder(0.0, 2.0, height, 5), _material(Color("263239")), Vector3(0, height * 0.42, 0))
-		spire.rotation.z = 0.22
-		root.add_child(spire)
-		var body := StaticBody3D.new()
-		body.collision_layer = 1
-		body.collision_mask = 0
-		var collision := CollisionShape3D.new()
-		var shape := CylinderShape3D.new()
-		shape.radius = 1.6
-		shape.height = height * 0.85
-		collision.shape = shape
-		collision.position.y = height * 0.42
-		body.add_child(collision)
-		root.add_child(body)
-		_limit_range(root, 3000.0)
+		# 逐根拔高，保留原来那种「环形渐高」的译峥感
+		var size: float = (10.0 + float(i) * 1.1) * prop_scale
+		_add_prop(pid, direction, size, -1.5 * prop_scale, base_color.lightened(0.1), false)
 
 
-## 行星环：**一整片**扁平半透明圆盘，不是几条细铁圈。
-##
-## ⚠ 2026-11-11 用户：「这些环不好看，能不能搞好点」。
-##   旧实现是 3 个 `TorusMesh` 叠起来，三个致命问题：
-##     · TorusMesh 是**实心圆管**，不是薄片 —— 看起来就是橙色管子
-##     · outer − inner 只有半径的 2%（约 16 米），等于一条细线
-##     · 三条环各自倾斜 18°/21°/24°，于是像三根铁丝歪着套在球上
-##   现在改成一个 annulus（环形平面）+ 径向分带着色器（见 planet_ring.gdshader）：
-##   一整片、有缝、内缘外缘淡出的环面。
 const RING_SHADER := preload("res://shaders/planet_ring.gdshader")
 
 
