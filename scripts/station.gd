@@ -6,6 +6,74 @@ var radius := 270.0
 var artificial_gravity := 14.0
 var active_corridor := -1
 
+# ── Lux3D 站内家具加载（2026-11-12 接入）────────────────────────────
+#
+# station.gd 有 355 个程序化图元，是剩下最大的程序化模块。
+# 这批只换**玩家走进去会看到的家具**（座椅/控制台/花箱/望远镜/舱门/长凳…），
+# **壳体、走廊、隔墙、房间轮廓一律保持程序化** —— 那些要和碰撞、门洞、
+# 地板高度精确对齐，AI 模型尺寸不可控，硬套会穿模、会走空。
+#
+# ⚠ 全部可回退：模型缺失时照旧用原来的程序化拼装。
+const STATION_PROP_DIR := "res://assets/models/props/station/"
+var _station_prop_cache: Dictionary = {}
+
+
+## 取一个站内家具实例，失败返回 null（调用方回退程序化）。
+func _prop(name: String, target_height: float) -> Node3D:
+	if _station_prop_cache.has(name):
+		var cached = _station_prop_cache[name]
+		if cached == null:
+			return null
+		return (cached as Node3D).duplicate() as Node3D
+	var dir: String = STATION_PROP_DIR + name + "/"
+	var glb_path := ""
+	for candidate in ["model.glb", "model_glb.glb"]:
+		if ResourceLoader.exists(dir + candidate):
+			glb_path = dir + candidate
+			break
+	if glb_path == "":
+		_station_prop_cache[name] = null
+		return null
+	var packed := load(glb_path) as PackedScene
+	if packed == null:
+		_station_prop_cache[name] = null
+		return null
+	var instance := packed.instantiate() as Node3D
+	if instance == null:
+		_station_prop_cache[name] = null
+		return null
+	var aabb := AABB()
+	var first := true
+	for node in instance.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var xf := Transform3D.IDENTITY
+		var walker: Node = mi
+		while walker != null and walker != instance:
+			if walker is Node3D:
+				xf = (walker as Node3D).transform * xf
+			walker = walker.get_parent()
+		var box: AABB = xf * mi.get_aabb()
+		aabb = box if first else aabb.merge(box)
+		first = false
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if first or aabb.size.y < 0.0001:
+		instance.queue_free()
+		_station_prop_cache[name] = null
+		return null
+	var holder := Node3D.new()
+	holder.name = "Prop_" + name
+	holder.add_child(instance)
+	var scale_k: float = target_height / aabb.size.y
+	instance.scale = Vector3.ONE * scale_k
+	instance.position = Vector3(
+		-aabb.get_center().x * scale_k,
+		-aabb.position.y * scale_k,
+		-aabb.get_center().z * scale_k)
+	_station_prop_cache[name] = holder
+	return (holder as Node3D).duplicate() as Node3D
+
 const SPINE_LENGTH := 300.0
 const RING_RADIUS := 280.0
 const RING_HALF_WIDTH := 10.0
@@ -1866,7 +1934,15 @@ func _furnish(kind: String, x: float, side: float, z_center: float) -> void:
 			for i in range(6):
 				var cx := x - 2.8 + float(i % 3) * 2.8
 				var cz := z_center - side * 1.1 + (float(i / 3)) * side * 1.7
-				_box(self, Vector3(1.5, 1.1, 1.5), Vector3(cx, FLOOR_TOP + 0.55, cz), _mat_orange if i % 2 == 0 else _mat_dark, Vector3.ZERO, true)
+				# 储藏舱的箱体：Lux3D 货运箱优先（碰撞沿用原尺寸，不依赖模型）
+				var crate_prop := _prop("cargo-crate", 1.1)
+				if crate_prop != null:
+					crate_prop.position = Vector3(cx, FLOOR_TOP, cz)
+					crate_prop.rotation.y = float(i) * 0.5
+					add_child(crate_prop)
+					_add_collider(Vector3(1.5, 1.1, 1.5), Vector3(cx, FLOOR_TOP + 0.55, cz))
+				else:
+					_box(self, Vector3(1.5, 1.1, 1.5), Vector3(cx, FLOOR_TOP + 0.55, cz), _mat_orange if i % 2 == 0 else _mat_dark, Vector3.ZERO, true)
 			_cylinder(self, 0.5, 0.5, 1.3, Vector3(x + 3.6, FLOOR_TOP + 0.65, z_center - side * 2.2), _mat_blue)
 			_add_collider(Vector3(1.0, 1.3, 1.0), Vector3(x + 3.6, FLOOR_TOP + 0.65, z_center - side * 2.2))
 		"library":
@@ -1908,21 +1984,32 @@ func _build_seat(pos: Vector3, yaw: float, width := 1.6) -> void:
 	root.position = pos
 	root.rotation.y = yaw
 	add_child(root)
-	_box(root, Vector3(width * 0.86, 0.42, 0.55), Vector3(0.0, 0.21, 0.0), _mat_dark)
-	_box(root, Vector3(width, 0.14, 0.72), Vector3(0.0, 0.49, 0.0), _mat_warm)
-	_box(root, Vector3(width * 0.8, 0.45, 0.1), Vector3(0.0, 0.82, -0.35), _mat_warm)
-	for side: float in [-1.0, 1.0]:
-		_box(root, Vector3(0.1, 0.75, 0.16), Vector3(side * width * 0.42, 0.82, -0.35), _mat_trim)
-		_box(root, Vector3(0.12, 0.18, 0.58), Vector3(side * (width * 0.5 - 0.08), 0.66, 0.0), _mat_trim)
-	_box(root, Vector3(width * 0.9, 0.06, 0.15), Vector3(0.0, 1.06, -0.35), _mat_trim)
-	_box(root, Vector3(width * 0.6, 0.04, 0.05), Vector3(0.0, 0.62, -0.41), _mat_teal)
+	# 座椅：Lux3D 模型优先。碰撞仍按原尺寸单独加，不依赖模型。
+	var seat_prop := _prop("station-seat", 1.1)
+	if seat_prop != null:
+		root.add_child(seat_prop)
+	else:
+		_box(root, Vector3(width * 0.86, 0.42, 0.55), Vector3(0.0, 0.21, 0.0), _mat_dark)
+		_box(root, Vector3(width, 0.14, 0.72), Vector3(0.0, 0.49, 0.0), _mat_warm)
+		_box(root, Vector3(width * 0.8, 0.45, 0.1), Vector3(0.0, 0.82, -0.35), _mat_warm)
+		for side: float in [-1.0, 1.0]:
+			_box(root, Vector3(0.1, 0.75, 0.16), Vector3(side * width * 0.42, 0.82, -0.35), _mat_trim)
+			_box(root, Vector3(0.12, 0.18, 0.58), Vector3(side * (width * 0.5 - 0.08), 0.66, 0.0), _mat_trim)
+		_box(root, Vector3(width * 0.9, 0.06, 0.15), Vector3(0.0, 1.06, -0.35), _mat_trim)
+		_box(root, Vector3(width * 0.6, 0.04, 0.05), Vector3(0.0, 0.62, -0.41), _mat_teal)
 	_add_collider(Vector3(width, 0.75, 0.85), root.transform * Vector3(0.0, 0.35, 0.0), Vector3(0.0, yaw, 0.0))
 
 
 func _build_planter(pos: Vector3, radius: float) -> void:
-	_cylinder(self, radius, radius * 1.08, 0.7, pos + Vector3(0.0, 0.35, 0.0), _mat_dark, 12)
-	_torus(self, radius * 0.9, radius * 1.02, pos + Vector3(0.0, 0.68, 0.0), _mat_trim, Vector3.ZERO, 6, 20)
-	_sphere(self, radius * 0.95, pos + Vector3(0.0, 1.1, 0.0), _mat_green, Vector3(1.0, 1.2, 1.0))
+	# 花箱：Lux3D 模型优先（含植栽）。碰撞按原半径单独加。
+	var planter_prop := _prop("station-planter", 1.35)
+	if planter_prop != null:
+		planter_prop.position = pos
+		add_child(planter_prop)
+	else:
+		_cylinder(self, radius, radius * 1.08, 0.7, pos + Vector3(0.0, 0.35, 0.0), _mat_dark, 12)
+		_torus(self, radius * 0.9, radius * 1.02, pos + Vector3(0.0, 0.68, 0.0), _mat_trim, Vector3.ZERO, 6, 20)
+		_sphere(self, radius * 0.95, pos + Vector3(0.0, 1.1, 0.0), _mat_green, Vector3(1.0, 1.2, 1.0))
 	_add_collider(Vector3(radius * 2.0, 0.7, radius * 2.0), pos + Vector3(0.0, 0.35, 0.0))
 
 
@@ -1931,8 +2018,14 @@ func _build_console(pos: Vector3, yaw: float, width := 1.8) -> void:
 	root.position = pos
 	root.rotation.y = yaw
 	add_child(root)
-	_box(root, Vector3(width, 0.9, 0.8), Vector3(0.0, 0.45, 0.0), _mat_dark)
-	_box(root, Vector3(width * 0.92, 0.08, 0.7), Vector3(0.0, 0.93, 0.0), _mat_trim)
+	# 控制台：Lux3D 模型当台体；**屏幕与指示灯保留程序化** ——
+	# `_mat_screen` / `_mat_glow` 是发光材质，模型不带自发光，换了就没「通电」感。
+	var console_prop := _prop("station-console", 1.45)
+	if console_prop != null:
+		root.add_child(console_prop)
+	else:
+		_box(root, Vector3(width, 0.9, 0.8), Vector3(0.0, 0.45, 0.0), _mat_dark)
+		_box(root, Vector3(width * 0.92, 0.08, 0.7), Vector3(0.0, 0.93, 0.0), _mat_trim)
 	_box(root, Vector3(width * 0.8, 0.55, 0.06), Vector3(0.0, 1.25, 0.28), _mat_screen)
 	_box(root, Vector3(width * 0.7, 0.045, 0.08), Vector3(0.0, 1.38, 0.21), _mat_glow)
 	for k in range(5):
@@ -1946,23 +2039,28 @@ func _build_telescope(pos: Vector3, yaw: float) -> void:
 	root.position = pos
 	root.rotation.y = yaw
 	add_child(root)
-	_cylinder(root, 0.72, 0.9, 0.55, Vector3(0.0, 0.28, 0.0), _mat_trim, 14)
-	_torus(root, 0.7, 0.82, Vector3(0.0, 0.55, 0.0), _mat_dark, Vector3.ZERO, 6, 20)
-	for i in range(3):
-		var angle := TAU * float(i) / 3.0 + PI / 6.0
-		_cylinder(root, 0.07, 0.07, 1.1, Vector3(cos(angle) * 0.52, 0.25, sin(angle) * 0.52), _mat_dark, 6)
-	for side: float in [-1.0, 1.0]:
-		_box(root, Vector3(0.16, 1.1, 0.22), Vector3(side * 0.52, 1.15, 0.0), _mat_trim)
-	var tube := Node3D.new()
-	tube.position = Vector3(0.0, 1.5, 0.0)
-	tube.rotation.x = 0.95
-	root.add_child(tube)
-	_cylinder(tube, 0.22, 0.28, 2.3, Vector3.ZERO, _mat_trim, 18)
-	_torus(tube, 0.28, 0.36, Vector3(0.0, 1.13, 0.0), _mat_dark, Vector3.ZERO, 8, 30)
-	_torus(tube, 0.26, 0.3, Vector3(0.0, -0.4, 0.0), _mat_teal, Vector3.ZERO, 8, 30)
-	_cylinder(tube, 0.08, 0.12, 0.4, Vector3(0.0, -1.3, 0.0), _mat_dark, 8)
-	_sphere(tube, 0.1, Vector3(0.0, 1.15, 0.0), _mat_glass)
-	_cylinder(tube, 0.05, 0.05, 0.8, Vector3(0.4, 0.3, 0.1), _mat_dark, 6)
+	# 观景望远镜：Lux3D 模型优先（底座+镜筒一体）。碰撞单独加。
+	var viewer_prop := _prop("station-viewer", 2.1)
+	if viewer_prop != null:
+		root.add_child(viewer_prop)
+	else:
+		_cylinder(root, 0.72, 0.9, 0.55, Vector3(0.0, 0.28, 0.0), _mat_trim, 14)
+		_torus(root, 0.7, 0.82, Vector3(0.0, 0.55, 0.0), _mat_dark, Vector3.ZERO, 6, 20)
+		for i in range(3):
+			var angle := TAU * float(i) / 3.0 + PI / 6.0
+			_cylinder(root, 0.07, 0.07, 1.1, Vector3(cos(angle) * 0.52, 0.25, sin(angle) * 0.52), _mat_dark, 6)
+		for side: float in [-1.0, 1.0]:
+			_box(root, Vector3(0.16, 1.1, 0.22), Vector3(side * 0.52, 1.15, 0.0), _mat_trim)
+		var tube := Node3D.new()
+		tube.position = Vector3(0.0, 1.5, 0.0)
+		tube.rotation.x = 0.95
+		root.add_child(tube)
+		_cylinder(tube, 0.22, 0.28, 2.3, Vector3.ZERO, _mat_trim, 18)
+		_torus(tube, 0.28, 0.36, Vector3(0.0, 1.13, 0.0), _mat_dark, Vector3.ZERO, 8, 30)
+		_torus(tube, 0.26, 0.3, Vector3(0.0, -0.4, 0.0), _mat_teal, Vector3.ZERO, 8, 30)
+		_cylinder(tube, 0.08, 0.12, 0.4, Vector3(0.0, -1.3, 0.0), _mat_dark, 8)
+		_sphere(tube, 0.1, Vector3(0.0, 1.15, 0.0), _mat_glass)
+		_cylinder(tube, 0.05, 0.05, 0.8, Vector3(0.4, 0.3, 0.1), _mat_dark, 6)
 	_add_collider(Vector3(1.5, 2.2, 1.5), root.transform * Vector3(0.0, 1.0, 0.0), Vector3(0.0, yaw, 0.0))
 
 
