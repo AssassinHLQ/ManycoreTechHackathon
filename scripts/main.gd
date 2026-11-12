@@ -2429,30 +2429,59 @@ func _planet_interact() -> bool:
 	match kind:
 		"crystal":
 			player.fuel = minf(player.fuel + 35.0, 100.0)
-			hud.show_toast("采集晶簇 · 喷气燃料 +35", 2.6)
+			var left: int = host.consume_interactive(index)
+			hud.show_toast("采集晶簇 · 喷气燃料 +35%s" % _charges_hint(left), 2.6)
 			audio.play_ui(880.0)
 		"cargo":
 			player.oxygen = minf(player.oxygen + 30.0, 100.0)
-			hud.show_toast("拆解货舱 · 氧气 +30", 2.6)
+			var left2: int = host.consume_interactive(index)
+			hud.show_toast("拆解货舱 · 氧气 +30%s" % _charges_hint(left2), 2.6)
 			audio.play_ui(620.0)
 		"vent":
-			# 上升气流：沿星球表面法线给一个向上速度
 			var up: Vector3 = (player.global_position - host.global_position).normalized()
 			player.velocity += up * 16.0
+			host.consume_interactive(index)
 			hud.show_toast("地热气流托起你", 2.2)
 			audio.play_ui(420.0)
 		"relic":
-			var key := "%s:%d" % [String(host.get("planet_id")), index]
-			if relic_seen.has(key):
+			if bool(spot.get("scanned", false)):
 				hud.show_toast("这处遗迹已记录过", 2.0)
 				return true
-			relic_seen[key] = true
-			hud.show_toast("扫描记录 · %s" % _relic_line(pid), 3.6)
+			(host.interactive_spots[index] as Dictionary)["scanned"] = true
+			host.consume_interactive(index)
+			var prog: Array = host.relic_progress()
+			var done: int = int(prog[0])
+			var total: int = int(prog[1])
+			hud.show_toast("扫描记录 %d/%d · %s" % [done, total, _relic_line(pid)], 3.4)
 			audio.play_ui(760.0)
+			if total > 0 and done >= total:
+				# 图鉴集满：一次性奖励
+				player.fuel = 100.0
+				player.oxygen = 100.0
+				hud.show_toast("图鉴集满 · %s 的遗迹全部记录 · 燃料与氧气已充满" % String(host.get("planet_id")), 4.6)
+				audio.play_ui(1180.0)
+		"beacon":
+			if bool(spot.get("scanned", false)):
+				hud.show_toast("信标已点亮", 1.8)
+				return true
+			(host.interactive_spots[index] as Dictionary)["scanned"] = true
+			host.consume_interactive(index)
+			player.fuel = minf(player.fuel + 20.0, 100.0)
+			player.oxygen = minf(player.oxygen + 20.0, 100.0)
+			hud.show_toast("信标点亮 · 上一艘船留下的补给 · 燃料氧气 +20", 3.4)
+			audio.play_ui(980.0)
 		_:
 			return false
-	host.consume_interactive(index)
 	return true
+
+
+## 充能剩余的提示尾巴（剩 0 次时提醒会长回来）。
+func _charges_hint(left: int) -> String:
+	if left <= 0:
+		return "（采空了，过一会儿会长回来）"
+	if left == 1:
+		return "（还剩 1 次）"
+	return "（还剩 %d 次）" % left
 
 
 ## 遗迹扫描的一行说明。

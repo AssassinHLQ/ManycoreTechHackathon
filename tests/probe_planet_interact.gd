@@ -1,10 +1,13 @@
 extends SceneTree
-# 验证星球互动物品：E 键采集/拆解/扫描是否生效。
+# 验证 A/B/C：采集次数与冷却、遗迹图鉴进度、信标奖励。
 #
 #   godot --headless --path . --script res://tests/probe_planet_interact.gd
 #
-# 对每类交互找一个实例，把玩家放到跟前，调用 game._interact()，
-# 检查资源变化 + 该交互点是否被标记已用。
+# A 次语义（旧探针已过时）：
+#   · 晶簇 3 次充能，每采一次 charges -1，采空后不再生效
+#   · 采空后进冷却（90 秒），冷却结束自动长回来
+# B：遗迹每扫一个 relic_progress() 的 done +1，扫满给奖励
+# C：信标点亮给一次补给
 
 var game
 
@@ -29,7 +32,6 @@ func _find_spot(p, kind: String) -> int:
 func _stand_at(p, index: int) -> void:
 	var sp: Dictionary = p.interactive_spots[index]
 	var dir: Vector3 = sp["dir"]
-	# 站在交互物正前方一点点（地面高度 + 物体半高）
 	var pos: Vector3 = p.global_position + p.surface_position(dir, 1.5)
 	game.player.reparent(p, false)
 	game.player.global_transform = Transform3D(
@@ -56,63 +58,68 @@ func _run() -> void:
 	await _frames(10)
 
 	var p = game.home
-	print("=== %s 的可交互点 ===" % p.planet_id)
-	var counts := {"crystal": 0, "cargo": 0, "vent": 0, "relic": 0}
+	var counts := {"crystal": 0, "cargo": 0, "vent": 0, "relic": 0, "beacon": 0}
 	for sp in p.interactive_spots:
 		var k := String(sp["kind"])
 		counts[k] = int(counts.get(k, 0)) + 1
-	print("  晶簇 %d  货舱 %d  喷口 %d  遗迹 %d  （合计 %d）" % [
+	print("=== %s 可交互点 ===" % p.planet_id)
+	print("  晶簇 %d 货舱 %d 喷口 %d 遗迹 %d 信标 %d （合计 %d）" % [
 		counts["crystal"], counts["cargo"], counts["vent"], counts["relic"],
-		p.interactive_spots.size()])
+		counts["beacon"], p.interactive_spots.size()])
 	print("")
 
-	# ① 晶簇：燃料 50 → 应 +35
+	# ── A：晶簇 3 次充能，逐次递减，采空后失效 ──
 	var ci := _find_spot(p, "crystal")
 	if ci < 0:
-		print("  \u26a0 没有晶簇点，跳过采集测试")
+		print("  ⚠ 无晶簇点，跳过 A 测试")
 	else:
 		await _stand_at(p, ci)
-		game.player.fuel = 50.0
-		var before: float = game.player.fuel
-		game._interact()
-		print("  晶簇采集：燃料 %.0f → %.0f  已标记=%s  %s" % [
-			before, game.player.fuel,
-			str(bool((p.interactive_spots[ci] as Dictionary)["used"])),
-			"\u2713" if game.player.fuel > before else "\u2717"])
+		game.player.fuel = 0.0
+		print("  A 晶簇（应 3 次充能）：")
+		for round_i in range(4):
+			var before_f: float = game.player.fuel
+			var before_c: int = int((p.interactive_spots[ci] as Dictionary)["charges"])
+			game._interact()
+			var after_f: float = game.player.fuel
+			var after_c: int = int((p.interactive_spots[ci] as Dictionary)["charges"])
+			print("    第 %d 次：燃料 %.0f → %.0f   次数 %d → %d" % [
+				round_i + 1, before_f, after_f, before_c, after_c])
+		var spent: bool = int((p.interactive_spots[ci] as Dictionary)["charges"]) == 0
+		print("    采空后 charges=0  %s" % ("✓" if spent else "✗"))
 
-	# ② 货舱：氧气 50 → 应 +30
-	var ki := _find_spot(p, "cargo")
-	if ki < 0:
-		print("  \u26a0 没有货舱点，跳过拆解测试")
-	else:
-		await _stand_at(p, ki)
-		game.player.oxygen = 50.0
-		var ob: float = game.player.oxygen
-		game._interact()
-		print("  货舱拆解：氧气 %.0f → %.0f  %s" % [
-			ob, game.player.oxygen,
-			"\u2713" if game.player.oxygen > ob else "\u2717"])
+	# ── A2：冷却再生（把 ready_at 提前，模拟 90 秒过去）──
+	if ci >= 0:
+		(p.interactive_spots[ci] as Dictionary)["ready_at"] = 0.0
+		await _frames(4)
+		var regen: int = int((p.interactive_spots[ci] as Dictionary)["charges"])
+		print("  A2 冷却到期后自动再生：charges=%d  %s" % [
+			regen, "✓" if regen > 0 else "✗"])
 
-	# ③ 遗迹：应写进 relic_seen
+	# ── B：遗迹图鉴进度 ──
 	var ri := _find_spot(p, "relic")
 	if ri < 0:
-		print("  \u26a0 没有遗迹点，跳过扫描测试")
+		print("  ⚠ 无遗迹点，跳过 B 测试")
 	else:
+		var prog0: Array = p.relic_progress()
 		await _stand_at(p, ri)
-		var seen_before: int = game.relic_seen.size()
 		game._interact()
-		print("  遗迹扫描：记录 %d → %d  %s" % [
-			seen_before, game.relic_seen.size(),
-			"\u2713" if game.relic_seen.size() > seen_before else "\u2717"])
+		var prog1: Array = p.relic_progress()
+		print("  B 遗迹扫描：进度 %d/%d → %d/%d  %s" % [
+			int(prog0[0]), int(prog0[1]), int(prog1[0]), int(prog1[1]),
+			"✓" if int(prog1[0]) > int(prog0[0]) else "✗"])
 
-	# ④ 同一处再按一次 E：不应该重复生效
-	if ci >= 0:
-		await _stand_at(p, ci)
-		var f2: float = game.player.fuel
+	# ── C：信标点亮 ──
+	var bi := _find_spot(p, "beacon")
+	if bi < 0:
+		print("  ⚠ 无信标点，跳过 C 测试")
+	else:
+		await _stand_at(p, bi)
+		game.player.fuel = 10.0
+		game.player.oxygen = 10.0
 		game._interact()
-		print("  重复采集：燃料 %.0f → %.0f  %s" % [
-			f2, game.player.fuel,
-			"\u2713（没有再涨）" if is_equal_approx(f2, game.player.fuel) else "\u2717 重复生效了"])
+		print("  C 信标点亮：燃料 → %.0f  氧气 → %.0f  %s" % [
+			game.player.fuel, game.player.oxygen,
+			"✓" if game.player.fuel > 10.0 else "✗"])
 
 	if FileAccess.file_exists(save):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save))

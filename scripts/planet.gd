@@ -65,6 +65,42 @@ const PROP_INSTANCE_CAP := {
 	"crystal-cluster-lo": 40,
 	"vent-lo": 40,
 	"stone-bridge": 4,
+	"power-cell": 4,
+	"control-console": 4,
+	"stasis-pod": 4,
+	"signal-beacon": 4,
+	"mining-rig": 4,
+	"fuel-tank": 4,
+	"holo-slab": 4,
+	"supply-crate": 4,
+	"pipe-cluster": 4,
+	"comm-dish": 4,
+	"thermal-stack": 4,
+	"databank": 4,
+	"bone-fossil": 10,
+	"stone-cairn": 10,
+	"mossy-boulder": 10,
+	"icicle-cluster": 10,
+	"dune-grass": 10,
+	"ore-scrap": 10,
+	"rail-segment": 10,
+	"banner-pole": 10,
+	"rope-coil": 10,
+	"plank-walkway": 10,
+	"gravel-pile": 10,
+	"rusted-hull": 10,
+	"glass-shards": 10,
+	"twisted-metal": 10,
+	"dead-shrub": 10,
+	"bleached-log": 10,
+	"lf-crater-rim": 2,
+	"lf-dry-riverbed": 2,
+	"lf-glacier-wall": 2,
+	"lf-boulder-field": 2,
+	"lf-cliff-terraces": 2,
+	"lf-sinkhole": 2,
+	"lf-lava-flow": 2,
+	"lf-salt-flat": 2,
 	"alien-mushroom-lo": 40,
 	"dead-tree-lo": 40,
 	"thorn-shrub-lo": 40,
@@ -176,31 +212,46 @@ const PLANET_PROPS := {
 ## 尺寸是「设计米数」，运行时 × prop_scale。
 ## ⚠ 这一条**完全零额度**：只是把已有 GLB 放大，不新增生成。
 const LANDFORM_PROPS := {
-	"qinglan": [["rock-cluster", 1, 26, 34, false], ["lf-ridge-spine", 1, 26, 40, false]],
+	"qinglan": [["rock-cluster", 1, 26, 34, false], ["lf-ridge-spine", 1, 26, 40, false],
+		["lf-boulder-field", 1, 26, 40, false]],
 	"zheya": [["rock-spire", 2, 28, 42, false], ["lf-canyon-wall", 1, 28, 46, false],
+		["lf-lava-flow", 1, 28, 46, false], ["stone-bridge", 1, 14, 26, false]],
+	"cangbo": [["floating-rock", 2, 26, 38, false], ["lf-mesa-plateau", 1, 28, 44, false],
+		["lf-glacier-wall", 1, 28, 46, false]],
+	"xuanjing": [["floating-rock", 3, 26, 42, false], ["lf-ridge-spine", 1, 26, 40, false],
+		["lf-sinkhole", 1, 28, 44, false]],
+	"xuanyuan": [["rock-spire", 2, 30, 46, false], ["lf-crater-rim", 1, 26, 42, false],
 		["stone-bridge", 1, 14, 26, false]],
-	"cangbo": [["floating-rock", 2, 26, 38, false], ["lf-mesa-plateau", 1, 28, 44, false]],
-	"xuanjing": [["floating-rock", 3, 26, 42, false], ["lf-ridge-spine", 1, 26, 40, false]],
-	"xuanyuan": [["rock-spire", 2, 30, 46, false], ["stone-bridge", 1, 14, 26, false]],
-	"baiyao": [["rock-spire", 2, 28, 44, false], ["lf-canyon-wall", 1, 28, 46, false]],
-	"pansha": [["rock-spire", 3, 30, 48, false], ["lf-natural-arch", 1, 26, 40, false]],
-	"taiyuan": [["rock-cluster", 2, 26, 36, false], ["lf-ridge-spine", 1, 26, 40, false]],
+	"baiyao": [["rock-spire", 2, 28, 44, false], ["lf-canyon-wall", 1, 28, 46, false],
+		["lf-glacier-wall", 1, 28, 46, false]],
+	"pansha": [["rock-spire", 3, 30, 48, false], ["lf-natural-arch", 1, 26, 40, false],
+		["lf-dry-riverbed", 1, 26, 42, false]],
+	"taiyuan": [["rock-cluster", 2, 26, 36, false], ["lf-ridge-spine", 1, 26, 40, false],
+		["lf-crater-rim", 1, 26, 40, false]],
 	"liuwu": [["rock-spire", 1, 28, 40, false], ["lf-canyon-wall", 1, 28, 46, false],
-		["stone-bridge", 1, 14, 26, false]],
+		["lf-lava-flow", 1, 28, 46, false], ["stone-bridge", 1, 14, 26, false]],
 	"jianmo": [["rock-spire", 3, 30, 48, false], ["floating-rock", 1, 26, 38, false],
-		["stone-bridge", 1, 14, 26, false]],
-	"jiangxiao": [["rock-spire", 2, 28, 44, false], ["lf-mesa-plateau", 1, 28, 44, false]],
-	"cangwu": [["rock-cluster", 2, 26, 36, false], ["lf-ridge-spine", 1, 26, 40, false]],
-	"jinwu": [["rock-cluster", 2, 26, 34, false], ["lf-mesa-plateau", 1, 28, 44, false]],
-	"yuheng": [["crystal-cluster", 2, 26, 40, false]],
-	"sue": [["rock-spire", 2, 26, 40, false], ["lf-canyon-wall", 1, 28, 46, false]],
+		["lf-crater-rim", 1, 26, 42, false], ["stone-bridge", 1, 14, 26, false]],
+	"jiangxiao": [["rock-spire", 2, 28, 44, false], ["lf-mesa-plateau", 1, 28, 44, false],
+		["lf-cliff-terraces", 1, 28, 46, false]],
+	"cangwu": [["rock-cluster", 2, 26, 36, false], ["lf-ridge-spine", 1, 26, 40, false],
+		["lf-sinkhole", 1, 26, 42, false]],
+	"jinwu": [["rock-cluster", 2, 26, 34, false], ["lf-mesa-plateau", 1, 28, 44, false],
+		["lf-salt-flat", 1, 26, 42, false]],
+	"yuheng": [["crystal-cluster", 2, 26, 40, false], ["lf-cliff-terraces", 1, 26, 44, false]],
+	"sue": [["rock-spire", 2, 26, 40, false], ["lf-canyon-wall", 1, 28, 46, false],
+		["lf-boulder-field", 1, 26, 40, false]],
 	"danxia": [["rock-cluster", 2, 26, 38, false], ["rock-spire", 1, 30, 44, false],
-		["lf-natural-arch", 1, 26, 40, false], ["stone-bridge", 1, 14, 26, false]],
-	"biluo": [["floating-rock", 2, 26, 40, false], ["lf-natural-arch", 1, 26, 40, false]],
-	"youdu": [["crystal-cluster", 2, 26, 42, false], ["lf-canyon-wall", 1, 28, 46, false]],
+		["lf-natural-arch", 1, 26, 40, false], ["lf-cliff-terraces", 1, 28, 46, false],
+		["stone-bridge", 1, 14, 26, false]],
+	"biluo": [["floating-rock", 2, 26, 40, false], ["lf-natural-arch", 1, 26, 40, false],
+		["lf-salt-flat", 1, 26, 40, false]],
+	"youdu": [["crystal-cluster", 2, 26, 42, false], ["lf-canyon-wall", 1, 28, 46, false],
+		["lf-glacier-wall", 1, 28, 46, false]],
 	"yaoguang": [["crystal-cluster", 3, 26, 42, false], ["floating-rock", 1, 26, 38, false],
-		["lf-ridge-spine", 1, 26, 40, false]],
-	"xuanpu": [["rock-cluster", 1, 26, 36, false], ["crystal-cluster", 1, 26, 40, false]],
+		["lf-ridge-spine", 1, 26, 40, false], ["lf-crater-rim", 1, 26, 42, false]],
+	"xuanpu": [["rock-cluster", 1, 26, 36, false], ["crystal-cluster", 1, 26, 40, false],
+		["lf-dry-riverbed", 1, 26, 40, false]],
 }
 
 ## 会「悬浮」的道具：放置时抬高，做成浮空岛/浮石。
@@ -211,6 +262,34 @@ const PROP_FLOATING := ["floating-rock"]
 ## 第二批资产（2026-11-12，用户：「怎么才 39，太少了」）里挑的 12 个通用件，
 ## 按星球气候分配：冰原给冰棱、沙海给沙岩拱、丛林给枯树蘑菇、
 ## 遗迹区给石像断墙。尺寸是设计米数，运行时 × prop_scale。
+## 细节点缀层：中距离的小物件，给「走出基地那一段」加视觉信息。
+##
+## 和 SCATTER_MIX（整球铺量、控总量）分工：
+##   SCATTER_MIX 负责「远看有东西」，这一层负责「走近有细节」。
+## 位置在站点 0.18~0.9 弧度（约 360~1800 米），不压平地、不堵楼梯。
+const DETAIL_PROPS := {
+	"qinglan": [["stone-cairn", 4, 2, 3], ["mossy-boulder", 6, 2, 4], ["bleached-log", 5, 3, 6], ["rope-coil", 3, 1, 2]],
+	"zheya": [["ore-scrap", 6, 2, 4], ["rusted-hull", 4, 3, 6], ["gravel-pile", 6, 2, 3], ["dead-shrub", 5, 2, 3]],
+	"cangbo": [["icicle-cluster", 6, 2, 4], ["stone-cairn", 4, 2, 3], ["gravel-pile", 5, 2, 3]],
+	"xuanjing": [["glass-shards", 6, 2, 3], ["twisted-metal", 5, 3, 5], ["ore-scrap", 5, 2, 4]],
+	"xuanyuan": [["bone-fossil", 4, 3, 6], ["stone-cairn", 5, 2, 3], ["gravel-pile", 5, 2, 3]],
+	"baiyao": [["icicle-cluster", 8, 2, 4], ["stone-cairn", 3, 2, 3]],
+	"pansha": [["dune-grass", 8, 1, 2], ["bleached-log", 5, 3, 6], ["gravel-pile", 5, 2, 3]],
+	"taiyuan": [["dead-shrub", 7, 2, 3], ["stone-cairn", 4, 2, 3], ["rope-coil", 3, 1, 2]],
+	"liuwu": [["rusted-hull", 5, 3, 6], ["pipe-cluster", 4, 2, 4], ["ore-scrap", 5, 2, 4]],
+	"jianmo": [["glass-shards", 5, 2, 3], ["stone-cairn", 5, 2, 3]],
+	"jiangxiao": [["ore-scrap", 6, 2, 4], ["gravel-pile", 6, 2, 3], ["rusted-hull", 3, 3, 5]],
+	"cangwu": [["mossy-boulder", 6, 2, 4], ["bleached-log", 5, 3, 6], ["dead-shrub", 5, 2, 3]],
+	"jinwu": [["gravel-pile", 7, 2, 3], ["bleached-log", 4, 3, 6], ["dune-grass", 5, 1, 2]],
+	"yuheng": [["mossy-boulder", 5, 2, 4], ["glass-shards", 5, 2, 3], ["stone-cairn", 4, 2, 3]],
+	"sue": [["gravel-pile", 7, 2, 3], ["stone-cairn", 5, 2, 3], ["bone-fossil", 3, 3, 6]],
+	"danxia": [["gravel-pile", 6, 2, 3], ["ore-scrap", 5, 2, 4], ["dune-grass", 4, 1, 2]],
+	"biluo": [["glass-shards", 6, 2, 3], ["mossy-boulder", 4, 2, 4], ["rope-coil", 3, 1, 2]],
+	"youdu": [["icicle-cluster", 7, 2, 4], ["glass-shards", 4, 2, 3], ["stone-cairn", 3, 2, 3]],
+	"yaoguang": [["glass-shards", 7, 2, 3], ["stone-cairn", 4, 2, 3], ["icicle-cluster", 4, 2, 4]],
+	"xuanpu": [["mossy-boulder", 5, 2, 4], ["dead-shrub", 6, 2, 3], ["rope-coil", 3, 1, 2]],
+}
+
 ## 铺量混排：[prop_id, 数量, 尺寸下限, 尺寸上限]，尺寸是**设计米数**（× prop_scale）。
 ##
 ## ⚠ 2026-11-12：原来每颗星球只铺 1~2 种模型 × 90 个，同一个模型重复 90 次，
@@ -297,6 +376,42 @@ const PROP_MODELS := {
 	"crystal-cluster-lo": "res://assets/models/props/crystal-cluster-lo/model.glb",
 	"vent-lo": "res://assets/models/props/vent-lo/model.glb",
 	"stone-bridge": "res://assets/models/props/stone-bridge/model.glb",
+	"power-cell": "res://assets/models/props/power-cell/model.glb",
+	"control-console": "res://assets/models/props/control-console/model.glb",
+	"stasis-pod": "res://assets/models/props/stasis-pod/model.glb",
+	"signal-beacon": "res://assets/models/props/signal-beacon/model.glb",
+	"mining-rig": "res://assets/models/props/mining-rig/model.glb",
+	"fuel-tank": "res://assets/models/props/fuel-tank/model.glb",
+	"holo-slab": "res://assets/models/props/holo-slab/model.glb",
+	"supply-crate": "res://assets/models/props/supply-crate/model.glb",
+	"pipe-cluster": "res://assets/models/props/pipe-cluster/model.glb",
+	"comm-dish": "res://assets/models/props/comm-dish/model.glb",
+	"thermal-stack": "res://assets/models/props/thermal-stack/model.glb",
+	"databank": "res://assets/models/props/databank/model.glb",
+	"bone-fossil": "res://assets/models/props/bone-fossil/model.glb",
+	"stone-cairn": "res://assets/models/props/stone-cairn/model.glb",
+	"mossy-boulder": "res://assets/models/props/mossy-boulder/model.glb",
+	"icicle-cluster": "res://assets/models/props/icicle-cluster/model.glb",
+	"dune-grass": "res://assets/models/props/dune-grass/model.glb",
+	"ore-scrap": "res://assets/models/props/ore-scrap/model.glb",
+	"rail-segment": "res://assets/models/props/rail-segment/model.glb",
+	"banner-pole": "res://assets/models/props/banner-pole/model.glb",
+	"rope-coil": "res://assets/models/props/rope-coil/model.glb",
+	"plank-walkway": "res://assets/models/props/plank-walkway/model.glb",
+	"gravel-pile": "res://assets/models/props/gravel-pile/model.glb",
+	"rusted-hull": "res://assets/models/props/rusted-hull/model.glb",
+	"glass-shards": "res://assets/models/props/glass-shards/model.glb",
+	"twisted-metal": "res://assets/models/props/twisted-metal/model.glb",
+	"dead-shrub": "res://assets/models/props/dead-shrub/model.glb",
+	"bleached-log": "res://assets/models/props/bleached-log/model.glb",
+	"lf-crater-rim": "res://assets/models/props/lf-crater-rim/model.glb",
+	"lf-dry-riverbed": "res://assets/models/props/lf-dry-riverbed/model.glb",
+	"lf-glacier-wall": "res://assets/models/props/lf-glacier-wall/model.glb",
+	"lf-boulder-field": "res://assets/models/props/lf-boulder-field/model.glb",
+	"lf-cliff-terraces": "res://assets/models/props/lf-cliff-terraces/model.glb",
+	"lf-sinkhole": "res://assets/models/props/lf-sinkhole/model.glb",
+	"lf-lava-flow": "res://assets/models/props/lf-lava-flow/model.glb",
+	"lf-salt-flat": "res://assets/models/props/lf-salt-flat/model.glb",
 	"alien-mushroom-lo": "res://assets/models/props/alien-mushroom-lo/model.glb",
 	"dead-tree-lo": "res://assets/models/props/dead-tree-lo/model.glb",
 	"thorn-shrub-lo": "res://assets/models/props/thorn-shrub-lo/model.glb",
@@ -1675,6 +1790,19 @@ static func _prop_mesh_for_instancing(prop_id: String) -> Mesh:
 ##
 ## ⚠ 只收「走到跟前看得清」的东西；远处高山巨石不入表，
 ##   否则每颗星球会有几百个可交互点，查询和存档都变贵。
+## 每个交互点的充能数与冷却秒数。
+##
+## charges = 能采几次；cooldown = 采空后多少秒长回来。
+## 「矿脉型」的东西能反复采，「一次性」的（遗迹扫描、喷口）只给 1。
+const INTERACTIVE_CHARGES := {
+	"crystal": [3, 90.0],
+	"cargo": [2, 150.0],
+	"vent": [1, 120.0],
+	"relic": [1, 0.0],
+	"beacon": [1, 0.0],
+}
+
+
 const INTERACTIVE_PROPS := {
 	"crystal-cluster": "crystal",
 	"crystal-cluster-lo": "crystal",
@@ -1690,6 +1818,18 @@ const INTERACTIVE_PROPS := {
 	"stone-idol": "relic",
 	"obelisk": "relic",
 	"rubble-wall": "relic",
+	"power-cell": "crystal",
+	"fuel-tank": "crystal",
+	"supply-crate": "cargo",
+	"mining-rig": "cargo",
+	"pipe-cluster": "cargo",
+	"thermal-stack": "vent",
+	"control-console": "relic",
+	"stasis-pod": "relic",
+	"holo-slab": "relic",
+	"databank": "relic",
+	"comm-dish": "relic",
+	"signal-beacon": "beacon",
 }
 
 ## 每颗星球的可交互点：{id, kind, dir, size, used}
@@ -1719,6 +1859,8 @@ func _add_prop(prop_id: String, direction: Vector3, size: float,
 	# 可交互道具另外记一条，供 main.gd 的 E 键查询。
 	var ikind := String(INTERACTIVE_PROPS.get(prop_id, ""))
 	if ikind != "":
+		var cfg: Array = INTERACTIVE_CHARGES.get(ikind, [1, 0.0])
+		var spot_index: int = interactive_spots.size()
 		interactive_spots.append({
 			"id": prop_id,
 			"kind": ikind,
@@ -1726,7 +1868,18 @@ func _add_prop(prop_id: String, direction: Vector3, size: float,
 			"size": size,
 			"altitude": altitude,
 			"used": false,
+			"charges": int(cfg[0]),
+			"max_charges": int(cfg[0]),
+			"cooldown": float(cfg[1]),
+			"ready_at": 0,
+			"scanned": false,
+			"tint": tint,
+			"node": null,
+			"mi": -1,
 		})
+		# 让 _flush_props 建立「交互点 → MultiMesh 实例」的映射，
+		# 否则没办法在运行时单独把某一个实例调暗。
+		(prop_queue[prop_id] as Array)[-1]["spot"] = spot_index
 
 
 ## 离玩家最近的可交互道具。没有则返回空字典。
@@ -1743,6 +1896,8 @@ func nearest_interactive(world_pos: Vector3, extra := 4.0) -> Dictionary:
 		var spot: Dictionary = interactive_spots[i]
 		if bool(spot["used"]):
 			continue
+		if int(spot["charges"]) <= 0:
+			continue          # 采空了，等冷却
 		var p: Vector3 = surface_position(spot["dir"], float(spot["altitude"]))
 		var reach: float = maxf(float(spot["size"]) * 0.75, 3.0) + extra
 		var d: float = local.distance_to(p)
@@ -1757,10 +1912,67 @@ func nearest_interactive(world_pos: Vector3, extra := 4.0) -> Dictionary:
 	return out
 
 
-## 标记某个交互点已用掉（采集/拆解过就不能再采）。
-func consume_interactive(index: int) -> void:
-	if index >= 0 and index < interactive_spots.size():
-		(interactive_spots[index] as Dictionary)["used"] = true
+## 扣一次次数。扣到 0 就把该实例调暗并进入冷却，冷却完自动长回来。
+##
+## 返回剩余次数（0 = 刚采空）。
+func consume_interactive(index: int) -> int:
+	if index < 0 or index >= interactive_spots.size():
+		return 0
+	var spot: Dictionary = interactive_spots[index]
+	var left: int = maxi(int(spot["charges"]) - 1, 0)
+	spot["charges"] = left
+	if left <= 0:
+		_set_spot_dim(spot, true)
+		var cd: float = float(spot["cooldown"])
+		if cd <= 0.0:
+			spot["used"] = true      # 一次性的（遗迹/喷口）直接作废
+		else:
+			spot["ready_at"] = Time.get_ticks_msec() / 1000.0 + cd
+	return left
+
+
+## 把某个交互实例的颜色调暗 / 恢复（采空的直观反馈）。
+func _set_spot_dim(spot: Dictionary, dim: bool) -> void:
+	var node = spot.get("node")
+	var mi: int = int(spot.get("mi", -1))
+	if node == null or not is_instance_valid(node) or mi < 0:
+		return
+	var mm: MultiMesh = (node as MultiMeshInstance3D).multimesh
+	if mm == null or mi >= mm.instance_count:
+		return
+	var tint: Color = spot["tint"]
+	if dim:
+		mm.set_instance_color(mi, Color(tint.r * 0.22, tint.g * 0.22, tint.b * 0.22, tint.a))
+	else:
+		mm.set_instance_color(mi, tint)
+
+
+## 冷却到期的交互点重新充能（在 _process 里调）。
+func _refresh_interactive_charges() -> void:
+	if interactive_spots.is_empty():
+		return
+	var now: float = Time.get_ticks_msec() / 1000.0
+	for i in range(interactive_spots.size()):
+		var spot: Dictionary = interactive_spots[i]
+		if bool(spot["used"]) or int(spot["charges"]) > 0:
+			continue
+		if now < float(spot["ready_at"]):
+			continue
+		spot["charges"] = int(spot["max_charges"])
+		_set_spot_dim(spot, false)
+
+
+## 某颗星球的遗迹扫描进度：[已扫, 总数]。
+func relic_progress() -> Array:
+	var total := 0
+	var done := 0
+	for spot in interactive_spots:
+		if String(spot["kind"]) != "relic":
+			continue
+		total += 1
+		if bool(spot["scanned"]):
+			done += 1
+	return [done, total]
 
 
 ## 给站点附近的道具补静态碰撞体。
@@ -1921,6 +2133,8 @@ func _build_landmark_props() -> void:
 	_build_base_surroundings()
 	# 互动种子：保证每颗星球都有晶簇/货舱/喷口可用
 	_build_interactive_seeds()
+	# 细节点缀层：走出去那一段的小物件
+	_build_detail_props()
 	# 铺量混排：4~5 种低模混在一起，替代「同一种模型重复 90 次」
 	_build_scatter_mix()
 	# 目标 ④：大型地貌件（把已有资产放大，零额度）
@@ -1928,6 +2142,29 @@ func _build_landmark_props() -> void:
 	# 地标与地貌件都是在 _build_landscape 之后才排进队列的，所以必须在这里补 flush
 	# （_flush_props 内部有 _flushed_prop_ids 去重，铺量那批不会重复实例化）。
 	_flush_props()
+
+
+## 细节点缀层布置（见 DETAIL_PROPS）。
+func _build_detail_props() -> void:
+	var site: Vector3 = site_direction.normalized()
+	var perp: Vector3 = site.cross(Vector3.FORWARD)
+	if perp.length_squared() < 0.01:
+		perp = site.cross(Vector3.RIGHT)
+	perp = perp.normalized()
+	var pad_angle: float = site_pad_radius / maxf(radius, 1.0)
+	for entry in DETAIL_PROPS.get(kind, []):
+		var pid: String = entry[0]
+		if _prop_mesh(pid) == null:
+			continue
+		for _i in range(int(entry[1])):
+			var size: float = rng.randf_range(float(entry[2]), float(entry[3])) * prop_scale
+			var axis: Vector3 = perp.rotated(site, rng.randf() * TAU)
+			# 0.18~0.9 弧度：绕开平地，但还在「走得到」的范围
+			var ang: float = maxf(pad_angle * 1.05, rng.randf_range(0.18, 0.9))
+			var dir: Vector3 = site.rotated(axis, ang).normalized()
+			if _near_cave(dir, 0.03):
+				continue
+			_add_prop(pid, dir, size, -1.2 * prop_scale, _prop_tint(), false)
 
 
 ## 互动种子：保证每颗星球都有四种互动可用。
@@ -1939,6 +2176,8 @@ const INTERACTIVE_SEED := [
 	["crystal-cluster-lo", 2, 2, 4],
 	["cargo-pod-lo", 1, 3, 5],
 	["vent-lo", 1, 2, 4],
+	# 信标（第四批资产）：给一次补给，也让「点亮」这个交互每颗星球都能玩到
+	["signal-beacon", 1, 2, 3],
 ]
 
 
@@ -2100,6 +2339,7 @@ func _flush_props() -> void:
 		mm.use_colors = true
 		mm.mesh = mesh
 		mm.instance_count = entries.size()
+		var pending_spots: Array = []
 		for i in range(entries.size()):
 			var e: Dictionary = entries[i]
 			var dir: Vector3 = e["dir"]
@@ -2112,9 +2352,18 @@ func _flush_props() -> void:
 				float(e["altitude"]) - aabb.position.y * k)
 			mm.set_instance_transform(i, Transform3D(basis, origin))
 			mm.set_instance_color(i, e["tint"])
+			# 交互点记下「实例下标」，等 instance 建好再绑定节点
+			if e.has("spot"):
+				pending_spots.append([int(e["spot"]), i])
 		var instance := MultiMeshInstance3D.new()
 		instance.name = "Prop_%s" % prop_id
 		instance.multimesh = mm
+		# 把交互点绑到实例上（采空后需要单独调暗那一个）
+		for pair in pending_spots:
+			var si: int = int(pair[0])
+			if si >= 0 and si < interactive_spots.size():
+				(interactive_spots[si] as Dictionary)["node"] = instance
+				(interactive_spots[si] as Dictionary)["mi"] = int(pair[1])
 		instance.visibility_range_end = 2200.0
 		add_child(instance)
 		_add_prop_colliders(entries, prop_id)
@@ -2337,6 +2586,7 @@ func _process(_delta: float) -> void:
 	if game != null:
 		_update_orbit()
 		_update_water()
+		_refresh_interactive_charges()
 		if not terrain_collision_done:
 			# 飞船或玩家进入 4 倍半径就建地形碰撞，落地前早就建好。
 			var limit := radius * 4.0
