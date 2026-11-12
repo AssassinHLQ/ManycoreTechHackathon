@@ -121,6 +121,20 @@ func _run() -> void:
 			game.player.fuel, game.player.oxygen,
 			"✓" if game.player.fuel > 10.0 else "✗"])
 
+	# ── D：医疗站（第五批新增类型 med，氧气回满）──
+	var mi := _find_spot(p, "med")
+	if mi < 0:
+		print("  ⚠ 无医疗站点，跳过 D 测试")
+	else:
+		await _stand_at(p, mi)
+		game.player.oxygen = 12.0
+		var oc: int = int((p.interactive_spots[mi] as Dictionary)["charges"])
+		game._interact()
+		var oc2: int = int((p.interactive_spots[mi] as Dictionary)["charges"])
+		print("  D 医疗站：氧气 12 → %.0f   次数 %d → %d  %s" % [
+			game.player.oxygen, oc, oc2,
+			"✓" if game.player.oxygen >= 99.0 else "✗"])
+
 	if FileAccess.file_exists(save):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save))
 	quit(0)

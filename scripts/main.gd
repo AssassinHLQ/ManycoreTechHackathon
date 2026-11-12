@@ -2470,6 +2470,12 @@ func _planet_interact() -> bool:
 			player.oxygen = minf(player.oxygen + 20.0, 100.0)
 			hud.show_toast("信标点亮 · 上一艘船留下的补给 · 燃料氧气 +20", 3.4)
 			audio.play_ui(980.0)
+		"med":
+			# 医疗站：氧气回满（比货舱强，但充能少、冷却长）
+			player.oxygen = 100.0
+			var left3: int = host.consume_interactive(index)
+			hud.show_toast("医疗站 · 氧气已回满%s" % _charges_hint(left3), 2.8)
+			audio.play_ui(1040.0)
 		_:
 			return false
 	return true

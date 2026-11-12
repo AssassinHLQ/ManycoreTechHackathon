@@ -65,6 +65,24 @@ const PROP_INSTANCE_CAP := {
 	"crystal-cluster-lo": 40,
 	"vent-lo": 40,
 	"stone-bridge": 4,
+	"med-station": 3,
+	"oxygen-generator": 3,
+	"ore-crusher": 3,
+	"holo-terminal": 3,
+	"wind-turbine": 3,
+	"landing-beacon": 3,
+	"crystal-vein": 8,
+	"frozen-pond": 8,
+	"sand-ripple": 8,
+	"alien-mound": 8,
+	"lava-drip": 8,
+	"coral-stack": 8,
+	"mushroom-ring": 8,
+	"glass-crater": 8,
+	"bone-yard": 8,
+	"lf-mesa-spire": 2,
+	"lf-dune-sea": 2,
+	"lf-crystal-forest": 2,
 	"power-cell": 4,
 	"control-console": 4,
 	"stasis-pod": 4,
@@ -290,6 +308,34 @@ const DETAIL_PROPS := {
 	"xuanpu": [["mossy-boulder", 5, 2, 4], ["dead-shrub", 6, 2, 3], ["rope-coil", 3, 1, 2]],
 }
 
+## 细节点缀层·第二张表（第五批的「生态专属装饰」）。
+##
+## 与 DETAIL_PROPS 分开维护：那张是通用件（石堆/苔石/枯木…），
+## 这张是**各生物群系专属**的小景（晶脉/冻水洼/沙纹/蚁丘/熔岩滴石/珊瑚堆/
+## 蘑菇圈/玻璃化坑/骨骸场）。两张表都会被执行，互不覆盖。
+const DETAIL_PROPS_EXTRA := {
+	"qinglan": [["mushroom-ring", 3, 2, 3], ["alien-mound", 3, 3, 5]],
+	"zheya": [["glass-crater", 3, 3, 5], ["lava-drip", 4, 2, 4]],
+	"cangbo": [["frozen-pond", 3, 3, 5], ["crystal-vein", 3, 2, 4]],
+	"xuanjing": [["crystal-vein", 4, 3, 5], ["glass-crater", 2, 3, 5]],
+	"xuanyuan": [["bone-yard", 3, 3, 5], ["glass-crater", 2, 2, 4]],
+	"baiyao": [["frozen-pond", 4, 3, 5], ["crystal-vein", 4, 3, 5]],
+	"pansha": [["sand-ripple", 5, 3, 5], ["bone-yard", 2, 3, 5]],
+	"taiyuan": [["mushroom-ring", 4, 2, 3], ["alien-mound", 3, 3, 5]],
+	"liuwu": [["lava-drip", 5, 2, 4], ["glass-crater", 2, 3, 5]],
+	"jianmo": [["crystal-vein", 4, 3, 5], ["glass-crater", 3, 2, 4]],
+	"jiangxiao": [["lava-drip", 4, 2, 4], ["sand-ripple", 3, 3, 5]],
+	"cangwu": [["mushroom-ring", 4, 2, 3], ["alien-mound", 4, 3, 5]],
+	"jinwu": [["sand-ripple", 4, 3, 5], ["glass-crater", 2, 2, 4]],
+	"yuheng": [["crystal-vein", 4, 3, 5], ["mushroom-ring", 3, 2, 3]],
+	"sue": [["bone-yard", 3, 3, 5], ["glass-crater", 2, 2, 4]],
+	"danxia": [["sand-ripple", 4, 3, 5], ["bone-yard", 2, 3, 5]],
+	"biluo": [["coral-stack", 5, 2, 4], ["frozen-pond", 2, 3, 5]],
+	"youdu": [["frozen-pond", 4, 3, 5], ["crystal-vein", 3, 3, 5]],
+	"yaoguang": [["crystal-vein", 5, 3, 5], ["glass-crater", 2, 2, 4]],
+	"xuanpu": [["mushroom-ring", 4, 2, 3], ["alien-mound", 3, 3, 5]],
+}
+
 ## 铺量混排：[prop_id, 数量, 尺寸下限, 尺寸上限]，尺寸是**设计米数**（× prop_scale）。
 ##
 ## ⚠ 2026-11-12：原来每颗星球只铺 1~2 种模型 × 90 个，同一个模型重复 90 次，
@@ -376,6 +422,24 @@ const PROP_MODELS := {
 	"crystal-cluster-lo": "res://assets/models/props/crystal-cluster-lo/model.glb",
 	"vent-lo": "res://assets/models/props/vent-lo/model.glb",
 	"stone-bridge": "res://assets/models/props/stone-bridge/model.glb",
+	"med-station": "res://assets/models/props/med-station/model.glb",
+	"oxygen-generator": "res://assets/models/props/oxygen-generator/model.glb",
+	"ore-crusher": "res://assets/models/props/ore-crusher/model.glb",
+	"holo-terminal": "res://assets/models/props/holo-terminal/model.glb",
+	"wind-turbine": "res://assets/models/props/wind-turbine/model.glb",
+	"landing-beacon": "res://assets/models/props/landing-beacon/model.glb",
+	"crystal-vein": "res://assets/models/props/crystal-vein/model.glb",
+	"frozen-pond": "res://assets/models/props/frozen-pond/model.glb",
+	"sand-ripple": "res://assets/models/props/sand-ripple/model.glb",
+	"alien-mound": "res://assets/models/props/alien-mound/model.glb",
+	"lava-drip": "res://assets/models/props/lava-drip/model.glb",
+	"coral-stack": "res://assets/models/props/coral-stack/model.glb",
+	"mushroom-ring": "res://assets/models/props/mushroom-ring/model.glb",
+	"glass-crater": "res://assets/models/props/glass-crater/model.glb",
+	"bone-yard": "res://assets/models/props/bone-yard/model.glb",
+	"lf-mesa-spire": "res://assets/models/props/lf-mesa-spire/model.glb",
+	"lf-dune-sea": "res://assets/models/props/lf-dune-sea/model.glb",
+	"lf-crystal-forest": "res://assets/models/props/lf-crystal-forest/model.glb",
 	"power-cell": "res://assets/models/props/power-cell/model.glb",
 	"control-console": "res://assets/models/props/control-console/model.glb",
 	"stasis-pod": "res://assets/models/props/stasis-pod/model.glb",
@@ -1800,6 +1864,7 @@ const INTERACTIVE_CHARGES := {
 	"vent": [1, 120.0],
 	"relic": [1, 0.0],
 	"beacon": [1, 0.0],
+	"med": [2, 180.0],
 }
 
 
@@ -1830,6 +1895,12 @@ const INTERACTIVE_PROPS := {
 	"databank": "relic",
 	"comm-dish": "relic",
 	"signal-beacon": "beacon",
+	"med-station": "med",
+	"oxygen-generator": "cargo",
+	"ore-crusher": "crystal",
+	"holo-terminal": "relic",
+	"wind-turbine": "vent",
+	"landing-beacon": "beacon",
 }
 
 ## 每颗星球的可交互点：{id, kind, dir, size, used}
@@ -2152,19 +2223,20 @@ func _build_detail_props() -> void:
 		perp = site.cross(Vector3.RIGHT)
 	perp = perp.normalized()
 	var pad_angle: float = site_pad_radius / maxf(radius, 1.0)
-	for entry in DETAIL_PROPS.get(kind, []):
-		var pid: String = entry[0]
-		if _prop_mesh(pid) == null:
-			continue
-		for _i in range(int(entry[1])):
-			var size: float = rng.randf_range(float(entry[2]), float(entry[3])) * prop_scale
-			var axis: Vector3 = perp.rotated(site, rng.randf() * TAU)
-			# 0.18~0.9 弧度：绕开平地，但还在「走得到」的范围
-			var ang: float = maxf(pad_angle * 1.05, rng.randf_range(0.18, 0.9))
-			var dir: Vector3 = site.rotated(axis, ang).normalized()
-			if _near_cave(dir, 0.03):
+	for table in [DETAIL_PROPS, DETAIL_PROPS_EXTRA]:
+		for entry in table.get(kind, []):
+			var pid: String = entry[0]
+			if _prop_mesh(pid) == null:
 				continue
-			_add_prop(pid, dir, size, -1.2 * prop_scale, _prop_tint(), false)
+			for _i in range(int(entry[1])):
+				var size: float = rng.randf_range(float(entry[2]), float(entry[3])) * prop_scale
+				var axis: Vector3 = perp.rotated(site, rng.randf() * TAU)
+				# 0.18~0.9 弧度：绕开平地，但还在「走得到」的范围
+				var ang: float = maxf(pad_angle * 1.05, rng.randf_range(0.18, 0.9))
+				var dir: Vector3 = site.rotated(axis, ang).normalized()
+				if _near_cave(dir, 0.03):
+					continue
+				_add_prop(pid, dir, size, -1.2 * prop_scale, _prop_tint(), false)
 
 
 ## 互动种子：保证每颗星球都有四种互动可用。
@@ -2178,6 +2250,9 @@ const INTERACTIVE_SEED := [
 	["vent-lo", 1, 2, 4],
 	# 信标（第四批资产）：给一次补给，也让「点亮」这个交互每颗星球都能玩到
 	["signal-beacon", 1, 2, 3],
+	# 第五批机器：医疗站（氧气回满）+ 矿石破碎机（燃料），让 med 类型也覆盖到
+	["med-station", 1, 2, 3],
+	["ore-crusher", 1, 2, 3],
 ]
 
 
