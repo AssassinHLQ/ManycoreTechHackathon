@@ -9,7 +9,19 @@
 1024² 完全够用，显存直接砍到 1/4。
 
 ⚠ 只改 assets/models/props 下的贴图，不碰星球/UI —— 那些可能需要无损。
-⚠ 不修改源 PNG 之外的东西；改完需要重新 `godot --import`。
+⚠ 改完需要重新 `godot --import`。
+
+🔴 2026-11-12 实测教训（务必注意）：
+    就地重写 PNG 会让贴图**重新导入并换新 UID**，而 model.glb 的缓存场景
+    （`.godot/imported/model.glb-*.scn`）里存的是**旧 UID**。这个缓存不会因为
+    「贴图变了」自动重建，结果是加载 GLB 时报：
+        invalid UID: 'uid://xxxx' - using text path instead
+        Failed loading resource: res://assets/models/xxx/model.glb
+    现象很吓人（模型全丢、冒烟测试里驾驶舱断言直接红），但修起来很简单 ——
+    **删掉 model.glb 的缓存再重新导入**：
+        Get-ChildItem .godot/imported -Filter 'model.glb-*' | Remove-Item
+        godot --headless --path . --import
+    本脚本跑完请顺手执行上面两步，别只跑 --import。
 """
 import io
 import os
