@@ -55,19 +55,27 @@ var rock_queue: Dictionary = {}
 ##   低模变体（*-lo，1 万面）才能拿来铺量，且每类仍要限额。
 const PROP_INSTANCE_CAP := {
 	"alien-tree": 18,
-	"alien-tree-lo": 90,
+	"alien-tree-lo": 40,
 	"rock-cluster": 18,
-	"rock-cluster-lo": 90,
+	"rock-cluster-lo": 40,
 	"rock-spire": 18,
-	"rock-spire-lo": 90,
+	"rock-spire-lo": 40,
 	"ruin-arch": 6,
 	"obelisk": 8,
 	"dome-habitat": 4,
 	"signal-tower": 4,
 	"crystal-cluster": 10,
-	"crystal-cluster-lo": 70,
-	"vent-lo": 60,
+	"crystal-cluster-lo": 40,
+	"vent-lo": 40,
 	"stone-bridge": 4,
+	"alien-mushroom-lo": 40,
+	"dead-tree-lo": 40,
+	"thorn-shrub-lo": 40,
+	"crystal-flora-lo": 40,
+	"ice-spike-lo": 40,
+	"lava-boulder-lo": 40,
+	"dune-arch-lo": 40,
+	"cargo-pod-lo": 40,
 	"lm-qinglan": 2,
 	"lm-zheya": 2,
 	"lm-cangbo": 2,
@@ -206,6 +214,55 @@ const PROP_FLOATING := ["floating-rock"]
 ## 第二批资产（2026-11-12，用户：「怎么才 39，太少了」）里挑的 12 个通用件，
 ## 按星球气候分配：冰原给冰棱、沙海给沙岩拱、丛林给枯树蘑菇、
 ## 遗迹区给石像断墙。尺寸是设计米数，运行时 × prop_scale。
+## 铺量混排：[prop_id, 数量, 尺寸下限, 尺寸上限]，尺寸是**设计米数**（× prop_scale）。
+##
+## ⚠ 2026-11-12：原来每颗星球只铺 1~2 种模型 × 90 个，同一个模型重复 90 次，
+##   近看非常单调。这里改成 4~5 种混排，**总数仍控制在 ~180**（性能不变），
+##   但视觉层次立刻丰富。道具都来自第三批低模（1 万面）。
+const SCATTER_MIX := {
+	"qinglan": [["alien-tree-lo", 45, 4, 8], ["alien-mushroom-lo", 30, 3, 6],
+		["thorn-shrub-lo", 35, 2, 3], ["rock-cluster-lo", 35, 2, 5],
+		["dead-tree-lo", 20, 4, 9]],
+	"zheya": [["rock-cluster-lo", 40, 2, 6], ["lava-boulder-lo", 40, 2, 5],
+		["thorn-shrub-lo", 30, 2, 3], ["dune-arch-lo", 18, 7, 14]],
+	"cangbo": [["ice-spike-lo", 55, 3, 9], ["crystal-flora-lo", 45, 1, 3],
+		["rock-cluster-lo", 40, 2, 5]],
+	"xuanjing": [["crystal-cluster-lo", 40, 3, 7], ["crystal-flora-lo", 45, 1, 3],
+		["rock-spire-lo", 35, 3, 8], ["cargo-pod-lo", 15, 3, 6]],
+	"xuanyuan": [["rock-spire-lo", 45, 3, 9], ["lava-boulder-lo", 40, 2, 5],
+		["dead-tree-lo", 20, 4, 9]],
+	"baiyao": [["ice-spike-lo", 60, 3, 10], ["crystal-flora-lo", 40, 1, 3],
+		["rock-spire-lo", 35, 3, 8]],
+	"pansha": [["rock-spire-lo", 45, 3, 9], ["dune-arch-lo", 25, 8, 16],
+		["rock-cluster-lo", 45, 2, 6], ["dead-tree-lo", 18, 4, 9]],
+	"taiyuan": [["alien-tree-lo", 40, 4, 8], ["thorn-shrub-lo", 45, 2, 3],
+		["rock-cluster-lo", 40, 2, 5], ["alien-mushroom-lo", 20, 3, 6]],
+	"liuwu": [["vent-lo", 40, 3, 7], ["lava-boulder-lo", 45, 2, 5],
+		["rock-cluster-lo", 40, 2, 5], ["cargo-pod-lo", 15, 3, 6]],
+	"jianmo": [["rock-spire-lo", 50, 3, 9], ["crystal-cluster-lo", 40, 3, 7],
+		["crystal-flora-lo", 35, 1, 3], ["dead-tree-lo", 15, 4, 9]],
+	"jiangxiao": [["rock-cluster-lo", 45, 2, 6], ["rock-spire-lo", 40, 3, 9],
+		["lava-boulder-lo", 40, 2, 5]],
+	"cangwu": [["alien-tree-lo", 55, 4, 9], ["alien-mushroom-lo", 30, 3, 6],
+		["thorn-shrub-lo", 40, 2, 3], ["rock-cluster-lo", 30, 2, 5]],
+	"jinwu": [["rock-cluster-lo", 50, 2, 6], ["lava-boulder-lo", 45, 2, 5],
+		["dead-tree-lo", 20, 4, 9], ["dune-arch-lo", 15, 8, 15]],
+	"yuheng": [["rock-cluster-lo", 50, 2, 6], ["crystal-flora-lo", 40, 1, 3],
+		["alien-tree-lo", 30, 4, 8], ["crystal-cluster-lo", 30, 3, 7]],
+	"sue": [["rock-cluster-lo", 55, 2, 6], ["rock-spire-lo", 40, 3, 8],
+		["crystal-flora-lo", 30, 1, 3]],
+	"danxia": [["rock-cluster-lo", 55, 2, 6], ["rock-spire-lo", 40, 3, 9],
+		["dune-arch-lo", 20, 8, 16], ["lava-boulder-lo", 35, 2, 5]],
+	"biluo": [["crystal-flora-lo", 50, 1, 3], ["rock-cluster-lo", 45, 2, 5],
+		["crystal-cluster-lo", 30, 3, 7], ["cargo-pod-lo", 12, 3, 6]],
+	"youdu": [["ice-spike-lo", 50, 3, 9], ["crystal-cluster-lo", 40, 3, 7],
+		["rock-spire-lo", 35, 3, 8], ["alien-tree-lo", 20, 4, 8]],
+	"yaoguang": [["crystal-cluster-lo", 50, 3, 7], ["crystal-flora-lo", 45, 1, 3],
+		["rock-spire-lo", 35, 3, 9], ["ice-spike-lo", 25, 3, 8]],
+	"xuanpu": [["alien-tree-lo", 45, 4, 8], ["alien-mushroom-lo", 35, 3, 6],
+		["thorn-shrub-lo", 40, 2, 3], ["crystal-cluster-lo", 30, 3, 7]],
+}
+
 const GENERIC_PROPS := {
 	"qinglan": [["alien-mushroom", 5, 3, 8], ["dead-tree", 4, 4, 10], ["stone-idol", 2, 4, 9]],
 	"zheya": [["rubble-wall", 5, 4, 10], ["lava-boulder", 6, 2, 6], ["geyser-basin", 4, 3, 8]],
@@ -243,6 +300,14 @@ const PROP_MODELS := {
 	"crystal-cluster-lo": "res://assets/models/props/crystal-cluster-lo/model.glb",
 	"vent-lo": "res://assets/models/props/vent-lo/model.glb",
 	"stone-bridge": "res://assets/models/props/stone-bridge/model.glb",
+	"alien-mushroom-lo": "res://assets/models/props/alien-mushroom-lo/model.glb",
+	"dead-tree-lo": "res://assets/models/props/dead-tree-lo/model.glb",
+	"thorn-shrub-lo": "res://assets/models/props/thorn-shrub-lo/model.glb",
+	"crystal-flora-lo": "res://assets/models/props/crystal-flora-lo/model.glb",
+	"ice-spike-lo": "res://assets/models/props/ice-spike-lo/model.glb",
+	"lava-boulder-lo": "res://assets/models/props/lava-boulder-lo/model.glb",
+	"dune-arch-lo": "res://assets/models/props/dune-arch-lo/model.glb",
+	"cargo-pod-lo": "res://assets/models/props/cargo-pod-lo/model.glb",
 	"lm-qinglan": "res://assets/models/props/lm-qinglan/model.glb",
 	"lm-zheya": "res://assets/models/props/lm-zheya/model.glb",
 	"lm-cangbo": "res://assets/models/props/lm-cangbo/model.glb",
@@ -1942,11 +2007,27 @@ func _build_landmark_props() -> void:
 			if gdir == Vector3.ZERO:
 				continue
 			_add_prop(gid, gdir, gsize, -2.0 * prop_scale, _prop_tint(), false)
+	# 铺量混排：4~5 种低模混在一起，替代「同一种模型重复 90 次」
+	_build_scatter_mix()
 	# 目标 ④：大型地貌件（把已有资产放大，零额度）
 	_build_landform_props()
 	# 地标与地貌件都是在 _build_landscape 之后才排进队列的，所以必须在这里补 flush
 	# （_flush_props 内部有 _flushed_prop_ids 去重，铺量那批不会重复实例化）。
 	_flush_props()
+
+
+## 铺量混排布置（见 SCATTER_MIX）。
+func _build_scatter_mix() -> void:
+	for entry in SCATTER_MIX.get(kind, []):
+		var pid: String = entry[0]
+		if _prop_mesh(pid) == null:
+			continue
+		for _i in range(int(entry[1])):
+			var size: float = rng.randf_range(float(entry[2]), float(entry[3])) * prop_scale
+			var dir := _pick_prop_direction(false, size * 0.5)
+			if dir == Vector3.ZERO:
+				continue
+			_add_prop(pid, dir, size, -1.5 * prop_scale, _prop_tint(), false)
 
 
 ## 布置大型地貌件（目标 ④）。复用已有 AI 资产放大，零额度消耗。

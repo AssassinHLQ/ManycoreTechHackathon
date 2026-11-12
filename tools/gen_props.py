@@ -150,6 +150,26 @@ PROPS += [
     ("lf-ridge-spine", 24000,
      "jagged mountain ridge spine, a long row of sharp rock peaks along a single crest line with eroded gullies, no ground plane, no pedestal, no base, no text, no backdrop"),
 ]
+
+# 第三批：8 个低模变体，专供铺量混排
+PROPS += [
+    ("alien-mushroom-lo", 10000,
+     "cluster of glowing alien mushrooms, thin stems with wide luminous caps, low detail silhouette only, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("dead-tree-lo", 10000,
+     "bare twisted dead tree, skeletal branching trunk, low detail silhouette only, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("thorn-shrub-lo", 10000,
+     "low alien thorn shrub, dense spiky branches, low detail silhouette only, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("crystal-flora-lo", 10000,
+     "small crystal shards growing in a low cluster like grass, low detail silhouette only, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("ice-spike-lo", 10000,
+     "cluster of sharp ice shards of varied height, low detail silhouette only, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("lava-boulder-lo", 10000,
+     "porous volcanic boulder chunks, low detail silhouette only, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("dune-arch-lo", 10000,
+     "weathered sandstone arch with a narrow opening underneath, low detail silhouette only, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("cargo-pod-lo", 10000,
+     "crashed cargo container pod half sunk in soil, low detail silhouette only, no ground plane, no pedestal, no base, no text, no backdrop"),
+]
 PROPS += [
     ("alien-tree-lo",  10000,
      "alien umbrella tree, slender trunk with a flat mushroom canopy, "
