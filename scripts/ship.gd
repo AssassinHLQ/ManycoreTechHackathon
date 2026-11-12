@@ -1191,7 +1191,10 @@ func _plume_mesh(length: float, radius: float, sides: int, rings := 12, taper_po
 			var n1 := Vector3(cos(ang1), sin(ang1), 0.0)
 			_tri_colored(st, p00, n0, a0, p01, n1, a1, p11, n1, a1)
 			_tri_colored(st, p00, n0, a0, p11, n1, a1, p10, n0, a1)
-	st.generate_tangents()
+	# 不调用 generate_tangents()：_tri_colored 不写 UV，而 SurfaceTool 的
+	# generate_tangents() 强制要求 UV，否则每帧报
+	#   "UVs are required to generate tangents"（实测 15 条/次进场）。
+	# 尾焰材质全是 unshaded，本来就不需要切线，故直接省略。
 	return st.commit()
 
 

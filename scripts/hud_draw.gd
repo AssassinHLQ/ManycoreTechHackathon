@@ -171,12 +171,20 @@ func _draw_cockpit() -> void:
 	var h := size.y
 	var frame := Color(0.015, 0.028, 0.038, 0.94)
 	var trim := Color(0.27, 0.55, 0.57, 0.48)
-	draw_colored_polygon(PackedVector2Array([Vector2(0, h), Vector2(0, h * 0.76), Vector2(w * 0.1, h * 0.84), Vector2(w * 0.23, h), Vector2(0, h)]), frame)
-	draw_colored_polygon(PackedVector2Array([Vector2(w, h), Vector2(w, h * 0.76), Vector2(w * 0.9, h * 0.84), Vector2(w * 0.77, h), Vector2(w, h)]), frame)
+	# ⚠ 2026-11-11 用户：「左右两侧的三角形不需要，去掉这个 ui，
+	#   做 ui 应该覆盖这些文字部分」。
+	#
+	#   这里原来画了四个填充多边形 + 两条描边：
+	#     · 左下/右下 各一个「把屏幕底部两角切掉」的三角形（0.76h → 0.84h → h）
+	#     · 左上/右上 各一个小切角
+	#   其中**底部那两个大三角形是错的**：右下那个覆盖 x ∈ [0.77w, w]，
+	#   而飞船的速度/地表高度/目的地/驾驶模式那组读数正好落在这一带，
+	#   于是三角形盖住了文字。而且它是**实心填充**，在 3D 画面上就是一块
+	#   深色方块，很不像边框。
+	#
+	#   现在只保留顶部两个小切角（它们不压任何读数）和底部中央那条短横线。
 	draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(w * 0.2, 0), Vector2(w * 0.13, 18), Vector2(0, 54)]), frame)
 	draw_colored_polygon(PackedVector2Array([Vector2(w, 0), Vector2(w * 0.8, 0), Vector2(w * 0.87, 18), Vector2(w, 54)]), frame)
-	draw_polyline(PackedVector2Array([Vector2(0, h * 0.76), Vector2(w * 0.1, h * 0.84), Vector2(w * 0.23, h)]), trim, 2.0, true)
-	draw_polyline(PackedVector2Array([Vector2(w, h * 0.76), Vector2(w * 0.9, h * 0.84), Vector2(w * 0.77, h)]), trim, 2.0, true)
 	draw_line(Vector2(w * 0.36, h - 5), Vector2(w * 0.64, h - 5), trim, 2.0, true)
 
 
