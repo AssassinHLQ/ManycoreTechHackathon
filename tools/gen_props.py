@@ -252,6 +252,52 @@ PROPS += [
     ("lf-salt-flat", 24000,
      "salt crust expanse, cracked polygonal white crust plates lifting at the seams, no ground plane, no pedestal, no base, no text, no backdrop"),
 ]
+
+# ── 第五批：互动机器 + 生态装饰 + 大型地貌 (18 个) ──
+PROPS += [
+    ("med-station", 26000,
+     "field medical station, upright cabinet with a cross panel, two small drawers and a rolled stretcher leaning beside it, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("oxygen-generator", 26000,
+     "oxygen generator unit, ribbed drum with intake vents, pressure gauge and a hose coiled on top, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("ore-crusher", 28000,
+     "ore crusher machine, heavy hopper feeding two toothed rollers on a bolted steel frame with an output chute, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("holo-terminal", 26000,
+     "hologram terminal, angled plinth projecting a floating stack of thin glowing rings above a small screen, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("wind-turbine", 24000,
+     "small wind turbine, three-bladed rotor on a lattice tower with a guy wire and a control box at the base, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("landing-beacon", 26000,
+     "landing beacon pylon, squat tower with four outward floodlights and a flat painted top plate, no ground plane, no pedestal, no base, no text, no backdrop"),
+]
+
+PROPS += [
+    ("crystal-vein", 20000,
+     "crystal vein outcrop, a jagged seam of translucent shards splitting a low rock shelf, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("frozen-pond", 20000,
+     "small frozen pond, cracked ice sheet in a shallow rock basin with white frost rims, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("sand-ripple", 18000,
+     "wind carved sand ripples, parallel wave ridges across a low dune surface, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("alien-mound", 22000,
+     "alien termite mound, tall twisted spire of packed earth with ridges and small dark openings, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("lava-drip", 20000,
+     "cooled lava drips, frozen black tendrils hanging from a broken rock lip with glassy tips, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("coral-stack", 20000,
+     "coral stack formation, branching pale coral growths clustered into a low column, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("mushroom-ring", 18000,
+     "fairy mushroom ring, a circle of small glowing mushrooms on bare ground, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("glass-crater", 22000,
+     "vitrified crater, small impact bowl with slick fused glass lining and radiating cracks, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("bone-yard", 22000,
+     "bone yard scatter, tangled ribs and long limb bones half buried in dust, no ground plane, no pedestal, no base, no text, no backdrop"),
+]
+
+PROPS += [
+    ("lf-mesa-spire", 26000,
+     "mesa spire, tall isolated rock tower with a flat top and vertical eroded fluting along its sides, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("lf-dune-sea", 26000,
+     "dune sea, long parallel sand ridges with sharp crests stretching across the ground, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("lf-crystal-forest", 26000,
+     "crystal forest, a dense stand of tall angular translucent crystal columns of mixed heights, no ground plane, no pedestal, no base, no text, no backdrop"),
+]
 PROPS += [
     ("alien-tree-lo",  10000,
      "alien umbrella tree, slender trunk with a flat mushroom canopy, "
