@@ -1826,6 +1826,8 @@ func _build_landmark_props() -> void:
 			if gdir == Vector3.ZERO:
 				continue
 			_add_prop(gid, gdir, gsize, -2.0 * prop_scale, _prop_tint(), false)
+	# 基地周边点缀：平地外缘一圈小物件（走出去不再是一片荒）
+	_build_base_surroundings()
 	# 铺量混排：4~5 种低模混在一起，替代「同一种模型重复 90 次」
 	_build_scatter_mix()
 	# 目标 ④：大型地貌件（把已有资产放大，零额度）
@@ -1834,6 +1836,61 @@ func _build_landmark_props() -> void:
 	# （_flush_props 内部有 _flushed_prop_ids 去重，铺量那批不会重复实例化）。
 	_flush_props()
 
+
+## 基地周边点缀（零额度）：平地外缘一圈小体量物件。
+##
+## 为什么要单独做：`_pick_prop_direction` 为了不堵楼梯/门口，
+## 要求道具离站心 ≥ pad_radius + size/2，结果**平地边缘一圈是空的**，
+## 玩家走出基地就是荒地。
+## 这里用小体量物件贴着平地外缘排一圈（不压平地、不加碰撞）。
+func _build_base_surroundings() -> void:
+	var ring: Array = BASE_SURROUNDINGS.get(kind, [])
+	if ring.is_empty():
+		return
+	var site: Vector3 = site_direction.normalized()
+	var pad_angle: float = site_pad_radius / maxf(radius, 1.0)
+	for entry in ring:
+		var pid: String = entry[0]
+		if _prop_mesh(pid) == null:
+			continue
+		for _i in range(int(entry[1])):
+			# 平地外缘 1.02~1.75 倍角度（不压平地）
+			var perp: Vector3 = site.cross(Vector3.FORWARD)
+			if perp.length_squared() < 0.01:
+				perp = site.cross(Vector3.RIGHT)
+			perp = perp.normalized()
+			var axis: Vector3 = perp.rotated(site, rng.randf() * TAU)
+			var ang: float = pad_angle * rng.randf_range(1.02, 1.75)
+			var dir: Vector3 = site.rotated(axis, ang).normalized()
+			if _near_cave(dir, 0.03):
+				continue
+			var size: float = rng.randf_range(float(entry[2]), float(entry[3])) * prop_scale
+			_add_prop(pid, dir, size, -1.0 * prop_scale, _prop_tint(), false)
+
+
+## 每颗星球基地周边的小物件：[prop_id, 数量, 尺寸下限, 尺寸上限]（设计米数）
+const BASE_SURROUNDINGS := {
+	"qinglan": [["thorn-shrub-lo", 14, 2, 3], ["alien-mushroom-lo", 8, 2, 4], ["rock-cluster-lo", 6, 2, 4]],
+	"zheya": [["thorn-shrub-lo", 10, 2, 3], ["lava-boulder-lo", 10, 2, 4], ["rock-cluster-lo", 6, 2, 4]],
+	"cangbo": [["ice-spike-lo", 14, 2, 4], ["crystal-flora-lo", 10, 1, 2]],
+	"xuanjing": [["crystal-flora-lo", 14, 1, 2], ["rock-spire-lo", 6, 2, 4]],
+	"xuanyuan": [["lava-boulder-lo", 12, 2, 4], ["rock-spire-lo", 6, 2, 4]],
+	"baiyao": [["ice-spike-lo", 16, 2, 4], ["crystal-flora-lo", 8, 1, 2]],
+	"pansha": [["dune-arch-lo", 5, 4, 8], ["rock-cluster-lo", 12, 2, 4]],
+	"taiyuan": [["thorn-shrub-lo", 16, 2, 3], ["alien-mushroom-lo", 6, 2, 4]],
+	"liuwu": [["lava-boulder-lo", 12, 2, 4], ["vent-lo", 5, 2, 4]],
+	"jianmo": [["crystal-flora-lo", 12, 1, 2], ["rock-spire-lo", 8, 2, 5]],
+	"jiangxiao": [["lava-boulder-lo", 12, 2, 4], ["rock-cluster-lo", 8, 2, 4]],
+	"cangwu": [["thorn-shrub-lo", 14, 2, 3], ["alien-mushroom-lo", 10, 2, 4]],
+	"jinwu": [["lava-boulder-lo", 12, 2, 4], ["dune-arch-lo", 4, 4, 7]],
+	"yuheng": [["crystal-flora-lo", 12, 1, 2], ["rock-cluster-lo", 10, 2, 4]],
+	"sue": [["rock-cluster-lo", 14, 2, 4], ["crystal-flora-lo", 6, 1, 2]],
+	"danxia": [["rock-cluster-lo", 12, 2, 4], ["dune-arch-lo", 4, 4, 7]],
+	"biluo": [["crystal-flora-lo", 14, 1, 2], ["rock-cluster-lo", 8, 2, 4]],
+	"youdu": [["ice-spike-lo", 12, 2, 4], ["crystal-flora-lo", 8, 1, 2]],
+	"yaoguang": [["crystal-flora-lo", 16, 1, 2], ["crystal-cluster-lo", 6, 2, 4]],
+	"xuanpu": [["alien-mushroom-lo", 12, 2, 4], ["thorn-shrub-lo", 10, 2, 3]],
+}
 
 ## 铺量混排布置（见 SCATTER_MIX）。
 func _build_scatter_mix() -> void:
