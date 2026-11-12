@@ -40,11 +40,50 @@ captures/
 #   这里的规则作用是「**不再继续长大**」。
 assets/models/*-lux3d/
 assets/models/*-lux3d-v2/
-assets/models/props/
+# ⚠ 这里必须写 `props/*` 而不是 `props/`：
+#   Git 一旦把整个目录标记为忽略，就**不会再往下走**去匹配 ! 例外规则。
+#   用 `props/*` 只忽略目录里的直接子项，才能让下面的 attic 例外生效。
+assets/models/props/*
 # 导入侧车也要一起忽略，否则 .glb 不存在时 .import 会指向空文件
 assets/models/*-lux3d/**/*.import
 assets/models/*-lux3d-v2/**/*.import
 assets/models/props/**/*.import
+
+# ── 例外：阁楼线的手工道具**要入库**（2026-11-12 用户确认「B 方案」）──
+#
+# 这些是阁楼里 13 件小家具（茶桌/茶壶/书架/木箱/提灯/唱片机/地毯/燕子…），
+# 特点是**每件压缩后只有 0.5~1 MB**，13 件合计约 10 MB —— 对仓库完全可接受。
+# 而它们决定了「玩家一进游戏第一眼看到的房间」是什么样，属于必须交付的内容：
+#   如果忽略，评委 clone 下来只会看到程序化几何版（能跑，但丑）。
+#
+# 与上面 435 MB 的星球/道具模型不同：那些是单件 14~20 MB、总量太大的，
+# 继续忽略。
+!assets/models/props/attic/
+!assets/models/props/attic-worlds/
+# 只放行**成品**：压缩后的 glb + Godot 导入侧车 + 导入时拆出的贴图。
+!assets/models/props/attic/**/*.glb
+!assets/models/props/attic/**/*.glb.import
+!assets/models/props/attic/**/*.jpg
+!assets/models/props/attic/**/*.jpg.import
+!assets/models/props/attic-worlds/
+!assets/models/props/attic-worlds/**/*.glb
+!assets/models/props/attic-worlds/**/*.glb.import
+!assets/models/props/attic-worlds/**/*.jpg
+!assets/models/props/attic-worlds/**/*.jpg.import
+
+# ⚠ 排除 Lux3D 的**中间产物**（2026-11-12 踩到的坑）：
+#   · model_zip.zip   —— 服务端返回的原始打包，13 件合计 99.9 MB，
+#                        内容和 glb 重复，纯粹是下载残留
+#   · model_glb_*.png —— 未压缩的原始贴图（2048 PNG），导入时已由
+#                        压缩后的 jpg 取代，留着白白占 9.6 MB
+#   只留压缩过的 model_glb.glb + jpg + .import，13 件合计约 9 MB。
+assets/models/props/attic/**/*.zip
+assets/models/props/attic/**/*.png
+assets/models/props/attic-worlds/**/*.zip
+assets/models/props/attic-worlds/**/*.png
+# 生成过程留下的账本也不入库（会随每次生成变动）
+assets/models/props/attic/_ledger.json
+assets/models/props/attic-worlds/_ledger.json
 
 # ── 手写备份与临时件（有 git 之后不该再手写备份，提交历史就是备份）──
 *.bak

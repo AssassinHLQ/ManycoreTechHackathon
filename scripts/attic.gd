@@ -105,6 +105,88 @@ func _anchor(anchor_name: String, pos: Vector3) -> Node3D:
 	return node
 
 
+# --- Lux3D 生成道具的加载（2026-11-12 接入）--------------------------------------
+#
+# 阁楼里的家具原本全是程序化几何（BoxMesh / CylinderMesh 拼的）。
+# 现在改用 Aholo Lux3D 文生 3D 的写实模型，观感提升明显。
+#
+# ⚠ 设计原则：**必须能回退**。
+#   · 模型文件在 assets/models/props/attic/<name>/model*.glb
+#   · 该目录已在 .gitignore 中（用户要求省仓库流量），所以**别人 clone 下来不会有这些模型**
+#   · 因此每个 _build_* 都要先试 prop()，拿不到就照旧用程序化几何
+#   · 这样无论有没有模型，阁楼都不会空、也不会崩
+const PROP_DIR := "res://assets/models/props/attic/"
+## 加载缓存：避免同一次 build 里重复 load 同一个 glb
+var _prop_cache: Dictionary = {}
+
+
+## 取一个 Lux3D 道具实例，失败返回 null（调用方回退到程序化几何）。
+##
+## 返回的 Node3D 已经：
+##   · 按 height_m 缩放到目标高度（模型原始尺寸不可控，用高度归一化最稳）
+##   · 底面贴 y=0（放在地板上时直接给 x/z 即可）
+##   · 关闭阴影投射以外的特殊设置（道具小，投阴影会脏地板）
+func prop(name: String, target_height: float) -> Node3D:
+	if _prop_cache.has(name):
+		var cached = _prop_cache[name]
+		if cached == null:
+			return null
+		return (cached as Node3D).duplicate() as Node3D
+	var dir := PROP_DIR + name + "/"
+	var glb_path := ""
+	# 库产出的文件名可能是 model_glb.glb，也可能是 model.glb —— 两个都试
+	for candidate in ["model.glb", "model_glb.glb"]:
+		if ResourceLoader.exists(dir + candidate):
+			glb_path = dir + candidate
+			break
+	if glb_path == "":
+		_prop_cache[name] = null
+		return null
+	var packed := load(glb_path) as PackedScene
+	if packed == null:
+		_prop_cache[name] = null
+		return null
+	var instance := packed.instantiate() as Node3D
+	if instance == null:
+		_prop_cache[name] = null
+		return null
+	# 量包围盒 → 缩放到目标高度 → 底面贴 0
+	var aabb := AABB()
+	var first := true
+	for node in instance.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var xf := Transform3D.IDENTITY
+		var walker: Node = mi
+		while walker != null and walker != instance:
+			if walker is Node3D:
+				xf = (walker as Node3D).transform * xf
+			walker = walker.get_parent()
+		var box: AABB = xf * mi.get_aabb()
+		aabb = box if first else aabb.merge(box)
+		first = false
+		if mi.material_override == null:
+			# 让道具投阴影，但不参与受光遮蔽（小物件）
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if first or aabb.size.y < 0.0001:
+		instance.queue_free()
+		_prop_cache[name] = null
+		return null
+	var holder := Node3D.new()
+	holder.name = "Prop_" + name
+	holder.add_child(instance)
+	var scale_k: float = target_height / aabb.size.y
+	instance.scale = Vector3.ONE * scale_k
+	# 缩放后重新算底部：原始 aabb.position.y * scale_k
+	instance.position = Vector3(
+		-aabb.get_center().x * scale_k,
+		-aabb.position.y * scale_k,
+		-aabb.get_center().z * scale_k)
+	_prop_cache[name] = holder
+	return (holder as Node3D).duplicate() as Node3D
+
+
 func up_direction() -> Vector3:
 	# 阁楼是固定房间，重力方向就是房间自身的上方向。
 	return global_transform.basis.y.normalized()
@@ -267,6 +349,14 @@ func _build_swallow(parent: Node3D, at: Vector3) -> Node3D:
 	swallow.position = at
 	swallow.visible = false
 	parent.add_child(swallow)
+	# 优先用 Lux3D 模型。⚠ 燕子会从窗台飞到壁炉（swallow_flight 驱动），
+	#   所以这里只放「本体」，飞行位移仍由父节点 swallow 的 position 控制，
+	#   模型本身的 local position 保持 0，不影响原有飞行动画。
+	var swallow_prop := prop("swallow", 0.16)
+	if swallow_prop != null:
+		swallow.add_child(swallow_prop)
+		swallow_node = swallow
+		return swallow
 	var body_mat := _material(Color("2c3a48"), 0.0)
 	var belly_mat := _material(Color("e8e2d4"), 0.0)
 	# 身体（略扁的椭球）
@@ -438,23 +528,51 @@ func _build_tea_table() -> void:
 	table.name = "TeaTable"
 	table.position = Vector3(1.05, 0, 1.35)
 	root.add_child(table)
-	# 桌面与四条腿。
-	_box(table, Vector3(1.5, 0.07, 0.95), Vector3(0, 0.66, 0), _wood)
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
-			_box(table, Vector3(0.09, 0.62, 0.09), Vector3(sx * 0.65, 0.31, sz * 0.38), _wood_dark)
+	# 桌面与四条腿 —— 优先用 Lux3D 写实模型，拿不到才回退程序化 BoxMesh。
+	# 桌面高度固定 0.66 m（道具都靠这个高度摆茶壶/杯子），碰撞也照旧。
+	var table_prop := prop("tea-table", 0.70)
+	if table_prop != null:
+		table_prop.position = Vector3.ZERO
+		table.add_child(table_prop)
+	else:
+		_box(table, Vector3(1.5, 0.07, 0.95), Vector3(0, 0.66, 0), _wood)
+		for sx in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				_box(table, Vector3(0.09, 0.62, 0.09), Vector3(sx * 0.65, 0.31, sz * 0.38), _wood_dark)
 	_box_collider(Vector3(1.5, 0.09, 0.95), Vector3(1.05, 0.66, 1.35))
 	# 旅行小册：摊开的册子。
-	_box(table, Vector3(0.44, 0.03, 0.32), Vector3(-0.34, 0.71, 0.02), _paper)
-	_box(table, Vector3(0.44, 0.03, 0.32), Vector3(0.12, 0.71, 0.02), _paper)
-	_box(table, Vector3(0.46, 0.02, 0.02), Vector3(-0.11, 0.72, 0.02), _cloth)
+	var book_prop := prop("travel-notebook", 0.05)
+	if book_prop != null:
+		book_prop.position = Vector3(-0.34, 0.70, 0.02)
+		table.add_child(book_prop)
+	else:
+		_box(table, Vector3(0.44, 0.03, 0.32), Vector3(-0.34, 0.71, 0.02), _paper)
+		_box(table, Vector3(0.44, 0.03, 0.32), Vector3(0.12, 0.71, 0.02), _paper)
+		_box(table, Vector3(0.46, 0.02, 0.02), Vector3(-0.11, 0.72, 0.02), _cloth)
 	# 茶壶与两只杯子。壶下先压一圈极暗的光，烧水后才会亮。
+	# ⚠ kettle_glow 与 tea_steam 是**交互状态载体**（烧水会变亮），
+	#   不能用导入模型替换，否则「烧水」的视觉反馈就没了 —— 这两个保留程序化。
 	kettle_glow = _cyl(table, 0.2, 0.2, 0.02, Vector3(0.42, 0.70, -0.2), _material(Color("ffb066"), 0.0), 12)
-	_cyl(table, 0.13, 0.16, 0.2, Vector3(0.42, 0.79, -0.2), _brass, 12)
-	_cyl(table, 0.03, 0.05, 0.1, Vector3(0.42, 0.94, -0.2), _brass, 8)
+	var pot_prop := prop("teapot", 0.20)
+	if pot_prop != null:
+		pot_prop.position = Vector3(0.42, 0.70, -0.2)
+		table.add_child(pot_prop)
+	else:
+		_cyl(table, 0.13, 0.16, 0.2, Vector3(0.42, 0.79, -0.2), _brass, 12)
+		_cyl(table, 0.03, 0.05, 0.1, Vector3(0.42, 0.94, -0.2), _brass, 8)
+	var cup_prop := prop("teacup", 0.075)
 	for cup_x in [0.28, 0.56]:
-		var cup := _cyl(table, 0.06, 0.045, 0.08, Vector3(cup_x, 0.73, 0.16), _paper, 10)
-		tea_cups.append(cup)
+		if cup_prop != null:
+			var c: Node3D = cup_prop.duplicate() as Node3D
+			c.position = Vector3(cup_x, 0.70, 0.16)
+			table.add_child(c)
+			# tea_cups 用来做「倒茶」高亮，这里塞一个占位节点保持状态机可用
+			var marker := Node3D.new()
+			c.add_child(marker)
+			tea_cups.append(marker)
+		else:
+			var cup := _cyl(table, 0.06, 0.045, 0.08, Vector3(cup_x, 0.73, 0.16), _paper, 10)
+			tea_cups.append(cup)
 	# 蒸汽：出汤后才出现
 	tea_steam = _cyl(table, 0.05, 0.02, 0.3, Vector3(0.42, 1.12, -0.2), _material(Color("e8f0f2"), 0.0), 8)
 	tea_steam.visible = false
@@ -465,13 +583,21 @@ func _build_tea_table() -> void:
 	_anchor("AtticAnchor_Kettle", table.position + Vector3(0.42, 0.95, -0.2))
 	_anchor("AtticAnchor_Tea", table.position + Vector3(0.28, 0.82, 0.16))
 	# 两把木凳。
+	var stool_prop := prop("wooden-stool", 0.48)
 	for i in range(2):
-		var stool := _cyl(root, 0.19, 0.19, 0.06,
-			Vector3(1.05 + (-0.75 if i == 0 else 0.75), 0.44, 2.15), _wood, 12)
-		stool.set_meta("kind", "stool")
-		for leg in [Vector3(-0.12, 0, -0.12), Vector3(0.12, 0, -0.12), Vector3(-0.12, 0, 0.12), Vector3(0.12, 0, 0.12)]:
-			_box(root, Vector3(0.05, 0.42, 0.05),
-				Vector3(1.05 + (-0.75 if i == 0 else 0.75), 0.21, 2.15) + leg, _wood_dark)
+		var stool_x: float = 1.05 + (-0.75 if i == 0 else 0.75)
+		if stool_prop != null:
+			var s: Node3D = stool_prop.duplicate() as Node3D
+			s.position = Vector3(stool_x, GROUND_Y, 2.15)
+			s.set_meta("kind", "stool")
+			root.add_child(s)
+		else:
+			var stool := _cyl(root, 0.19, 0.19, 0.06,
+				Vector3(stool_x, 0.44, 2.15), _wood, 12)
+			stool.set_meta("kind", "stool")
+			for leg in [Vector3(-0.12, 0, -0.12), Vector3(0.12, 0, -0.12), Vector3(-0.12, 0, 0.12), Vector3(0.12, 0, 0.12)]:
+				_box(root, Vector3(0.05, 0.42, 0.05),
+					Vector3(stool_x, 0.21, 2.15) + leg, _wood_dark)
 
 
 # --- 旅行架：四格纪念 + 棱镜之心 ------------------------------------------------
@@ -481,12 +607,20 @@ func _build_shelf() -> void:
 	shelf.position = Vector3(ROOM_HALF_X - 0.22, 0, -1.2)
 	shelf.rotation.y = -PI * 0.5
 	root.add_child(shelf)
-	# 侧板、背板与三层隔板。
-	for side in [-1.0, 1.0]:
-		_box(shelf, Vector3(0.08, 1.5, 0.34), Vector3(side * 0.86, 0.95, 0), _wood_dark)
-	_box(shelf, Vector3(1.8, 1.5, 0.05), Vector3(0, 0.95, -0.15), _wood_dark)
-	for level in [0.42, 0.94, 1.46]:
-		_box(shelf, Vector3(1.8, 0.06, 0.34), Vector3(0, level, 0), _wood)
+	# 侧板、背板与三层隔板 —— 优先 Lux3D 模型。
+	# ⚠ 纪念托座与棱镜之心**保留程序化**：它们要精确落在某一层上，
+	#   而 AI 模型的层高不可控，硬套会穿模。所以书架本体换模型，
+	#   上面的小件仍按固定坐标摆。
+	var shelf_prop := prop("bookshelf", 1.55)
+	if shelf_prop != null:
+		shelf_prop.position = Vector3.ZERO
+		shelf.add_child(shelf_prop)
+	else:
+		for side in [-1.0, 1.0]:
+			_box(shelf, Vector3(0.08, 1.5, 0.34), Vector3(side * 0.86, 0.95, 0), _wood_dark)
+		_box(shelf, Vector3(1.8, 1.5, 0.05), Vector3(0, 0.95, -0.15), _wood_dark)
+		for level in [0.42, 0.94, 1.46]:
+			_box(shelf, Vector3(1.8, 0.06, 0.34), Vector3(0, level, 0), _wood)
 	_box_collider(Vector3(1.8, 1.6, 0.4), Vector3(ROOM_HALF_X - 0.22, 0.95, -1.2))
 	# 四个托座：各对应一个世界的纪念，带回来之前是空的。
 	var keepsake_keys := ["snow", "cloud", "firefly", "alley"]
@@ -535,26 +669,60 @@ func _cylinder_mesh(parent: Node3D, top: float, bottom: float, height: float, po
 
 # --- 陈设：地毯、箱子、挂画、提灯、唱片机 -----------------------------------------
 func _build_furniture() -> void:
-	# 地毯。
-	_box(root, Vector3(2.4, 0.03, 1.7), Vector3(0.4, GROUND_Y + 0.02, 0.7), _cloth)
+	# 地毯。铺在地板上，用很矮的目标高度（0.06）让模型几乎贴平。
+	var rug_prop := prop("rug", 0.06)
+	if rug_prop != null:
+		rug_prop.position = Vector3(0.4, GROUND_Y, 0.7)
+		root.add_child(rug_prop)
+	else:
+		_box(root, Vector3(2.4, 0.03, 1.7), Vector3(0.4, GROUND_Y + 0.02, 0.7), _cloth)
 	# 旧木箱。
-	_box(root, Vector3(0.9, 0.55, 0.55), Vector3(-2.2, 0.3, 1.9), _wood)
-	_box(root, Vector3(0.94, 0.06, 0.59), Vector3(-2.2, 0.6, 1.9), _wood_dark)
+	var chest_prop := prop("wooden-chest", 0.62)
+	if chest_prop != null:
+		chest_prop.position = Vector3(-2.2, GROUND_Y, 1.9)
+		root.add_child(chest_prop)
+	else:
+		_box(root, Vector3(0.9, 0.55, 0.55), Vector3(-2.2, 0.3, 1.9), _wood)
+		_box(root, Vector3(0.94, 0.06, 0.59), Vector3(-2.2, 0.6, 1.9), _wood_dark)
 	_box_collider(Vector3(0.94, 0.62, 0.59), Vector3(-2.2, 0.32, 1.9))
 	# 靠窗的矮柜与提灯。
-	_box(root, Vector3(0.8, 0.5, 0.4), Vector3(0.0, 0.26, ROOM_HALF_Z - 0.42), _wood)
+	var cabinet_prop := prop("side-cabinet", 0.52)
+	if cabinet_prop != null:
+		cabinet_prop.position = Vector3(0.0, GROUND_Y, ROOM_HALF_Z - 0.42)
+		root.add_child(cabinet_prop)
+	else:
+		_box(root, Vector3(0.8, 0.5, 0.4), Vector3(0.0, 0.26, ROOM_HALF_Z - 0.42), _wood)
 	_box_collider(Vector3(0.8, 0.5, 0.4), Vector3(0.0, 0.26, ROOM_HALF_Z - 0.42))
-	_cyl(root, 0.09, 0.12, 0.24, Vector3(0.0, 0.63, ROOM_HALF_Z - 0.42), _brass, 8)
-	var flame := _cyl(root, 0.05, 0.06, 0.14, Vector3(0.0, 0.78, ROOM_HALF_Z - 0.42), _glow, 8)
+	# 提灯：火焰（flame）是**交互发光体**，必须保留程序化 —— 它才是「点灯」的视觉。
+	# 灯笼外壳换成模型，火焰仍摆在罩内。
+	var lantern_pos_z: float = ROOM_HALF_Z - 0.42
+	var lantern_prop := prop("lantern", 0.34)
+	if lantern_prop != null:
+		lantern_prop.position = Vector3(0.0, 0.52, lantern_pos_z)
+		root.add_child(lantern_prop)
+	else:
+		_cyl(root, 0.09, 0.12, 0.24, Vector3(0.0, 0.63, lantern_pos_z), _brass, 8)
+	var flame := _cyl(root, 0.05, 0.06, 0.14, Vector3(0.0, 0.78, lantern_pos_z), _glow, 8)
 	flame.material_override = _material(Color("ffca7a"), 1.6)
 	_anchor("AtticAnchor_Lantern", Vector3(0.0, 0.9, ROOM_HALF_Z - 0.8))
-	# 墙上挂画：一片晴天。
-	var frame := _box(root, Vector3(0.72, 0.54, 0.04), Vector3(1.9, 1.85, -ROOM_HALF_Z + 0.14), _wood_dark)
-	frame.set_meta("kind", "painting_frame")
-	_box(root, Vector3(0.6, 0.42, 0.02), Vector3(1.9, 1.85, -ROOM_HALF_Z + 0.17),
-		_material(Color("cfe4f2"), 0.5))
-	# 唱片机。
-	_box(root, Vector3(0.62, 0.16, 0.46), Vector3(-1.9, 0.72, -1.9), _wood_dark)
+	# 墙上挂画：一片晴天。挂画本身就是「一片晴天的图」，用模型更合适。
+	var painting_prop := prop("painting", 0.54)
+	if painting_prop != null:
+		painting_prop.position = Vector3(1.9, 1.58, -ROOM_HALF_Z + 0.14)
+		painting_prop.set_meta("kind", "painting_frame")
+		root.add_child(painting_prop)
+	else:
+		var frame := _box(root, Vector3(0.72, 0.54, 0.04), Vector3(1.9, 1.85, -ROOM_HALF_Z + 0.14), _wood_dark)
+		frame.set_meta("kind", "painting_frame")
+		_box(root, Vector3(0.6, 0.42, 0.02), Vector3(1.9, 1.85, -ROOM_HALF_Z + 0.17),
+			_material(Color("cfe4f2"), 0.5))
+	# 唱片机。转盘（_cyl 那圈布面）是**播放状态的载体**，保留程序化。
+	var gram_prop := prop("gramophone", 0.3)
+	if gram_prop != null:
+		gram_prop.position = Vector3(-1.9, 0.64, -1.9)
+		root.add_child(gram_prop)
+	else:
+		_box(root, Vector3(0.62, 0.16, 0.46), Vector3(-1.9, 0.72, -1.9), _wood_dark)
 	_cyl(root, 0.2, 0.2, 0.02, Vector3(-1.9, 0.81, -1.9), _cloth, 16)
 	_box_collider(Vector3(0.62, 0.16, 0.46), Vector3(-1.9, 0.72, -1.9))
 	_anchor("AtticAnchor_Record", Vector3(-1.9, 0.9, -1.6))
