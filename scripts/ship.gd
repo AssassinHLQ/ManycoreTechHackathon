@@ -19,7 +19,7 @@ var third_person := false
 var orbit_yaw := 0.0
 var orbit_pitch := 0.28
 ## 第三人称相机的跟随距离（米）。滚轮也能调。
-var orbit_distance := 13.0
+var orbit_distance := 11.5
 ## 第三人称相机的**目标**跟随距离。滚轮只改这个，实际 orbit_distance
 ## 每帧向它插值逼近 —— 这样滚轮像第一人称的长焦一样丝滑，
 ## 而不是「咔」地跳一格。
@@ -27,7 +27,7 @@ var orbit_distance := 13.0
 ## ⚠ 2026-11-11：旧版滚轮直接改 orbit_distance（*0.9 / *1.1），
 ##   一次跳 10% 且没有过渡，玩家反馈「僵硬」。这里拆成
 ##   「目标值 + 每帧指数插值」，时间常数与第一人称 FOV 一致（8.0）。
-var orbit_distance_target := 13.0
+var orbit_distance_target := 11.5
 ## 插值时间常数。越大越快贴上去；第一人称 FOV 用的是 8.0。
 const ORBIT_LERP_SPEED := 8.0
 
@@ -1564,12 +1564,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				# 步长比第一人称的 1.18 温和一些：相机距离对画面的影响是平方级的
 				# （远处几米的差别眼睛看不出来，近处一点就很明显），
 				# 所以用 1.12 让「靠近」和「拉远」手感对称、不会一顿一顿。
-				orbit_distance_target = clampf(orbit_distance_target * 0.88, 4.5, 60.0)
+				orbit_distance_target = clampf(orbit_distance_target * 0.88, 4.5, 30.0)
 			else:
 				zoom = clampf(zoom * 1.18, 1.0, 16.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			if third_person:
-				orbit_distance_target = clampf(orbit_distance_target * 1.12, 4.5, 60.0)
+				orbit_distance_target = clampf(orbit_distance_target * 1.12, 4.5, 30.0)
 			else:
 				zoom = clampf(zoom / 1.18, 1.0, 16.0)
 		if zoom < 1.01:
