@@ -90,3 +90,25 @@ assets/models/props/attic-worlds/_ledger.json
 *.bak_*
 *~
 *.old
+
+# ── 调试/探针的临时产物（2026-11-12 用户要求「加入 gitignore」）──────
+# 这些是开发过程中跑真机探针、注入脚本、导出中间件留下的散落文件，
+# 单个就可能几十 MB（实测 _shimmer.txt.err 有 25.7 MB），绝不该入库。
+_*.txt.err
+_*.txt.out
+_*.log.err
+_tmp_*
+_shimmer*
+*.err
+*.out
+# 探针/截图脚本的临时输出（captures/ 已整体忽略，这里补齐根目录散落件）
+_probe_*.json
+_*_quote.json
+_*_names.json
+_*_probe.json
+_ledger*.json
+
+# ── 生成流程的中间产物（体积大且可重新生成）────────────────────────
+# 星球/道具的原始下载包与未压缩贴图：只保留压缩后的 glb + jpg + .import
+assets/models/**/*.zip
+assets/models/**/model_glb_*.png
