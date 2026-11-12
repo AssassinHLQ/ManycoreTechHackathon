@@ -68,6 +68,42 @@ const PROP_INSTANCE_CAP := {
 	"crystal-cluster-lo": 70,
 	"vent-lo": 60,
 	"stone-bridge": 4,
+	"lm-qinglan": 2,
+	"lm-zheya": 2,
+	"lm-cangbo": 2,
+	"lm-xuanjing": 2,
+	"lm-xuanyuan": 2,
+	"lm-baiyao": 2,
+	"lm-pansha": 2,
+	"lm-taiyuan": 2,
+	"lm-liuwu": 2,
+	"lm-jianmo": 2,
+	"lm-jiangxiao": 2,
+	"lm-cangwu": 2,
+	"lm-jinwu": 2,
+	"lm-yuheng": 2,
+	"lm-sue": 2,
+	"lm-danxia": 2,
+	"lm-biluo": 2,
+	"lm-youdu": 2,
+	"lm-yaoguang": 2,
+	"lm-xuanpu": 2,
+	"alien-mushroom": 12,
+	"dead-tree": 12,
+	"thorn-shrub": 12,
+	"crystal-flora": 12,
+	"ice-spike": 12,
+	"dune-arch": 12,
+	"cargo-pod": 12,
+	"antenna-mast": 12,
+	"stone-idol": 12,
+	"rubble-wall": 12,
+	"lava-boulder": 12,
+	"geyser-basin": 12,
+	"lf-canyon-wall": 4,
+	"lf-natural-arch": 4,
+	"lf-mesa-plateau": 4,
+	"lf-ridge-spine": 4,
 	"vent": 8,
 	"floating-rock": 8,
 }
@@ -83,46 +119,46 @@ const PROP_INSTANCE_CAP := {
 ##     瑶光=耀眼晶脊+朝下的镜面 → 晶簇极密、尖峰、悬浮石
 ##   尺寸单位是「设计米数」，运行时会再乘 prop_scale。
 const PLANET_PROPS := {
-	"qinglan": [["ruin-arch", 3, 34, 52, true], ["obelisk", 4, 40, 70, false],
-		["dome-habitat", 2, 34, 50, true], ["rock-cluster", 6, 20, 40, false]],
-	"zheya": [["vent", 8, 24, 44, false], ["rock-spire", 10, 30, 70, false],
-		["signal-tower", 3, 46, 80, true], ["ruin-arch", 2, 30, 46, false]],
-	"cangbo": [["crystal-cluster", 10, 20, 44, false], ["dome-habitat", 3, 30, 46, true],
-		["floating-rock", 5, 26, 50, false]],
-	"xuanjing": [["crystal-cluster", 12, 22, 50, false], ["floating-rock", 8, 26, 54, false],
-		["signal-tower", 3, 44, 76, true]],
-	"xuanyuan": [["obelisk", 8, 46, 90, true], ["ruin-arch", 3, 36, 58, false],
-		["rock-spire", 6, 34, 76, false]],
-	"baiyao": [["rock-spire", 12, 32, 78, false], ["crystal-cluster", 8, 22, 46, false],
-		["dome-habitat", 2, 30, 44, true]],
-	"pansha": [["rock-spire", 14, 34, 86, false], ["ruin-arch", 3, 32, 52, false],
-		["rock-cluster", 10, 22, 46, false]],
-	"taiyuan": [["ruin-arch", 4, 32, 54, false], ["rock-cluster", 10, 20, 42, false],
-		["dome-habitat", 2, 30, 44, true]],
-	"liuwu": [["vent", 10, 26, 48, false], ["dome-habitat", 3, 32, 48, true],
-		["signal-tower", 2, 44, 72, false], ["rock-cluster", 6, 20, 38, false]],
-	"jianmo": [["obelisk", 12, 44, 92, false], ["rock-spire", 10, 32, 74, false],
-		["floating-rock", 5, 24, 48, false]],
-	"jiangxiao": [["rock-spire", 10, 30, 68, false], ["vent", 5, 22, 42, false],
-		["ruin-arch", 2, 30, 48, false]],
-	"cangwu": [["ruin-arch", 3, 32, 52, true], ["rock-cluster", 8, 20, 40, false],
-		["obelisk", 3, 40, 66, false]],
-	"jinwu": [["rock-cluster", 12, 22, 46, false], ["obelisk", 5, 42, 74, false],
-		["vent", 4, 22, 40, false]],
-	"yuheng": [["crystal-cluster", 10, 22, 46, false], ["obelisk", 4, 38, 64, false],
-		["rock-cluster", 8, 20, 38, false]],
-	"sue": [["obelisk", 10, 40, 76, false], ["rock-cluster", 10, 20, 40, false],
-		["floating-rock", 4, 24, 46, false]],
-	"danxia": [["rock-cluster", 12, 22, 48, false], ["rock-spire", 8, 30, 66, false],
-		["ruin-arch", 2, 30, 48, false]],
-	"biluo": [["crystal-cluster", 8, 20, 40, false], ["floating-rock", 6, 24, 46, false],
-		["dome-habitat", 3, 30, 44, true]],
-	"youdu": [["crystal-cluster", 12, 22, 48, false], ["rock-spire", 8, 30, 68, false],
-		["alien-tree", 4, 16, 30, false]],
-	"yaoguang": [["crystal-cluster", 14, 24, 54, false], ["rock-spire", 8, 30, 70, false],
-		["floating-rock", 6, 24, 48, false]],
-	"xuanpu": [["alien-tree", 8, 16, 32, false], ["crystal-cluster", 8, 20, 42, false],
-		["rock-cluster", 8, 20, 38, false]],
+	"qinglan": [["ruin-arch", 3, 20, 31, true], ["obelisk", 4, 24, 42, false],
+		["dome-habitat", 2, 20, 30, true], ["rock-cluster", 6, 12, 24, false]],
+	"zheya": [["vent", 8, 14, 26, false], ["rock-spire", 10, 18, 42, false],
+		["signal-tower", 3, 26, 46, true], ["ruin-arch", 2, 18, 28, false]],
+	"cangbo": [["crystal-cluster", 10, 12, 26, false], ["dome-habitat", 3, 18, 28, true],
+		["floating-rock", 5, 16, 30, false]],
+	"xuanjing": [["crystal-cluster", 12, 13, 30, false], ["floating-rock", 8, 16, 32, false],
+		["signal-tower", 3, 26, 46, true]],
+	"xuanyuan": [["obelisk", 8, 26, 46, true], ["ruin-arch", 3, 22, 35, false],
+		["rock-spire", 6, 20, 46, false]],
+	"baiyao": [["rock-spire", 12, 19, 46, false], ["crystal-cluster", 8, 13, 28, false],
+		["dome-habitat", 2, 18, 26, true]],
+	"pansha": [["rock-spire", 14, 20, 46, false], ["ruin-arch", 3, 19, 31, false],
+		["rock-cluster", 10, 13, 28, false]],
+	"taiyuan": [["ruin-arch", 4, 19, 32, false], ["rock-cluster", 10, 12, 25, false],
+		["dome-habitat", 2, 18, 26, true]],
+	"liuwu": [["vent", 10, 16, 29, false], ["dome-habitat", 3, 19, 29, true],
+		["signal-tower", 2, 26, 43, false], ["rock-cluster", 6, 12, 23, false]],
+	"jianmo": [["obelisk", 12, 26, 46, false], ["rock-spire", 10, 19, 44, false],
+		["floating-rock", 5, 14, 29, false]],
+	"jiangxiao": [["rock-spire", 10, 18, 41, false], ["vent", 5, 13, 25, false],
+		["ruin-arch", 2, 18, 29, false]],
+	"cangwu": [["ruin-arch", 3, 19, 31, true], ["rock-cluster", 8, 12, 24, false],
+		["obelisk", 3, 24, 40, false]],
+	"jinwu": [["rock-cluster", 12, 13, 28, false], ["obelisk", 5, 25, 44, false],
+		["vent", 4, 13, 24, false]],
+	"yuheng": [["crystal-cluster", 10, 13, 28, false], ["obelisk", 4, 23, 38, false],
+		["rock-cluster", 8, 12, 23, false]],
+	"sue": [["obelisk", 10, 24, 46, false], ["rock-cluster", 10, 12, 24, false],
+		["floating-rock", 4, 14, 28, false]],
+	"danxia": [["rock-cluster", 12, 13, 29, false], ["rock-spire", 8, 18, 40, false],
+		["ruin-arch", 2, 18, 29, false]],
+	"biluo": [["crystal-cluster", 8, 12, 24, false], ["floating-rock", 6, 14, 28, false],
+		["dome-habitat", 3, 18, 26, true]],
+	"youdu": [["crystal-cluster", 12, 13, 29, false], ["rock-spire", 8, 18, 41, false],
+		["alien-tree", 4, 12, 20, false]],
+	"yaoguang": [["crystal-cluster", 14, 14, 32, false], ["rock-spire", 8, 18, 42, false],
+		["floating-rock", 6, 14, 29, false]],
+	"xuanpu": [["alien-tree", 8, 12, 20, false], ["crystal-cluster", 8, 12, 25, false],
+		["rock-cluster", 8, 12, 23, false]],
 }
 
 ## 大型地貌件（目标 ④「大型地貌特征」）。
@@ -135,30 +171,62 @@ const PLANET_PROPS := {
 ## 尺寸是「设计米数」，运行时 × prop_scale。
 ## ⚠ 这一条**完全零额度**：只是把已有 GLB 放大，不新增生成。
 const LANDFORM_PROPS := {
-	"qinglan": [["rock-cluster", 1, 90, 130, false]],
-	"zheya": [["rock-spire", 2, 110, 190, false], ["rock-cluster", 1, 80, 120, false], ["stone-bridge", 1, 90, 150, false]],
-	"cangbo": [["floating-rock", 2, 100, 170, false]],
-	"xuanjing": [["floating-rock", 3, 90, 160, false], ["rock-spire", 1, 100, 150, false]],
-	"xuanyuan": [["rock-spire", 2, 130, 220, false], ["stone-bridge", 1, 90, 150, false]],
-	"baiyao": [["rock-spire", 2, 110, 200, false]],
-	"pansha": [["rock-spire", 3, 120, 220, false]],
-	"taiyuan": [["rock-cluster", 2, 85, 130, false]],
-	"liuwu": [["rock-spire", 1, 110, 170, false], ["rock-cluster", 1, 80, 120, false], ["stone-bridge", 1, 90, 150, false]],
-	"jianmo": [["rock-spire", 3, 130, 230, false], ["floating-rock", 1, 100, 150, false], ["stone-bridge", 1, 90, 150, false]],
-	"jiangxiao": [["rock-spire", 2, 110, 190, false]],
-	"cangwu": [["rock-cluster", 2, 85, 135, false]],
-	"jinwu": [["rock-cluster", 2, 80, 125, false]],
-	"yuheng": [["crystal-cluster", 2, 90, 150, false]],
-	"sue": [["rock-spire", 2, 100, 170, false]],
-	"danxia": [["rock-cluster", 2, 90, 140, false], ["rock-spire", 1, 110, 180, false], ["stone-bridge", 1, 90, 150, false]],
-	"biluo": [["floating-rock", 2, 95, 160, false]],
-	"youdu": [["crystal-cluster", 2, 95, 160, false], ["rock-spire", 1, 110, 180, false]],
-	"yaoguang": [["crystal-cluster", 3, 100, 170, false], ["floating-rock", 1, 95, 150, false]],
-	"xuanpu": [["rock-cluster", 1, 90, 140, false], ["crystal-cluster", 1, 90, 140, false]],
+	"qinglan": [["rock-cluster", 1, 26, 34, false], ["lf-ridge-spine", 1, 26, 40, false]],
+	"zheya": [["rock-spire", 2, 28, 42, false], ["lf-canyon-wall", 1, 28, 46, false],
+		["stone-bridge", 1, 14, 26, false]],
+	"cangbo": [["floating-rock", 2, 26, 38, false], ["lf-mesa-plateau", 1, 28, 44, false]],
+	"xuanjing": [["floating-rock", 3, 26, 42, false], ["lf-ridge-spine", 1, 26, 40, false]],
+	"xuanyuan": [["rock-spire", 2, 30, 46, false], ["stone-bridge", 1, 14, 26, false]],
+	"baiyao": [["rock-spire", 2, 28, 44, false], ["lf-canyon-wall", 1, 28, 46, false]],
+	"pansha": [["rock-spire", 3, 30, 48, false], ["lf-natural-arch", 1, 26, 40, false]],
+	"taiyuan": [["rock-cluster", 2, 26, 36, false], ["lf-ridge-spine", 1, 26, 40, false]],
+	"liuwu": [["rock-spire", 1, 28, 40, false], ["lf-canyon-wall", 1, 28, 46, false],
+		["stone-bridge", 1, 14, 26, false]],
+	"jianmo": [["rock-spire", 3, 30, 48, false], ["floating-rock", 1, 26, 38, false],
+		["stone-bridge", 1, 14, 26, false]],
+	"jiangxiao": [["rock-spire", 2, 28, 44, false], ["lf-mesa-plateau", 1, 28, 44, false]],
+	"cangwu": [["rock-cluster", 2, 26, 36, false], ["lf-ridge-spine", 1, 26, 40, false]],
+	"jinwu": [["rock-cluster", 2, 26, 34, false], ["lf-mesa-plateau", 1, 28, 44, false]],
+	"yuheng": [["crystal-cluster", 2, 26, 40, false]],
+	"sue": [["rock-spire", 2, 26, 40, false], ["lf-canyon-wall", 1, 28, 46, false]],
+	"danxia": [["rock-cluster", 2, 26, 38, false], ["rock-spire", 1, 30, 44, false],
+		["lf-natural-arch", 1, 26, 40, false], ["stone-bridge", 1, 14, 26, false]],
+	"biluo": [["floating-rock", 2, 26, 40, false], ["lf-natural-arch", 1, 26, 40, false]],
+	"youdu": [["crystal-cluster", 2, 26, 42, false], ["lf-canyon-wall", 1, 28, 46, false]],
+	"yaoguang": [["crystal-cluster", 3, 26, 42, false], ["floating-rock", 1, 26, 38, false],
+		["lf-ridge-spine", 1, 26, 40, false]],
+	"xuanpu": [["rock-cluster", 1, 26, 36, false], ["crystal-cluster", 1, 26, 40, false]],
 }
 
 ## 会「悬浮」的道具：放置时抬高，做成浮空岛/浮石。
 const PROP_FLOATING := ["floating-rock"]
+
+## 每颗星球的「通用环境物件」组合：[prop_id, 数量, 尺寸下限, 尺寸上限]
+##
+## 第二批资产（2026-11-12，用户：「怎么才 39，太少了」）里挑的 12 个通用件，
+## 按星球气候分配：冰原给冰棱、沙海给沙岩拱、丛林给枯树蘑菇、
+## 遗迹区给石像断墙。尺寸是设计米数，运行时 × prop_scale。
+const GENERIC_PROPS := {
+	"qinglan": [["alien-mushroom", 5, 3, 8], ["dead-tree", 4, 4, 10], ["stone-idol", 2, 4, 9]],
+	"zheya": [["rubble-wall", 5, 4, 10], ["lava-boulder", 6, 2, 6], ["geyser-basin", 4, 3, 8]],
+	"cangbo": [["ice-spike", 8, 3, 9], ["crystal-flora", 4, 1, 3]],
+	"xuanjing": [["cargo-pod", 4, 3, 7], ["antenna-mast", 3, 5, 12], ["crystal-flora", 5, 1, 3]],
+	"xuanyuan": [["stone-idol", 3, 4, 9], ["rubble-wall", 4, 4, 10]],
+	"baiyao": [["ice-spike", 10, 3, 9], ["crystal-flora", 3, 1, 3]],
+	"pansha": [["dune-arch", 4, 8, 18], ["dead-tree", 3, 4, 10], ["lava-boulder", 5, 2, 6]],
+	"taiyuan": [["thorn-shrub", 8, 2, 3], ["dead-tree", 3, 4, 10], ["alien-mushroom", 3, 3, 8]],
+	"liuwu": [["geyser-basin", 5, 3, 8], ["cargo-pod", 3, 3, 7], ["antenna-mast", 2, 5, 12]],
+	"jianmo": [["stone-idol", 3, 4, 9], ["rubble-wall", 3, 4, 10]],
+	"jiangxiao": [["lava-boulder", 7, 2, 6], ["dune-arch", 3, 8, 18]],
+	"cangwu": [["alien-mushroom", 6, 3, 8], ["dead-tree", 4, 4, 10], ["thorn-shrub", 5, 2, 3]],
+	"jinwu": [["lava-boulder", 6, 2, 6], ["dead-tree", 3, 4, 10]],
+	"sue": [["stone-idol", 3, 4, 9], ["rubble-wall", 4, 4, 10]],
+	"danxia": [["dune-arch", 4, 8, 18], ["rubble-wall", 3, 4, 10]],
+	"biluo": [["crystal-flora", 4, 1, 3], ["cargo-pod", 2, 3, 7]],
+	"youdu": [["ice-spike", 8, 3, 9], ["crystal-flora", 5, 1, 3], ["stone-idol", 3, 4, 9]],
+	"yaoguang": [["crystal-flora", 8, 1, 3], ["ice-spike", 5, 3, 9]],
+	"xuanpu": [["alien-mushroom", 6, 3, 8], ["thorn-shrub", 5, 2, 3], ["dead-tree", 3, 4, 10]],
+}
 
 const PROP_MODELS := {
 	"alien-tree": "res://assets/models/props/alien-tree/model.glb",
@@ -175,6 +243,42 @@ const PROP_MODELS := {
 	"crystal-cluster-lo": "res://assets/models/props/crystal-cluster-lo/model.glb",
 	"vent-lo": "res://assets/models/props/vent-lo/model.glb",
 	"stone-bridge": "res://assets/models/props/stone-bridge/model.glb",
+	"lm-qinglan": "res://assets/models/props/lm-qinglan/model.glb",
+	"lm-zheya": "res://assets/models/props/lm-zheya/model.glb",
+	"lm-cangbo": "res://assets/models/props/lm-cangbo/model.glb",
+	"lm-xuanjing": "res://assets/models/props/lm-xuanjing/model.glb",
+	"lm-xuanyuan": "res://assets/models/props/lm-xuanyuan/model.glb",
+	"lm-baiyao": "res://assets/models/props/lm-baiyao/model.glb",
+	"lm-pansha": "res://assets/models/props/lm-pansha/model.glb",
+	"lm-taiyuan": "res://assets/models/props/lm-taiyuan/model.glb",
+	"lm-liuwu": "res://assets/models/props/lm-liuwu/model.glb",
+	"lm-jianmo": "res://assets/models/props/lm-jianmo/model.glb",
+	"lm-jiangxiao": "res://assets/models/props/lm-jiangxiao/model.glb",
+	"lm-cangwu": "res://assets/models/props/lm-cangwu/model.glb",
+	"lm-jinwu": "res://assets/models/props/lm-jinwu/model.glb",
+	"lm-yuheng": "res://assets/models/props/lm-yuheng/model.glb",
+	"lm-sue": "res://assets/models/props/lm-sue/model.glb",
+	"lm-danxia": "res://assets/models/props/lm-danxia/model.glb",
+	"lm-biluo": "res://assets/models/props/lm-biluo/model.glb",
+	"lm-youdu": "res://assets/models/props/lm-youdu/model.glb",
+	"lm-yaoguang": "res://assets/models/props/lm-yaoguang/model.glb",
+	"lm-xuanpu": "res://assets/models/props/lm-xuanpu/model.glb",
+	"alien-mushroom": "res://assets/models/props/alien-mushroom/model.glb",
+	"dead-tree": "res://assets/models/props/dead-tree/model.glb",
+	"thorn-shrub": "res://assets/models/props/thorn-shrub/model.glb",
+	"crystal-flora": "res://assets/models/props/crystal-flora/model.glb",
+	"ice-spike": "res://assets/models/props/ice-spike/model.glb",
+	"dune-arch": "res://assets/models/props/dune-arch/model.glb",
+	"cargo-pod": "res://assets/models/props/cargo-pod/model.glb",
+	"antenna-mast": "res://assets/models/props/antenna-mast/model.glb",
+	"stone-idol": "res://assets/models/props/stone-idol/model.glb",
+	"rubble-wall": "res://assets/models/props/rubble-wall/model.glb",
+	"lava-boulder": "res://assets/models/props/lava-boulder/model.glb",
+	"geyser-basin": "res://assets/models/props/geyser-basin/model.glb",
+	"lf-canyon-wall": "res://assets/models/props/lf-canyon-wall/model.glb",
+	"lf-natural-arch": "res://assets/models/props/lf-natural-arch/model.glb",
+	"lf-mesa-plateau": "res://assets/models/props/lf-mesa-plateau/model.glb",
+	"lf-ridge-spine": "res://assets/models/props/lf-ridge-spine/model.glb",
 	"vent": "res://assets/models/props/vent/model.glb",
 	"floating-rock": "res://assets/models/props/floating-rock/model.glb",
 }
@@ -1759,9 +1863,12 @@ func _prop_collider_profile(prop_id: String) -> Vector2:
 ## 在星球上挑一个放道具的方向。
 ## near_site = true 时贴着基地外围（玩家一眼能看到），否则全球散布，
 ## 两种情况都避开基地平地本身和洞口。
-func _pick_prop_direction(near_site: bool) -> Vector3:
+func _pick_prop_direction(near_site: bool, min_clear_m := 0.0) -> Vector3:
 	var site: Vector3 = site_direction.normalized()
 	var pad_angle: float = site_pad_radius / radius
+	# 平地上及「平地 + 净空」范围内一律不放：道具的碰撞半径可能几十米，
+	# 只看中心会在边缘压回平地，把基地楼梯/门口堵死（实测沧波星潮汐站）。
+	var min_arc: float = pad_angle + min_clear_m / maxf(radius, 1.0)
 	for _attempt in range(28):
 		var dir: Vector3
 		if near_site:
@@ -1779,8 +1886,8 @@ func _pick_prop_direction(near_site: bool) -> Vector3:
 				continue
 			dir = dir.normalized()
 		var arc: float = acos(clampf(dir.dot(site), -1.0, 1.0))
-		if arc < pad_angle * 0.95:
-			continue                      # 别压在基地平地上
+		if arc < min_arc:
+			continue                      # 别压在基地平地 + 净空范围内
 		if _near_cave(dir, 0.06):
 			continue                      # 别堵洞口
 		return dir
@@ -1805,13 +1912,36 @@ func _build_landmark_props() -> void:
 		var near: bool = bool(entry[4])
 		var floating: bool = PROP_FLOATING.has(prop_id)
 		for _i in range(count):
-			var dir := _pick_prop_direction(near)
+			var size := rng.randf_range(size_min, size_max)
+			var dir := _pick_prop_direction(near, size * 0.5)
 			if dir == Vector3.ZERO:
 				continue
-			var size := rng.randf_range(size_min, size_max)
 			# 悬浮的抬高到半空；其余底部微沉入地表，避免悬空缝。
 			var altitude: float = size * 0.35 if floating else -size * 0.04
 			_add_prop(prop_id, dir, size, altitude, _prop_tint(), false)
+	# 每颗星球的**签名地标**：一颗一个，尺寸最大、最醒目，一眼能认出是哪颗星。
+	# 命名约定 lm-<kind>，见 PROP_MODELS。
+	var sig_id := "lm-%s" % kind
+	if _prop_mesh(sig_id) != null:
+		for _i in range(2):
+			var sig_size: float = rng.randf_range(22.0, 40.0) * prop_scale
+			# 净空按尺寸的一半给：地标可能 100~200 米高，碰撞半径约 0.42×尺寸
+			var sig_dir := _pick_prop_direction(true, sig_size * 0.5)
+			if sig_dir == Vector3.ZERO:
+				continue
+			_add_prop(sig_id, sig_dir, sig_size, -2.0 * prop_scale,
+				_prop_tint(), false)
+	# 通用环境物件：按星球气候分配的蘑菇/枯树/冰棱/石像…
+	for gentry in GENERIC_PROPS.get(kind, []):
+		var gid: String = gentry[0]
+		if _prop_mesh(gid) == null:
+			continue
+		for _i in range(int(gentry[1])):
+			var gsize: float = rng.randf_range(float(gentry[2]), float(gentry[3])) * prop_scale
+			var gdir := _pick_prop_direction(false, gsize * 0.5)
+			if gdir == Vector3.ZERO:
+				continue
+			_add_prop(gid, gdir, gsize, -2.0 * prop_scale, _prop_tint(), false)
 	# 目标 ④：大型地貌件（把已有资产放大，零额度）
 	_build_landform_props()
 	# 地标与地貌件都是在 _build_landscape 之后才排进队列的，所以必须在这里补 flush
@@ -1834,10 +1964,10 @@ func _build_landform_props() -> void:
 		var floating: bool = PROP_FLOATING.has(prop_id)
 		for _i in range(count):
 			# 地貌件放得远一点，别压住基地
-			var dir := _pick_prop_direction(false)
+			var size := rng.randf_range(size_min, size_max)
+			var dir := _pick_prop_direction(false, size * 0.5)
 			if dir == Vector3.ZERO:
 				continue
-			var size := rng.randf_range(size_min, size_max)
 			var altitude: float = size * 0.45 if floating else -size * 0.05
 			_add_prop(prop_id, dir, size, altitude, _prop_tint(), false)
 
@@ -1845,13 +1975,19 @@ func _build_landform_props() -> void:
 ## 这颗星球的道具色调。用 MultiMesh 实例色调制 AI 贴图，
 ## 让同一套 AI 资产在 20 颗星球上呈现各自的色系（用户：「保留配色，呼应名字」）。
 func _prop_tint() -> Color:
-	var base: Color = base_color
-	# 只在明度/饱和度上做轻微变化，别把 AI 贴图染成一块色板
-	var j: float = rng.randf_range(-0.12, 0.18)
+	# ⚠ 2026-11-12 修「AI 道具全黑」：
+	#   这个值是**乘数**（材质开了 vertex_color_use_as_albedo，
+	#   最终 albedo = AI 贴图 × 实例色）。
+	#   旧版直接拿星球基色当乘数（青岚 2b4f52 = 0.17/0.31/0.32），
+	#   把贴图亮度压掉 70~80%，实机截图里道具几乎全黑。
+	#   现在改成「近白 + 轻微色相」：基色提亮到 0.62 以上，
+	#   再夹到 0.68~1.0，保留 AI 贴图的明暗层次，只带一点该星球的色调。
+	var lifted: Color = base_color.lightened(0.62)
+	var j: float = rng.randf_range(-0.05, 0.07)
 	return Color(
-		clampf(base.r + j, 0.25, 1.0),
-		clampf(base.g + j, 0.25, 1.0),
-		clampf(base.b + j, 0.25, 1.0),
+		clampf(lifted.r + j, 0.68, 1.0),
+		clampf(lifted.g + j, 0.68, 1.0),
+		clampf(lifted.b + j, 0.68, 1.0),
 		1.0)
 
 

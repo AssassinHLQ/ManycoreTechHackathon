@@ -16,17 +16,24 @@ func _check(condition: bool, message: String) -> void:
 		push_error("FAIL  " + message)
 
 
+## 用「行星局部坐标」度量位移。
+##
+## ⚠ 2026-11-12：旧版用 global_position，会把**行星公转**算进去。
+##   行星位置由 game.elapsed 驱动，建场卡顿时 elapsed 跳变，
+##   行星沿轨道瞬移 → 作为它子节点的玩家 global_position 也跟着跳 3 米。
+##   实测：失败时玩家在行星局部坐标里完全不动，只有全局坐标在跳。
+##   改成局部坐标后，量的就是「相对地面的移动」，判据一分不放宽。
 func _walk(action: String, frames: int) -> Array:
-	var previous: Vector3 = game.player.global_position
+	var previous: Vector3 = game.player.position
 	var max_step := 0.0
 	var total := 0.0
 	Input.action_press(action)
 	for i in range(frames):
 		await physics_frame
-		var step: float = previous.distance_to(game.player.global_position)
+		var step: float = previous.distance_to(game.player.position)
 		max_step = maxf(max_step, step)
 		total += step
-		previous = game.player.global_position
+		previous = game.player.position
 	Input.action_release(action)
 	return [max_step, total]
 
@@ -48,6 +55,18 @@ func _run() -> void:
 	await game.await_world_ready()
 	await process_frame
 	game.start_game()
+	for i in range(20):
+		await physics_frame
+	# ⚠ 2026-11-12：必须等后台行星补建完成再开始。
+	#   建造期间主线程会卡顿，某一帧 physics delta 变大，
+	#   玩家一帧走 3 米多（阈值 1.5）—— 测试会误判成「卡住」。
+	#   实测见 tests/probe_tide_stairs.gd：每次大跳都紧跟着一行 [Lux3D] 建造日志。
+	# 轮询行星数量到 20（比 world_build_remaining 可靠：那个标志在第二段建造
+	# 开始之前是 false，守卫会提前放行，随后建造卡顿就落进下面的行走窗口）。
+	var build_guard := 0
+	while game.planets.size() < 20 and build_guard < 3600:
+		await process_frame
+		build_guard += 1
 	for i in range(20):
 		await physics_frame
 	var arch: Node3D = game.home.find_child("Architecture_Qinglan", true, false)
