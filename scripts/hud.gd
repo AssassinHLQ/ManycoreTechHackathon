@@ -477,7 +477,8 @@ func _build_menu() -> void:
 	credits.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	credits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var credits2 := _text(box,
-		"星球模型由 Aholo Lux3D（群核科技）文生 3D 生成　·　完整声明见 THIRD_PARTY_NOTICES.md",
+		"星球模型由 Aholo Lux3D（群核科技）文生 3D 生成　·　字体 星野文楷（上游 霞鹜文楷 LXGW WenKai, SIL OFL 1.1）" +
+		"　·　完整声明见 THIRD_PARTY_NOTICES.md",
 		10, Color(0.34, 0.45, 0.47))
 	credits2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	credits2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

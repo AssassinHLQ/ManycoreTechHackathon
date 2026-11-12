@@ -192,25 +192,29 @@ Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 J
 
 项目地址：https://godotengine.org
 
-### 3.4 Noto Sans SC / Noto Sans Symbols 2（字体）
+### 3.4 字体：星野文楷（上游 LXGW WenKai 霞鹜文楷）/ Noto Sans Symbols 2
 
-`demo/index.pck` 内嵌了两份**修改版**（子集）字体，用于网页版的中文与符号显示：
+界面文本与符号使用两份**修改版**（子集）字体：
 
 | 文件 | 上游字体 | 版权归属 | 许可 | 本项目所做修改 |
 |---|---|---|---|---|
-| `assets/ui_font.ttf` | Noto Sans SC 2.04 | Copyright © 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source' | SIL OFL 1.1 | ① 由可变字体实例化（variable font → wght=400 静态字重）；② 裁剪为子集，保留 4,370 个码点（项目全部用字 + GB2312 一级 3,755 常用字 + ASCII / 西文标点 / 箭头 / 几何符号） |
+| `assets/ui_font.ttf` | LXGW WenKai Medium（霞鹜文楷）1.530 | Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai), with Reserved Font Name '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩' and 'LXGW'.<br>Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee) | SIL OFL 1.1 | ① 裁剪为子集（7,861 码点 = GB2312 全部汉字 7,445 + ASCII / 西文标点 / 箭头 / 几何符号）；② **改名为「星野文楷 Starward WenKai」**（见下方保留字体名合规说明）；③ name 表中的版权与许可声明原样保留 |
 | `assets/ui_symbols.ttf` | Noto Sans Symbols 2 2.008 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols) | SIL OFL 1.1 | 裁剪为子集，仅保留界面用到的 3 个码点（▬ ◈ ✦） |
 
-- 许可全文随副本分发：[`demo/licenses/OFL-NotoSansSC.txt`](demo/licenses/OFL-NotoSansSC.txt)、
+- 许可全文随副本分发：[`demo/licenses/OFL-LXGWWenKai.txt`](demo/licenses/OFL-LXGWWenKai.txt)、
   [`demo/licenses/OFL-NotoSansSymbols2.txt`](demo/licenses/OFL-NotoSansSymbols2.txt)。
 - SIL OFL 1.1 允许使用、研究、修改、嵌入与随软件分发（含商业发行），但**不得单独售卖字体本身**；
   修改版必须继续以 OFL 发布，且**不得使用原字体声明的保留字体名**。
-- 本项目的保留字体名合规说明：Noto Sans SC 声明的保留字体名为 `Source`，本项目修改版沿用
-  `Noto Sans SC` 家族名、**未使用 `Source` 字样**，也未使用 Adobe / Google / The Noto Project Authors
-  的名称或商标进行宣传、推广或背书；`Noto` 为 Google 的商标，此处仅用于客观描述字体来源。
-- 字体仅作为界面文本渲染使用，未单独售卖，也未修改字形设计本身（仅做字重实例化与子集裁剪）。
-- 上游项目：<https://github.com/notofonts/noto-cjk>（Noto Sans SC）、
+- **保留字体名合规说明**：LXGW WenKai 声明了保留字体名 `霞鹜` / `霞鶩` / `落霞孤鹜` / `落霞孤鶩` / `LXGW`。
+  本项目的子集属于 OFL 意义上的「修改版」，因此**已将家族名改为「星野文楷 Starward WenKai」**，
+  不再使用上述任何保留名，也未使用 LXGW / Fontworks 的名称或商标进行宣传、推广或背书；
+  `霞鹜文楷` / `LXGW WenKai` 仅在此处以客观描述字体来源的方式出现。
+- 字体仅作为界面文本渲染使用，未单独售卖，也未修改字形设计本身（仅做子集裁剪与家族改名）。
+- 上游项目：<https://github.com/lxgw/LxgwWenKai>（霞鹜文楷）、
+  <https://github.com/fontworks-fonts/Klee>（Klee One，霞鹜文楷的拉丁与假名来源）、
   <https://github.com/notofonts/symbols>（Noto Sans Symbols 2）。
+- 历史说明：本项目曾使用 Noto Sans SC 2.04 子集作为 `assets/ui_font.ttf`（Copyright © 2014-2021 Adobe,
+  with Reserved Font Name 'Source'，SIL OFL 1.1），2026-11-12 起整体换为上述星野文楷子集。
 
 ### 3.5 界面素材：Wenrexa「UI Minimalism SciFi」
 
@@ -301,7 +305,7 @@ HUD 里船体／推进剂等小图标来自 **heyheythere（Spyridon Pikoulas）
 | 组件 | 许可证 | 说明 |
 |---|---|---|
 | Godot Engine 4.7.1 运行时（`index.wasm` / `index.js`） | MIT | 与 AGPL 兼容，可再分发 |
-| Noto Sans SC 子集（`assets/ui_font.ttf`） | SIL OFL 1.1 | 修改版（实例化为 wght=400 + 子集裁剪），字体本身仍为 OFL，许可全文随包分发 |
+| 星野文楷子集（`assets/ui_font.ttf`，上游 LXGW WenKai 霞鹜文楷） | SIL OFL 1.1 | 修改版（子集裁剪 + 家族改名为「星野文楷 Starward WenKai」以遵守保留字体名），字体本身仍为 OFL，许可全文随包分发 |
 | Noto Sans Symbols 2 子集（`assets/ui_symbols.ttf`） | SIL OFL 1.1 | 同上 |
 | Wenrexa「UI Minimalism SciFi」贴图（`assets/ui/wenrexa/`） | CC0 1.0 | 公共领域，无需署名；此处列出仅为致谢 |
 | Pixel UI Sci-Fi Free 图标（`assets/ui/icons/`） | CC BY 4.0 | **需署名**，见 3.6 |
