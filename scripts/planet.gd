@@ -280,6 +280,56 @@ const PROP_FLOATING := ["floating-rock"]
 ## 第二批资产（2026-11-12，用户：「怎么才 39，太少了」）里挑的 12 个通用件，
 ## 按星球气候分配：冰原给冰棱、沙海给沙岩拱、丛林给枯树蘑菇、
 ## 遗迹区给石像断墙。尺寸是设计米数，运行时 × prop_scale。
+## 构图模式装饰组：[prop_id, 数量, 模式, 尺寸下限, 尺寸上限]
+##
+## 模式：ring（环形）/ line（弧线排开）/ pair（两两相对）/ arc（扇形）
+## 这一层是「让每颗星球构图不一样」的关键 —— 只改摆放方式，不新增资产，零额度。
+##
+## ⚠ 半径用弧度表示，1 弧度 ≈ 星球半径那么长的弧。
+##   0.30~0.75 弧度是「走得到但不在基地里」的范围。
+const PATTERN_PROPS := {
+	"qinglan": [["stone-cairn", 6, "ring", 2, 3], ["bleached-log", 5, "line", 3, 5],
+		["ruin-arch", 2, "pair", 6, 9]],
+	"zheya": [["rubble-wall", 5, "arc", 3, 5], ["rail-segment", 4, "line", 3, 5],
+		["ore-scrap", 6, "ring", 2, 3]],
+	"cangbo": [["icicle-cluster", 7, "ring", 2, 4], ["stone-cairn", 4, "line", 2, 3],
+		["frozen-pond", 3, "arc", 3, 5]],
+	"xuanjing": [["glass-shards", 7, "ring", 2, 3], ["twisted-metal", 4, "line", 3, 5],
+		["crystal-vein", 3, "pair", 3, 5]],
+	"xuanyuan": [["stone-idol", 3, "pair", 4, 7], ["bone-yard", 4, "arc", 3, 5],
+		["gravel-pile", 6, "ring", 2, 3]],
+	"baiyao": [["icicle-cluster", 8, "ring", 2, 4], ["crystal-vein", 4, "line", 3, 5],
+		["frozen-pond", 3, "pair", 3, 5]],
+	"pansha": [["sand-ripple", 6, "arc", 3, 5], ["dune-arch-lo", 3, "line", 7, 12],
+		["bone-fossil", 3, "ring", 3, 5]],
+	"taiyuan": [["alien-mound", 5, "ring", 3, 5], ["mushroom-ring", 3, "pair", 2, 3],
+		["stone-cairn", 4, "line", 2, 3]],
+	"liuwu": [["pipe-cluster", 4, "line", 2, 4], ["lava-drip", 6, "ring", 2, 4],
+		["rusted-hull", 3, "arc", 3, 5]],
+	"jianmo": [["rock-spire-lo", 7, "ring", 3, 7], ["glass-shards", 4, "line", 2, 3],
+		["stone-idol", 2, "pair", 4, 7]],
+	"jiangxiao": [["ore-scrap", 7, "ring", 2, 4], ["rail-segment", 4, "line", 3, 5],
+		["gravel-pile", 5, "arc", 2, 3]],
+	"cangwu": [["mossy-boulder", 6, "ring", 2, 4], ["bleached-log", 5, "line", 3, 6],
+		["mushroom-ring", 3, "pair", 2, 3]],
+	"jinwu": [["gravel-pile", 7, "ring", 2, 3], ["bleached-log", 4, "line", 3, 6],
+		["dune-grass", 5, "arc", 1, 2]],
+	"yuheng": [["crystal-vein", 6, "ring", 3, 5], ["mossy-boulder", 4, "line", 2, 4],
+		["glass-shards", 4, "pair", 2, 3]],
+	"sue": [["stone-cairn", 7, "ring", 2, 3], ["bone-yard", 4, "arc", 3, 5],
+		["rock-spire-lo", 3, "pair", 3, 7]],
+	"danxia": [["sand-ripple", 6, "arc", 3, 5], ["rock-cluster-lo", 6, "ring", 2, 5],
+		["bone-fossil", 3, "pair", 3, 5]],
+	"biluo": [["coral-stack", 7, "ring", 2, 4], ["glass-shards", 4, "line", 2, 3],
+		["crystal-flora-lo", 5, "arc", 1, 3]],
+	"youdu": [["icicle-cluster", 7, "ring", 2, 4], ["crystal-vein", 4, "line", 3, 5],
+		["frozen-pond", 3, "pair", 3, 5]],
+	"yaoguang": [["crystal-vein", 7, "ring", 3, 5], ["glass-shards", 5, "arc", 2, 3],
+		["crystal-cluster-lo", 4, "line", 3, 7]],
+	"xuanpu": [["alien-mound", 5, "ring", 3, 5], ["dead-shrub", 6, "arc", 2, 3],
+		["mushroom-ring", 3, "pair", 2, 3]],
+}
+
 ## 细节点缀层：中距离的小物件，给「走出基地那一段」加视觉信息。
 ##
 ## 和 SCATTER_MIX（整球铺量、控总量）分工：
@@ -582,6 +632,10 @@ func _ready() -> void:
 	site_height = _raw_terrain_height(site_direction)
 	_setup_cave()
 	_update_orbit()
+	# 道具容器：先建好，后面所有 Prop_* 都挂进来（便于整组隐藏）
+	_prop_root = Node3D.new()
+	_prop_root.name = "PropRoot"
+	add_child(_prop_root)
 	_build_surface()
 	# ⚠ Lux3D 星球的高度表是在 `_build_surface()` 里烘焙的，上面那次 `site_height`
 	# 走的是程序化噪声（表还没就绪）。烘焙完必须**重算一次** ——
@@ -1906,6 +1960,12 @@ const INTERACTIVE_PROPS := {
 ## 每颗星球的可交互点：{id, kind, dir, size, used}
 var interactive_spots: Array = []
 
+## 所有 AI 道具的容器。整组开关 visible 比逐个遍历便宜得多，
+## 远处 19 颗星球的道具就不必每帧走可见性判定与绘制提交。
+var _prop_root: Node3D = null
+## 道具当前是否因为「离得太远」被隐藏（带迟滞，避免边界抖动）
+var _props_culled := false
+
 
 func _add_prop(prop_id: String, direction: Vector3, size: float,
 		altitude := 0.0, tint := Color.WHITE, respect_cap := true) -> void:
@@ -2016,6 +2076,31 @@ func _set_spot_dim(spot: Dictionary, dim: bool) -> void:
 		mm.set_instance_color(mi, Color(tint.r * 0.22, tint.g * 0.22, tint.b * 0.22, tint.a))
 	else:
 		mm.set_instance_color(mi, tint)
+
+
+## 按距离整组开关道具容器（C：性能优化）。
+##
+## 迟滞：> 8R 隐藏，< 6R 恢复。中间那段保持现状，避免玩家在边界来回时闪。
+## 玩家或飞船所在的星球永远显示（距离判定天然满足）。
+func _update_prop_culling() -> void:
+	if _prop_root == null:
+		return
+	var limit_hide: float = radius * 8.0
+	var limit_show: float = radius * 6.0
+	var d := INF
+	if game != null:
+		if game.player != null and game.player.is_inside_tree():
+			d = minf(d, global_position.distance_to(game.player.global_position))
+		if game.ship != null and game.ship.is_inside_tree():
+			d = minf(d, global_position.distance_to(game.ship.global_position))
+	if d == INF:
+		return
+	if not _props_culled and d > limit_hide:
+		_props_culled = true
+		_prop_root.visible = false
+	elif _props_culled and d < limit_show:
+		_props_culled = false
+		_prop_root.visible = true
 
 
 ## 冷却到期的交互点重新充能（在 _process 里调）。
@@ -2206,6 +2291,8 @@ func _build_landmark_props() -> void:
 	_build_interactive_seeds()
 	# 细节点缀层：走出去那一段的小物件
 	_build_detail_props()
+	# 构图模式装饰组：让每颗星球的摆法不一样（环形/弧线/成对/扇形）
+	_build_pattern_props()
 	# 铺量混排：4~5 种低模混在一起，替代「同一种模型重复 90 次」
 	_build_scatter_mix()
 	# 目标 ④：大型地貌件（把已有资产放大，零额度）
@@ -2215,7 +2302,65 @@ func _build_landmark_props() -> void:
 	_flush_props()
 
 
-## 细节点缀层布置（见 DETAIL_PROPS）。
+## 构图模式装饰组布置（见 PATTERN_PROPS）。
+##
+## 四种模式的几何：
+##   ring  以某个中心方向为轴，绕它均匀转一圈
+##   line  绕着一条切线方向排开（中点最高对齐，两端外扩）
+##   pair  两个方向相对摆放
+##   arc   扇形，只在 100° 范围内铺开
+func _build_pattern_props() -> void:
+	var entries: Array = PATTERN_PROPS.get(kind, [])
+	if entries.is_empty():
+		return
+	var site: Vector3 = site_direction.normalized()
+	var perp: Vector3 = site.cross(Vector3.FORWARD)
+	if perp.length_squared() < 0.01:
+		perp = site.cross(Vector3.RIGHT)
+	perp = perp.normalized()
+	var pad_angle: float = site_pad_radius / maxf(radius, 1.0)
+	for entry in entries:
+		var pid: String = entry[0]
+		if _prop_mesh(pid) == null:
+			continue
+		var count: int = int(entry[1])
+		var mode: String = String(entry[2])
+		# 组中心：绕站点随机方位，0.30~0.62 弧度（走得到，但不在基地平地里）
+		var center: Vector3 = site.rotated(
+			perp.rotated(site, rng.randf() * TAU),
+			maxf(pad_angle * 1.6, rng.randf_range(0.30, 0.62))).normalized()
+		# 切平面上的两个正交方向
+		var t1: Vector3 = center.cross(Vector3.UP)
+		if t1.length_squared() < 0.01:
+			t1 = center.cross(Vector3.RIGHT)
+		t1 = t1.normalized()
+		var t2: Vector3 = center.cross(t1).normalized()
+		for i in range(count):
+			var frac: float = 0.0
+			if count > 1:
+				frac = float(i) / float(count - 1) - 0.5
+			var offset := Vector3.ZERO
+			match mode:
+				"ring":
+					var ang: float = TAU * float(i) / float(maxi(count, 1))
+					var r: float = rng.randf_range(0.020, 0.032)
+					offset = t1 * cos(ang) * r + t2 * sin(ang) * r
+				"line":
+					offset = t1 * (frac * 0.16) + t2 * rng.randf_range(-0.004, 0.004)
+				"pair":
+					var sgn: float = -1.0 if i % 2 == 0 else 1.0
+					offset = t1 * (sgn * rng.randf_range(0.014, 0.030))
+				"arc":
+					offset = t1 * (frac * 0.22) + t2 * rng.randf_range(-0.02, 0.02)
+				_:
+					pass
+			var dir: Vector3 = (center + offset).normalized()
+			if _near_cave(dir, 0.03):
+				continue
+			var size: float = rng.randf_range(float(entry[3]), float(entry[4])) * prop_scale
+			_add_prop(pid, dir, size, -1.2 * prop_scale, _prop_tint(), false)
+
+
 func _build_detail_props() -> void:
 	var site: Vector3 = site_direction.normalized()
 	var perp: Vector3 = site.cross(Vector3.FORWARD)
@@ -2440,7 +2585,10 @@ func _flush_props() -> void:
 				(interactive_spots[si] as Dictionary)["node"] = instance
 				(interactive_spots[si] as Dictionary)["mi"] = int(pair[1])
 		instance.visibility_range_end = 2200.0
-		add_child(instance)
+		if _prop_root != null:
+			_prop_root.add_child(instance)
+		else:
+			add_child(instance)
 		_add_prop_colliders(entries, prop_id)
 
 
@@ -2662,6 +2810,7 @@ func _process(_delta: float) -> void:
 		_update_orbit()
 		_update_water()
 		_refresh_interactive_charges()
+		_update_prop_culling()
 		if not terrain_collision_done:
 			# 飞船或玩家进入 4 倍半径就建地形碰撞，落地前早就建好。
 			var limit := radius * 4.0

@@ -2414,6 +2414,46 @@ func _unhandled_input(event: InputEvent) -> void:
 var relic_seen: Dictionary = {}
 
 
+## 靠近可交互道具时给一行提示；没有则返回空串。
+##
+## 每帧被 get_prompt() 调用一次，只遍历当前星球的 ~16 个交互点，开销可忽略。
+func _planet_interact_hint() -> String:
+	if player == null:
+		return ""
+	var host: Node = player.get_parent()
+	if host == null or not host.has_method("nearest_interactive"):
+		return ""
+	var spot: Dictionary = host.nearest_interactive(player.global_position, 4.0)
+	if spot.is_empty():
+		return ""
+	var kind := String(spot.get("kind", ""))
+	var charges: int = int(spot.get("charges", 0))
+	var left := ""
+	if charges > 1:
+		left = "（还剩 %d 次）" % charges
+	elif charges == 1:
+		left = "（最后一次）"
+	match kind:
+		"crystal":
+			return "E 采集晶簇 · 补喷气燃料%s" % left
+		"cargo":
+			return "E 拆解货舱 · 补氧气%s" % left
+		"med":
+			return "E 使用医疗站 · 氧气回满%s" % left
+		"vent":
+			return "E 触发地热气流"
+		"relic":
+			if bool(spot.get("scanned", false)):
+				return "这处遗迹已记录过"
+			var prog: Array = host.relic_progress()
+			return "E 扫描遗迹 · 图鉴 %d/%d" % [int(prog[0]), int(prog[1])]
+		"beacon":
+			if bool(spot.get("scanned", false)):
+				return "信标已点亮"
+			return "E 点亮信标 · 取用补给"
+	return ""
+
+
 func _planet_interact() -> bool:
 	if player == null:
 		return false
@@ -2916,6 +2956,10 @@ func get_prompt() -> String:
 			return "按住「扫描」按钮扫描「%s」" % scan_target.title
 		return "按住 F 扫描「%s」" % scan_target.title
 	if state == "walk":
+		# 星球可交互道具：比「洞口/登船」更具体，优先显示
+		var prop_hint := _planet_interact_hint()
+		if prop_hint != "":
+			return prop_hint
 		if _near_cave_mouth():
 			return "洞口敞开 · 沿螺旋石阶下到洞底，寻找可扫描的回声"
 		if player.global_position.distance_to(ship.global_position) < 8.0:
