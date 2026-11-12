@@ -2,23 +2,24 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cddtn8or4l8bg"
-path="res://.godot/imported/model_1.png-ea2e064249548d96659bf4b939bdd1a8.ctex"
+uid="uid://dbglub1epufyl"
+path.s3tc="res://.godot/imported/model_0.jpg-7560378eb14b6406d0743e6928d1f34c.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "30c9e48436794918e01e77599a8e7f0b"
+"md5": "e159d9b36e22df341db543136fad7ae2"
 }
 
 [deps]
 
-source_file="res://assets/models/qinglan-planet-v2/model_1.png"
-dest_files=["res://.godot/imported/model_1.png-ea2e064249548d96659bf4b939bdd1a8.ctex"]
+source_file="res://assets/models/props/attic-worlds/snow-sled/model_0.jpg"
+dest_files=["res://.godot/imported/model_0.jpg-7560378eb14b6406d0743e6928d1f34c.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

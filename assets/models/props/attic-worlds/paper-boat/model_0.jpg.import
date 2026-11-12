@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cw03baanul7u4"
-path="res://.godot/imported/model_0.jpg-7b79ea88f2a10cd9764def16f9e1dec0.ctex"
+path.s3tc="res://.godot/imported/model_0.jpg-7b79ea88f2a10cd9764def16f9e1dec0.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "31093512fdb06fe22121c78edf7727c1"
@@ -14,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/paper-boat/model_0.jpg"
-dest_files=["res://.godot/imported/model_0.jpg-7b79ea88f2a10cd9764def16f9e1dec0.ctex"]
+dest_files=["res://.godot/imported/model_0.jpg-7b79ea88f2a10cd9764def16f9e1dec0.s3tc.ctex"]
 
 [params]
 

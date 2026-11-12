@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://wqoq4w63f7mh"
-path="res://.godot/imported/model_1.jpg-bc8002a80b205f2b3848baf282f7463f.ctex"
+path.s3tc="res://.godot/imported/model_1.jpg-bc8002a80b205f2b3848baf282f7463f.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "7e5fccd1e0a6aad670899b990193fee4"
@@ -14,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/mirror-tower/model_1.jpg"
-dest_files=["res://.godot/imported/model_1.jpg-bc8002a80b205f2b3848baf282f7463f.ctex"]
+dest_files=["res://.godot/imported/model_1.jpg-bc8002a80b205f2b3848baf282f7463f.s3tc.ctex"]
 
 [params]
 

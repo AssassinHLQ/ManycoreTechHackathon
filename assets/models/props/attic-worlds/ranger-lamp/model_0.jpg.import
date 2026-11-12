@@ -2,23 +2,24 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://tu8gc8mc7nox"
-path="res://.godot/imported/model_0.png-4e644fddca77bf25d2bdd1728f5d990b.ctex"
+uid="uid://huovtd5g1860"
+path.s3tc="res://.godot/imported/model_0.jpg-378d2a8a6071483a6d9f4c5c8103c183.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "047e4cc896dc21ebb3923f8143717b38"
+"md5": "23ba05b9be2331f6cb13627989f0ac33"
 }
 
 [deps]
 
-source_file="res://assets/models/qinglan-planet-v2/model_0.png"
-dest_files=["res://.godot/imported/model_0.png-4e644fddca77bf25d2bdd1728f5d990b.ctex"]
+source_file="res://assets/models/props/attic-worlds/ranger-lamp/model_0.jpg"
+dest_files=["res://.godot/imported/model_0.jpg-378d2a8a6071483a6d9f4c5c8103c183.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://kxx7ahbrssqu"
-path="res://.godot/imported/model.glb-54725de73f15607916cbd84b32adb859.scn"
+uid="uid://b7sq3wul5nigc"
+path="res://.godot/imported/model.glb-0fc21a7123a32b438f78d6f85bfcf9b7.scn"
 
 [deps]
 
-source_file="res://assets/models/qinglan-planet-v2/model.glb"
-dest_files=["res://.godot/imported/model.glb-54725de73f15607916cbd84b32adb859.scn"]
+source_file="res://assets/models/props/attic-worlds/ranger-lamp/model.glb"
+dest_files=["res://.godot/imported/model.glb-0fc21a7123a32b438f78d6f85bfcf9b7.scn"]
 
 [params]
 

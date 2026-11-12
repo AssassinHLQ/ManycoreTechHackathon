@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cinyrutqos326"
-path="res://.godot/imported/model_0.jpg-a8c35839bce84fca7a6ad7d4324667ee.ctex"
+path.s3tc="res://.godot/imported/model_0.jpg-a8c35839bce84fca7a6ad7d4324667ee.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "053582c7e490be213e4ac50b20c72bb8"
@@ -14,7 +15,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/prism-heart/model_0.jpg"
-dest_files=["res://.godot/imported/model_0.jpg-a8c35839bce84fca7a6ad7d4324667ee.ctex"]
+dest_files=["res://.godot/imported/model_0.jpg-a8c35839bce84fca7a6ad7d4324667ee.s3tc.ctex"]
 
 [params]
 
