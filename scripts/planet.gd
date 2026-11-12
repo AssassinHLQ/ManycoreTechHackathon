@@ -65,6 +65,8 @@ const PROP_INSTANCE_CAP := {
 	"crystal-cluster-lo": 40,
 	"vent-lo": 40,
 	"stone-bridge": 4,
+	"creature-grazer": 6,
+	"creature-tall-walker": 6,
 	"med-station": 3,
 	"oxygen-generator": 3,
 	"ore-crusher": 3,
@@ -280,6 +282,33 @@ const PROP_FLOATING := ["floating-rock"]
 ## 第二批资产（2026-11-12，用户：「怎么才 39，太少了」）里挑的 12 个通用件，
 ## 按星球气候分配：冰原给冰棱、沙海给沙岩拱、丛林给枯树蘑菇、
 ## 遗迹区给石像断墙。尺寸是设计米数，运行时 × prop_scale。
+## 外星生物成群出现：[prop_id, 数量, 尺寸下限, 尺寸上限]
+##
+## 数量刻意压得很少（每球 3~5 只）—— 星球是无人区，生物该是稀客而不是动物园。
+## 体型用「设计米数」：食草兽约 2.2~3.2，高足行者约 4.5~6（细高，比人高一头到两头）。
+const CREATURE_PROPS := {
+	"qinglan": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.5]],
+	"zheya": [["creature-grazer", 2, 2.0, 2.8]],
+	"cangbo": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.8, 5.8]],
+	"xuanjing": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 2, 4.5, 5.5]],
+	"xuanyuan": [["creature-tall-walker", 2, 5.0, 6.0]],
+	"baiyao": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.5, 5.5]],
+	"pansha": [["creature-grazer", 4, 2.0, 2.8]],
+	"taiyuan": [["creature-grazer", 3, 2.2, 3.0], ["creature-tall-walker", 1, 4.5, 5.2]],
+	"liuwu": [["creature-grazer", 2, 2.0, 2.8]],
+	"jianmo": [["creature-tall-walker", 3, 4.8, 6.0]],
+	"jiangxiao": [["creature-grazer", 3, 2.0, 2.8]],
+	"cangwu": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 2, 4.5, 5.5]],
+	"jinwu": [["creature-grazer", 2, 2.0, 2.6]],
+	"yuheng": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 1, 4.5, 5.2]],
+	"sue": [["creature-grazer", 3, 2.0, 2.8]],
+	"danxia": [["creature-grazer", 3, 2.0, 2.8], ["creature-tall-walker", 1, 4.8, 5.6]],
+	"biluo": [["creature-grazer", 2, 2.2, 3.0]],
+	"youdu": [["creature-tall-walker", 3, 5.0, 6.0]],
+	"yaoguang": [["creature-tall-walker", 2, 4.5, 5.5], ["creature-grazer", 1, 2.0, 2.6]],
+	"xuanpu": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.2]],
+}
+
 ## 构图模式装饰组：[prop_id, 数量, 模式, 尺寸下限, 尺寸上限]
 ##
 ## 模式：ring（环形）/ line（弧线排开）/ pair（两两相对）/ arc（扇形）
@@ -472,6 +501,8 @@ const PROP_MODELS := {
 	"crystal-cluster-lo": "res://assets/models/props/crystal-cluster-lo/model.glb",
 	"vent-lo": "res://assets/models/props/vent-lo/model.glb",
 	"stone-bridge": "res://assets/models/props/stone-bridge/model.glb",
+	"creature-grazer": "res://assets/models/props/creature-grazer/model.glb",
+	"creature-tall-walker": "res://assets/models/props/creature-tall-walker/model.glb",
 	"med-station": "res://assets/models/props/med-station/model.glb",
 	"oxygen-generator": "res://assets/models/props/oxygen-generator/model.glb",
 	"ore-crusher": "res://assets/models/props/ore-crusher/model.glb",
@@ -2293,6 +2324,8 @@ func _build_landmark_props() -> void:
 	_build_detail_props()
 	# 构图模式装饰组：让每颗星球的摆法不一样（环形/弧线/成对/扇形）
 	_build_pattern_props()
+	# 外星生物：稀少的群居活物
+	_build_creatures()
 	# 铺量混排：4~5 种低模混在一起，替代「同一种模型重复 90 次」
 	_build_scatter_mix()
 	# 目标 ④：大型地貌件（把已有资产放大，零额度）
@@ -2300,6 +2333,44 @@ func _build_landmark_props() -> void:
 	# 地标与地貌件都是在 _build_landscape 之后才排进队列的，所以必须在这里补 flush
 	# （_flush_props 内部有 _flushed_prop_ids 去重，铺量那批不会重复实例化）。
 	_flush_props()
+
+
+## 外星生物布置（见 CREATURE_PROPS）。
+##
+## 成群：先随机一个「群心」方向，再让个体围着群心散开（0.008~0.022 弧度，
+## 半径 2000 米时约 16~44 米），这样看起来是一小群而不是均匀撒满。
+func _build_creatures() -> void:
+	var entries: Array = CREATURE_PROPS.get(kind, [])
+	if entries.is_empty():
+		return
+	var site: Vector3 = site_direction.normalized()
+	var perp: Vector3 = site.cross(Vector3.FORWARD)
+	if perp.length_squared() < 0.01:
+		perp = site.cross(Vector3.RIGHT)
+	perp = perp.normalized()
+	var pad_angle: float = site_pad_radius / maxf(radius, 1.0)
+	for entry in entries:
+		var pid: String = entry[0]
+		if _prop_mesh(pid) == null:
+			continue
+		# 群心：中距离平缓地带
+		var center: Vector3 = site.rotated(
+			perp.rotated(site, rng.randf() * TAU),
+			maxf(pad_angle * 2.0, rng.randf_range(0.25, 0.70))).normalized()
+		var t1: Vector3 = center.cross(Vector3.UP)
+		if t1.length_squared() < 0.01:
+			t1 = center.cross(Vector3.RIGHT)
+		t1 = t1.normalized()
+		var t2: Vector3 = center.cross(t1).normalized()
+		for _i in range(int(entry[1])):
+			var ang: float = rng.randf() * TAU
+			var rad: float = rng.randf_range(0.008, 0.022)
+			var dir: Vector3 = (center + t1 * cos(ang) * rad + t2 * sin(ang) * rad).normalized()
+			if _near_cave(dir, 0.03):
+				continue
+			var size: float = rng.randf_range(float(entry[2]), float(entry[3])) * prop_scale
+			# 脚踩地：altitude 用负值把模型底压进地表一点，避免悬空
+			_add_prop(pid, dir, size, -0.25 * prop_scale, _prop_tint(), false)
 
 
 ## 构图模式装饰组布置（见 PATTERN_PROPS）。

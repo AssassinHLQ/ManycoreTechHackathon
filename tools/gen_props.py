@@ -298,6 +298,14 @@ PROPS += [
     ("lf-crystal-forest", 26000,
      "crystal forest, a dense stand of tall angular translucent crystal columns of mixed heights, no ground plane, no pedestal, no base, no text, no backdrop"),
 ]
+
+# ── 批六：外星生物（先做 2 个，额度有限）──
+PROPS += [
+    ("creature-grazer", 26000,
+     "alien grazing beast, four thick legs, low heavy body with a ridged back and a small blunt head lowered to feed, no ground plane, no pedestal, no base, no text, no backdrop"),
+    ("creature-tall-walker", 28000,
+     "tall alien walker, slender three metre legs, compact body and a long narrow head on a curved neck, no ground plane, no pedestal, no base, no text, no backdrop"),
+]
 PROPS += [
     ("alien-tree-lo",  10000,
      "alien umbrella tree, slender trunk with a flat mushroom canopy, "
