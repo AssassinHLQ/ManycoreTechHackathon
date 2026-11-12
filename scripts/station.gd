@@ -1964,6 +1964,19 @@ func _furnish(kind: String, x: float, side: float, z_center: float) -> void:
 		"observation":
 			_build_console(Vector3(x + 3.4, FLOOR_TOP, z_center - side * 0.6), 0.0, 2.0)
 			_build_telescope(Vector3(x - 3.8, FLOOR_TOP, z_center + side * 1.7), 0.0)
+			# 观景廊侧墙上的装饰舱门（Lux3D 模型）—— 纯装饰，不通行，
+			# 所以不挂碰撞，避免把玩家挡在房间外。
+			var hatch_prop := _prop("station-hatch", 2.1)
+			if hatch_prop != null:
+				hatch_prop.position = Vector3(x + 4.6, FLOOR_TOP, z_center - side * 2.9)
+				hatch_prop.rotation.y = 0.0 if side > 0.0 else PI
+				add_child(hatch_prop)
+			# 墙面信息屏（Lux3D 外壳；屏面内容仍是程序化的 _mat_glow 条）
+			var screen_prop := _prop("wall-screen", 0.8)
+			if screen_prop != null:
+				screen_prop.position = Vector3(x - 4.8, FLOOR_TOP + 1.5, z_center - side * 2.95)
+				screen_prop.rotation.y = 0.0 if side > 0.0 else PI
+				add_child(screen_prop)
 			_box(self, Vector3(4.2, 0.42, 0.8), Vector3(x, FLOOR_TOP + 0.21, z_center + side * 2.9), _mat_dark, Vector3.ZERO, true)
 			_box(self, Vector3(4.4, 0.1, 0.9), Vector3(x, FLOOR_TOP + 0.47, z_center + side * 2.9), _mat_warm)
 			_box(self, Vector3(4.0, 0.32, 0.12), Vector3(x, FLOOR_TOP + 0.3, z_center + side * 2.48), _mat_trim)
@@ -2210,6 +2223,15 @@ func _build_airlock() -> void:
 	_box(self, Vector3(0.4, 0.4, 7.2), Vector3(101.0, 2.6, 0.0), _mat_trim)
 	_box(self, Vector3(0.3, 0.06, 7.0), Vector3(101.0, FLOOR_TOP + 0.04, 0.0), _mat_glow)
 	_light(Vector3(102.5, 1.8, 0.0), Color("a8ffd7"), 0.7, 7.0)
+	# 气闸旁的等待长凳（Lux3D 模型；气闸门洞本身是开口结构，不加门板，
+	# 否则会挡住通行 —— 舱门模型放到观景廊当装饰）
+	for side: float in [-1.0, 1.0]:
+		var bench_prop := _prop("station-bench", 0.6)
+		if bench_prop == null:
+			break
+		bench_prop.position = Vector3(97.5, FLOOR_TOP, side * 2.6)
+		bench_prop.rotation.y = PI * 0.5
+		add_child(bench_prop)
 
 
 func _build_end_fittings() -> void:
