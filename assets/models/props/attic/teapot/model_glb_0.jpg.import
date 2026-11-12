@@ -3,18 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d0am07ycw43c3"
-path="res://.godot/imported/model_glb_0.jpg-3c90d7eda73068a2b7d12b46eea562f2.ctex"
+path.s3tc="res://.godot/imported/model_glb_0.jpg-3c90d7eda73068a2b7d12b46eea562f2.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "2f21cf9e844782a28ce1715971074a47"
+"md5": "35862cdbf8ff81b861500c78ce24d87b"
 }
 
 [deps]
 
 source_file="res://assets/models/props/attic/teapot/model_glb_0.jpg"
-dest_files=["res://.godot/imported/model_glb_0.jpg-3c90d7eda73068a2b7d12b46eea562f2.ctex"]
+dest_files=["res://.godot/imported/model_glb_0.jpg-3c90d7eda73068a2b7d12b46eea562f2.s3tc.ctex"]
 
 [params]
 

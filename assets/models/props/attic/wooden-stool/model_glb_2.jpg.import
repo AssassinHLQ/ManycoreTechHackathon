@@ -3,18 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bt6ffg885pywg"
-path="res://.godot/imported/model_glb_2.jpg-be397f4be1546efd6087dd873ad8bb01.ctex"
+path.s3tc="res://.godot/imported/model_glb_2.jpg-be397f4be1546efd6087dd873ad8bb01.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "5c17fc382db7a8bca60c8f44bd4cf83c"
+"md5": "a97e631973be4f66b35624ad60878cf8"
 }
 
 [deps]
 
 source_file="res://assets/models/props/attic/wooden-stool/model_glb_2.jpg"
-dest_files=["res://.godot/imported/model_glb_2.jpg-be397f4be1546efd6087dd873ad8bb01.ctex"]
+dest_files=["res://.godot/imported/model_glb_2.jpg-be397f4be1546efd6087dd873ad8bb01.s3tc.ctex"]
 
 [params]
 

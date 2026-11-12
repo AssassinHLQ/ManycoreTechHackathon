@@ -3,18 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://hcderj0xjnkh"
-path="res://.godot/imported/model_glb_2.jpg-95284655e3cb4ceceb735e4a9023763a.ctex"
+path.s3tc="res://.godot/imported/model_glb_2.jpg-95284655e3cb4ceceb735e4a9023763a.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "4f3f5eb75f121fec3248f65f330e20ee"
+"md5": "6ec75dedab6555acb10452019b27891a"
 }
 
 [deps]
 
 source_file="res://assets/models/props/attic/wooden-chest/model_glb_2.jpg"
-dest_files=["res://.godot/imported/model_glb_2.jpg-95284655e3cb4ceceb735e4a9023763a.ctex"]
+dest_files=["res://.godot/imported/model_glb_2.jpg-95284655e3cb4ceceb735e4a9023763a.s3tc.ctex"]
 
 [params]
 

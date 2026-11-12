@@ -3,18 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cqv7om6oic4k8"
-path="res://.godot/imported/model_glb_0.jpg-593331355de5e59d1538d17c4fda071d.ctex"
+path.s3tc="res://.godot/imported/model_glb_0.jpg-593331355de5e59d1538d17c4fda071d.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "3f5f0ad14e3df0be10a9c596b2eb34e2"
+"md5": "ec26df17ba557e4f09a6b53d7c246feb"
 }
 
 [deps]
 
 source_file="res://assets/models/props/attic/gramophone/model_glb_0.jpg"
-dest_files=["res://.godot/imported/model_glb_0.jpg-593331355de5e59d1538d17c4fda071d.ctex"]
+dest_files=["res://.godot/imported/model_glb_0.jpg-593331355de5e59d1538d17c4fda071d.s3tc.ctex"]
 
 [params]
 

@@ -475,15 +475,31 @@ func _build_doors() -> void:
 		door_root.name = "Door_%s" % String(spec["key"]).capitalize()
 		door_root.position = Vector3(x, 0, wall_z)
 		root.add_child(door_root)
-		# 门框。
-		_box(door_root, Vector3(DOOR_WIDTH + 0.24, 0.12, 0.16), Vector3(0, DOOR_HEIGHT + 0.06, 0.02), _wood_dark)
-		for side in [-1.0, 1.0]:
-			_box(door_root, Vector3(0.12, DOOR_HEIGHT, 0.16),
-				Vector3(side * (DOOR_WIDTH + 0.06) * 0.5, DOOR_HEIGHT * 0.5, 0.02), _wood_dark)
+		# 门框。优先 Lux3D 模型；碰撞与门牌另算，不依赖视觉。
+		var frame_prop := prop("door-frame", DOOR_HEIGHT + 0.15)
+		if frame_prop != null:
+			frame_prop.position = Vector3(0, 0, 0.02)
+			door_root.add_child(frame_prop)
+		else:
+			_box(door_root, Vector3(DOOR_WIDTH + 0.24, 0.12, 0.16), Vector3(0, DOOR_HEIGHT + 0.06, 0.02), _wood_dark)
+			for side in [-1.0, 1.0]:
+				_box(door_root, Vector3(0.12, DOOR_HEIGHT, 0.16),
+					Vector3(side * (DOOR_WIDTH + 0.06) * 0.5, DOOR_HEIGHT * 0.5, 0.02), _wood_dark)
 		# 门扇：木框 + 一块透出"那边天气"的嵌板。
-		_box(door_root, Vector3(DOOR_WIDTH, DOOR_HEIGHT, 0.07), Vector3(0, DOOR_HEIGHT * 0.5, 0), _wood)
-		var pane := _box(door_root, Vector3(DOOR_WIDTH - 0.34, DOOR_HEIGHT - 0.62, 0.03),
-			Vector3(0, DOOR_HEIGHT * 0.52, 0.05), _glow)
+		# ⚠ 嵌板 pane 是**交互提示**（不同世界不同颜色），必须保留 —— 
+		#   但换模型后门板本身有细节了，嵌板要**缩小成一块小窗**，
+		#   否则整扇门变成一块发光白板（实测踩过：白板盖住门板，门等于白做）。
+		var leaf_prop := prop("wooden-door", DOOR_HEIGHT)
+		if leaf_prop != null:
+			leaf_prop.position = Vector3(0, 0, 0)
+			door_root.add_child(leaf_prop)
+		else:
+			_box(door_root, Vector3(DOOR_WIDTH, DOOR_HEIGHT, 0.07), Vector3(0, DOOR_HEIGHT * 0.5, 0), _wood)
+		var pane_w: float = DOOR_WIDTH * (0.42 if leaf_prop != null else 1.0) - (0.34 if leaf_prop == null else 0.0)
+		var pane_h: float = DOOR_HEIGHT * (0.26 if leaf_prop != null else 1.0) - (0.62 if leaf_prop == null else 0.0)
+		var pane_y: float = DOOR_HEIGHT * (0.70 if leaf_prop != null else 0.52)
+		var pane := _box(door_root, Vector3(pane_w, pane_h, 0.03),
+			Vector3(0, pane_y, 0.09 if leaf_prop != null else 0.05), _glow)
 		pane.material_override = _material(spec["color"], 0.75)
 		# 门牌：一块小铜牌。
 		var plate := _box(door_root, Vector3(0.34, 0.16, 0.02), Vector3(0, DOOR_HEIGHT - 0.28, 0.06), _brass)
@@ -507,10 +523,17 @@ func _build_mirror_corridor() -> void:
 	root.add_child(frame_root)
 	var height := 2.25
 	var width := 1.12
-	for side in [-1.0, 1.0]:
-		_box(frame_root, Vector3(0.14, height, 0.14), Vector3(side * width * 0.5, height * 0.5, 0), _wood_dark)
-	_box(frame_root, Vector3(width + 0.14, 0.14, 0.14), Vector3(0, height, 0), _wood_dark)
-	_box(frame_root, Vector3(width + 0.14, 0.1, 0.14), Vector3(0, 0.05, 0), _wood_dark)
+	# 镜框用 Lux3D 模型；**镜面本体保留程序化** —— 它要透出冷光当"入口"，
+	# 模型是空框，塞进去反而挡住。
+	var frame_prop := prop("mirror-frame", height)
+	if frame_prop != null:
+		frame_prop.position = Vector3(0, 0, 0)
+		frame_root.add_child(frame_prop)
+	else:
+		for side in [-1.0, 1.0]:
+			_box(frame_root, Vector3(0.14, height, 0.14), Vector3(side * width * 0.5, height * 0.5, 0), _wood_dark)
+		_box(frame_root, Vector3(width + 0.14, 0.14, 0.14), Vector3(0, height, 0), _wood_dark)
+		_box(frame_root, Vector3(width + 0.14, 0.1, 0.14), Vector3(0, 0.05, 0), _wood_dark)
 	# 镜面本体：微亮、带一点冷光，走进去是回廊。
 	var surface := _box(frame_root, Vector3(width, height - 0.2, 0.04), Vector3(0, height * 0.5, 0.02), _mirror)
 	surface.material_override = _material(Color("d7e6ea"), 0.22)
@@ -577,8 +600,18 @@ func _build_tea_table() -> void:
 	tea_steam = _cyl(table, 0.05, 0.02, 0.3, Vector3(0.42, 1.12, -0.2), _material(Color("e8f0f2"), 0.0), 8)
 	tea_steam.visible = false
 	# 茶叶罐与小碟。
-	_cyl(table, 0.07, 0.07, 0.14, Vector3(-0.05, 0.77, -0.26), _cloth, 10)
-	_cyl(table, 0.12, 0.12, 0.015, Vector3(0.42, 0.7, 0.16), _brass, 12)
+	var canister_prop := prop("tea-canister", 0.15)
+	if canister_prop != null:
+		canister_prop.position = Vector3(-0.05, 0.70, -0.26)
+		table.add_child(canister_prop)
+	else:
+		_cyl(table, 0.07, 0.07, 0.14, Vector3(-0.05, 0.77, -0.26), _cloth, 10)
+	var saucer_prop := prop("tea-saucer", 0.025)
+	if saucer_prop != null:
+		saucer_prop.position = Vector3(0.42, 0.70, 0.16)
+		table.add_child(saucer_prop)
+	else:
+		_cyl(table, 0.12, 0.12, 0.015, Vector3(0.42, 0.7, 0.16), _brass, 12)
 	_anchor("AtticAnchor_Booklet", table.position + Vector3(-0.34, 0.8, 0.02))
 	_anchor("AtticAnchor_Kettle", table.position + Vector3(0.42, 0.95, -0.2))
 	_anchor("AtticAnchor_Tea", table.position + Vector3(0.28, 0.82, 0.16))
@@ -867,6 +900,26 @@ func _keepsake_alley(parent: Node3D, at: Vector3) -> Node3D:
 
 ## 按世界 key 生成对应纪念模型。
 func _build_keepsake(parent: Node3D, key: String, at: Vector3) -> Node3D:
+	# 优先用 Lux3D 模型（四件信物各有一个专门生成的微缩件）。
+	# ⚠ 信物原本是**微缩场景**（雪景球/云海小船/萤火树屋/雨巷钟铃），
+	#   AI 模型是单体对象，观感更「干净」但少了场景感 —— 
+	#   所以这里只在有模型时替换；没有就照旧用原来的微缩场景。
+	var spec := {
+		"snow": ["keepsake-snow", 0.20],
+		"cloud": ["keepsake-cloud", 0.18],
+		"firefly": ["keepsake-firefly", 0.20],
+		"alley": ["keepsake-alley", 0.18],
+	}
+	if spec.has(key):
+		var row: Array = spec[key]
+		var model := prop(String(row[0]), float(row[1]))
+		if model != null:
+			var holder := Node3D.new()
+			holder.name = "Keepsake_" + key.capitalize()
+			holder.position = at
+			holder.add_child(model)
+			parent.add_child(holder)
+			return holder
 	match key:
 		"snow":
 			return _keepsake_snow(parent, at)
@@ -993,12 +1046,19 @@ func _build_dial() -> void:
 	dial.name = "WeatherDial"
 	dial.position = Vector3(0, 2.28, wall_z)
 	root.add_child(dial)
-	_cyl(dial, 0.17, 0.17, 0.06, Vector3(0, 0, 0), _brass, 16).rotation.x = PI * 0.5
-	_cyl(dial, 0.12, 0.12, 0.07, Vector3(0, 0, -0.01), _wood_dark, 16).rotation.x = PI * 0.5
-	for i in range(4):
-		var angle := TAU * float(i) / 4.0
-		_box(dial, Vector3(0.03, 0.05, 0.03), Vector3(cos(angle) * 0.20, sin(angle) * 0.20, 0.0), _brass)
-	dial_pointer = _box(dial, Vector3(0.03, 0.15, 0.03), Vector3(0, 0.07, -0.03), _brass)
+	# 盘面用 Lux3D 模型；**指针 dial_pointer 必须保留程序化** ——
+	# 切换天气时是旋转它，模型里没有独立指针节点。
+	var dial_prop := prop("weather-dial", 0.42)
+	if dial_prop != null:
+		dial_prop.position = Vector3(0, 0, 0.02)
+		dial.add_child(dial_prop)
+	else:
+		_cyl(dial, 0.17, 0.17, 0.06, Vector3(0, 0, 0), _brass, 16).rotation.x = PI * 0.5
+		_cyl(dial, 0.12, 0.12, 0.07, Vector3(0, 0, -0.01), _wood_dark, 16).rotation.x = PI * 0.5
+		for i in range(4):
+			var angle := TAU * float(i) / 4.0
+			_box(dial, Vector3(0.03, 0.05, 0.03), Vector3(cos(angle) * 0.20, sin(angle) * 0.20, 0.0), _brass)
+	dial_pointer = _box(dial, Vector3(0.03, 0.15, 0.03), Vector3(0, 0.07, -0.03 if dial_prop == null else 0.06), _brass)
 	_anchor("AtticAnchor_Dial", Vector3(0, 1.5, wall_z + 0.85))
 
 

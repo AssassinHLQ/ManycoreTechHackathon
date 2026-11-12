@@ -3,18 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cgnj4wq2hlrqu"
-path="res://.godot/imported/model_glb_2.jpg-1d9063d026add58daab3bc3a2c8312ba.ctex"
+path.s3tc="res://.godot/imported/model_glb_2.jpg-1d9063d026add58daab3bc3a2c8312ba.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "1a7981f997b82e00378a085b51e1ecbf"
+"md5": "1fdd1f75135701731b117b81dc0fe087"
 }
 
 [deps]
 
 source_file="res://assets/models/props/attic/lantern/model_glb_2.jpg"
-dest_files=["res://.godot/imported/model_glb_2.jpg-1d9063d026add58daab3bc3a2c8312ba.ctex"]
+dest_files=["res://.godot/imported/model_glb_2.jpg-1d9063d026add58daab3bc3a2c8312ba.s3tc.ctex"]
 
 [params]
 

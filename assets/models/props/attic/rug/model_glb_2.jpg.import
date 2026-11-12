@@ -3,18 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c1gowc8fnwg3e"
-path="res://.godot/imported/model_glb_2.jpg-8c8c2d1b48045428c1b16575a9e02425.ctex"
+path.s3tc="res://.godot/imported/model_glb_2.jpg-8c8c2d1b48045428c1b16575a9e02425.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "ee0e2a22b5e38eda7768986387f24376"
+"md5": "d6d4a20159431d864cda1112d19a5f3d"
 }
 
 [deps]
 
 source_file="res://assets/models/props/attic/rug/model_glb_2.jpg"
-dest_files=["res://.godot/imported/model_glb_2.jpg-8c8c2d1b48045428c1b16575a9e02425.ctex"]
+dest_files=["res://.godot/imported/model_glb_2.jpg-8c8c2d1b48045428c1b16575a9e02425.s3tc.ctex"]
 
 [params]
 

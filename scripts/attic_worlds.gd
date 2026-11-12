@@ -389,12 +389,20 @@ func _build_snow(holder: Node3D) -> Dictionary:
 	_build_ground_and_bounds(holder, snow_ground)
 	# 雪堆（数量按场地面积补）
 	var drift_n := int(round(14.0 * _scenery_density("snow")))
+	var drift_prop_tpl := _prop("snow-drift", 0.75)
 	for i in range(drift_n):
 		var angle := TAU * float(i) / float(drift_n) + 0.3
 		var radius := 6.0 + float(i % 4) * 2.4
-		var drift := _sphere(holder, 1.2 + float(i % 3) * 0.5,
-			Vector3(cos(angle) * radius, 0.1, sin(angle) * radius), snow_ground)
-		drift.scale = Vector3(1.6, 0.4, 1.4)
+		var drift_at := Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+		if drift_prop_tpl != null:
+			var d: Node3D = drift_prop_tpl.duplicate() as Node3D
+			d.position = drift_at
+			d.rotation.y = float(i) * 1.7
+			holder.add_child(d)
+		else:
+			var drift := _sphere(holder, 1.2 + float(i % 3) * 0.5,
+				drift_at + Vector3(0, 0.1, 0), snow_ground)
+			drift.scale = Vector3(1.6, 0.4, 1.4)
 	# 松林：两圈，外圈错开，免得放大后中间空
 	var pine_n := int(round(11.0 * _scenery_density("snow")))
 	for i in range(pine_n):
@@ -448,24 +456,47 @@ func _build_cloud(holder: Node3D) -> Dictionary:
 	sea.name = "CloudSea"
 	# 云团沿整条路线散开（不再是绕一个圆心排一圈）
 	var puff_n := int(round(26.0 * _scenery_density("cloud")))
+	# 云团用 Lux3D 模型；模板只加载一次，之后 duplicate。
+	var puff_tpl := _prop("cloud-cluster", 4.5)
 	for i in range(puff_n):
 		var t := float(i) / float(maxi(1, puff_n))
 		var wz := -2.0 - t * 50.0
 		var wx := sin(float(i) * 2.1) * (6.0 + float(i % 4) * 3.2)
 		var at := _cloud_local(Vector3(wx, 0.0, wz))
-		var puff := _sphere(holder, _cloud_len(3.0 + float(i % 4) * 1.6),
-			at + Vector3(0, -2.6 + float(i % 3) * 0.5, 0), cloud_mat)
-		puff.scale = Vector3(1.5, 0.35, 1.5)
+		var puff_y: float = -2.6 + float(i % 3) * 0.5
+		if puff_tpl != null:
+			var c: Node3D = puff_tpl.duplicate() as Node3D
+			c.position = at + Vector3(0, puff_y, 0)
+			c.rotation.y = float(i) * 0.9
+			# 大小抖动，避免一模一样
+			var k: float = (3.0 + float(i % 4) * 1.6) / 4.5
+			c.scale = Vector3.ONE * k
+			holder.add_child(c)
+		else:
+			var puff := _sphere(holder, _cloud_len(3.0 + float(i % 4) * 1.6),
+				at + Vector3(0, puff_y, 0), cloud_mat)
+			puff.scale = Vector3(1.5, 0.35, 1.5)
 	# 望远镜：挪到西岛上（原作也在西侧）
 	var scope := Node3D.new()
 	scope.name = "Telescope"
 	scope.position = _cloud_local(Vector3(-15.0, 0.0, -29.0))
 	holder.add_child(scope)
-	for i in range(3):
-		var angle := TAU * float(i) / 3.0
-		_cyl(scope, 0.05, 0.05, 1.5, Vector3(cos(angle) * 0.32, 0.72, sin(angle) * 0.32), brass, 6)
-	var tube := _cyl(scope, 0.16, 0.2, 1.5, Vector3(0, 1.55, 0), brass, 10)
-	tube.rotation = Vector3(-0.6, 0.3, 0.0)
+	# 望远镜本体：Lux3D 模型（三脚架+镜筒是一体的）
+	var scope_prop := _prop("telescope", 1.9)
+	if scope_prop != null:
+		scope_prop.rotation = Vector3(0, 0.3, 0)
+		scope.add_child(scope_prop)
+	else:
+		for i in range(3):
+			var angle := TAU * float(i) / 3.0
+			_cyl(scope, 0.05, 0.05, 1.5, Vector3(cos(angle) * 0.32, 0.72, sin(angle) * 0.32), brass, 6)
+		var tube := _cyl(scope, 0.16, 0.2, 1.5, Vector3(0, 1.55, 0), brass, 10)
+		tube.rotation = Vector3(-0.6, 0.3, 0.0)
+	# 观星桌：望远镜旁边摆一张摊开星图的桌子
+	var chart_prop := _prop("star-chart-table", 0.85)
+	if chart_prop != null:
+		chart_prop.position = _cloud_local(Vector3(-12.4, 0.0, -28.2))
+		holder.add_child(chart_prop)
 	var dawn := _light(holder, Vector3(0, 26, 0), Color("ffd2a8"), 1.8, 70.0)
 	dawn.name = "DawnLight"
 	# 回程门立在栈桥入口（原作的入口在 z ≈ -4 一带）
@@ -486,12 +517,27 @@ func _build_firefly(holder: Node3D) -> Dictionary:
 		_build_pine(holder, Vector3(cos(angle) * radius, 0, sin(angle) * radius),
 			0.7 + float(i % 3) * 0.2, wood, _mat(Color("1e3a30")))
 	# 火塘
-	var pit := _cyl(holder, 1.5, 1.7, 0.36, Vector3(0, 0.18, 0), _mat(Color("4a4238")), 16)
-	pit.name = "FirePit"
+	# 石圈用 Lux3D 模型；**余烬 ember 与光源保留程序化** —— 那是「火在烧」的视觉。
+	var pit_prop := _prop("stone-firepit", 0.5)
+	if pit_prop != null:
+		pit_prop.position = Vector3(0, 0, 0)
+		holder.add_child(pit_prop)
+	else:
+		var pit := _cyl(holder, 1.5, 1.7, 0.36, Vector3(0, 0.18, 0), _mat(Color("4a4238")), 16)
+		pit.name = "FirePit"
 	var ember := _sphere(holder, 0.42, Vector3(0, 0.45, 0), _mat(Color("ff8a3c"), 2.6))
 	ember.name = "Ember"
 	_light(holder, Vector3(0, 1.1, 0), Color("ff9a4c"), 2.4, 16.0)
 	_build_bench(holder, Vector3(2.6, 0, 1.0), wood, _mat(Color("2a2622")))
+	# 倒木：森林里的散落倒木
+	for log_i in range(3):
+		var log_prop := _prop("forest-log", 0.45)
+		if log_prop == null:
+			break
+		var la: float = 2.2 + float(log_i) * 2.1
+		log_prop.position = Vector3(cos(la) * 7.5, 0, sin(la) * 7.5)
+		log_prop.rotation.y = la + float(log_i) * 0.8
+		holder.add_child(log_prop)
 	# 萤火
 	var fireflies := _build_motes(holder, int(round(700.0 * _scenery_density("firefly"))), Color("d8f07a"), PLATFORM_HALF * 0.85, 5.0, 0.55)
 	fireflies.name = "Fireflies"
@@ -518,7 +564,13 @@ func _build_alley(holder: Node3D) -> Dictionary:
 			var z := -9.0 + float(i) * 3.4
 			_box(holder, Vector3(0.08, 0.7, 0.9), Vector3(side * 3.12, 3.4, z), _mat(Color("2b3a48"), 0.9))
 			_box(holder, Vector3(0.1, 0.1, 0.1), Vector3(side * 3.05, 5.2, z), iron)
-		_cyl(holder, 0.07, 0.07, 12.0, Vector3(side * 3.06, 5.8, 0), iron, 6).rotation.x = PI * 0.5
+		# 立管：每侧一根 Lux3D 排水管（原来是 12 米长的圆柱横躺在墙上）
+		var pipe_prop := _prop("wall-pipe", 5.6)
+		if pipe_prop != null:
+			pipe_prop.position = Vector3(side * 3.06, 0, -3.0)
+			holder.add_child(pipe_prop)
+		else:
+			_cyl(holder, 0.07, 0.07, 12.0, Vector3(side * 3.06, 5.8, 0), iron, 6).rotation.x = PI * 0.5
 	# 积水
 	var puddle_n := int(round(6.0 * _scenery_density("alley")))
 	for i in range(puddle_n):
@@ -543,7 +595,12 @@ func _build_alley(holder: Node3D) -> Dictionary:
 		_cyl(holder, 0.02, 0.02, 0.8, Vector3(0, 3.7, z), iron, 5)
 		_light(holder, Vector3(0, 3.2, z), Color("ffb867"), 1.5, 11.0)
 	# 巷子尽头的门
-	_box(holder, Vector3(1.6, 2.4, 0.12), Vector3(0, 1.2, -11.0), _mat(Color("3a2f28")))
+	var end_door := _prop("alley-end-door", 2.4)
+	if end_door != null:
+		end_door.position = Vector3(0, 0, -11.0)
+		holder.add_child(end_door)
+	else:
+		_box(holder, Vector3(1.6, 2.4, 0.12), Vector3(0, 1.2, -11.0), _mat(Color("3a2f28")))
 	_light(holder, Vector3(0, 14, 0), Color("8fa6c0"), 1.2, 40.0)
 	# 雨
 	var rain := _build_motes(holder, int(round(1200.0 * _scenery_density("alley"))), Color("cfe0ee"), PLATFORM_HALF * 0.8, 12.0, 0.5)

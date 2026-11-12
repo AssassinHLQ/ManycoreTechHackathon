@@ -3,18 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c15eu13jyqisj"
-path="res://.godot/imported/model_glb_0.jpg-af3c61ec6c8a2f18ad67a059af8e3f32.ctex"
+path.s3tc="res://.godot/imported/model_glb_0.jpg-af3c61ec6c8a2f18ad67a059af8e3f32.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
-"md5": "d5d6229c8f1725b6a2f3e2517f29db1b"
+"md5": "59eaac648fa172f7207a02e49cd117cb"
 }
 
 [deps]
 
 source_file="res://assets/models/props/attic/travel-notebook/model_glb_0.jpg"
-dest_files=["res://.godot/imported/model_glb_0.jpg-af3c61ec6c8a2f18ad67a059af8e3f32.ctex"]
+dest_files=["res://.godot/imported/model_glb_0.jpg-af3c61ec6c8a2f18ad67a059af8e3f32.s3tc.ctex"]
 
 [params]
 

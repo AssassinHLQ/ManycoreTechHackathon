@@ -1,0 +1,135 @@
+{
+  "wooden-door": {
+    "ok": true,
+    "faceCount": 16000,
+    "height": 2.05,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\wooden-door\\model.glb",
+    "bytes": 35668234
+  },
+  "door-frame": {
+    "ok": true,
+    "faceCount": 12000,
+    "height": 2.2,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\door-frame\\model.glb",
+    "bytes": 20937981
+  },
+  "mirror-frame": {
+    "ok": true,
+    "faceCount": 14000,
+    "height": 1.9,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\mirror-frame\\model.glb",
+    "bytes": 22164576
+  },
+  "keepsake-snow": {
+    "ok": true,
+    "faceCount": 10000,
+    "height": 0.2,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\keepsake-snow\\model.glb",
+    "bytes": 115938962
+  },
+  "keepsake-cloud": {
+    "ok": true,
+    "faceCount": 10000,
+    "height": 0.18,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\keepsake-cloud\\model.glb",
+    "bytes": 66947556
+  },
+  "keepsake-firefly": {
+    "ok": true,
+    "faceCount": 10000,
+    "height": 0.2,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\keepsake-firefly\\model.glb",
+    "bytes": 57246523
+  },
+  "keepsake-alley": {
+    "ok": true,
+    "faceCount": 10000,
+    "height": 0.18,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\keepsake-alley\\model.glb",
+    "bytes": 36100023
+  },
+  "weather-dial": {
+    "ok": true,
+    "faceCount": 12000,
+    "height": 0.4,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\weather-dial\\model.glb",
+    "bytes": 33903949
+  },
+  "tea-canister": {
+    "ok": true,
+    "faceCount": 10000,
+    "height": 0.14,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\tea-canister\\model.glb",
+    "bytes": 78656435
+  },
+  "tea-saucer": {
+    "ok": true,
+    "faceCount": 10000,
+    "height": 0.03,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\tea-saucer\\model.glb",
+    "bytes": 42248489
+  },
+  "cloud-cluster": {
+    "ok": true,
+    "faceCount": 14000,
+    "height": 2.2,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\cloud-cluster\\model.glb",
+    "bytes": 174952124
+  },
+  "star-chart-table": {
+    "ok": true,
+    "faceCount": 14000,
+    "height": 0.85,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\star-chart-table\\model.glb",
+    "bytes": 49774182
+  },
+  "snow-drift": {
+    "ok": true,
+    "faceCount": 12000,
+    "height": 0.7,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\snow-drift\\model.glb",
+    "bytes": 46086967
+  },
+  "ice-shard": {
+    "ok": true,
+    "faceCount": 10000,
+    "height": 0.9,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\ice-shard\\model.glb",
+    "bytes": 191533172
+  },
+  "stone-firepit": {
+    "ok": true,
+    "faceCount": 14000,
+    "height": 0.55,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\stone-firepit\\model.glb",
+    "bytes": 71791539
+  },
+  "forest-log": {
+    "ok": true,
+    "faceCount": 12000,
+    "height": 0.5,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\forest-log\\model.glb",
+    "bytes": 35071266
+  },
+  "alley-end-door": {
+    "ok": true,
+    "faceCount": 16000,
+    "height": 2.4,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\alley-end-door\\model.glb",
+    "bytes": 38647581
+  },
+  "wall-pipe": {
+    "ok": true,
+    "faceCount": 10000,
+    "height": 2.4,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\wall-pipe\\model.glb",
+    "bytes": 18433152
+  },
+  "mirror-plinth": {
+    "ok": true,
+    "faceCount": 12000,
+    "height": 0.35,
+    "file": "C:\\Users\\WY157\\Desktop\\GODOT\\ManycoreTechHackathon\\assets\\models\\props\\attic\\mirror-plinth\\model.glb",
+    "bytes": 65417672
+  }
+}
