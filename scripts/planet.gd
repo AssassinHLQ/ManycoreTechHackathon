@@ -717,8 +717,28 @@ func _build_heightfield_surface_mesh() -> ArrayMesh:
 		#   洞口边缘才有足够密的顶点，裁出来的洞才对得上 underground 的竖井。
 		var refined := _refine_around_cave(vertices, arrays[Mesh.ARRAY_INDEX])
 		vertices = refined[0]
-		arrays[Mesh.ARRAY_VERTEX] = vertices
-		arrays[Mesh.ARRAY_INDEX] = _cut_cave_hole(arrays, vertices)
+		# ⚠⚠ 2026-11-12 修「掉进星球里面」：
+		#   细分后顶点数变多了（74,690 → 108,236），但
+		#   NORMAL / TANGENT / TEX_UV 还是 SphereMesh 原始的 74,690 个
+		#   —— 数组长度不一致，add_surface_from_arrays() 会**直接失败**，
+		#   成品面数变成 0，碰撞体为空，玩家一踩就穿到星球内部。
+		#   实测：普通星球 148,224 面；带窟穴的青岚/赭崖/悬晶 **0 面**。
+		#   法线反正由后面的 generate_normals() 重算，UV/TANGENT 对碰撞没意义，
+		#   所以只保留 VERTEX + INDEX 两个槽位。
+		var plain: Array = []
+		plain.resize(Mesh.ARRAY_MAX)
+		plain[Mesh.ARRAY_VERTEX] = vertices
+		# ⚠⚠ 2026-11-12 修「掉进星球里面」：
+		#   `_refine_around_cave` 返回 [细分后顶点, **细分后索引**]，
+		#   旧代码只取了 refined[0]，把 refined[1] 丢掉，
+		#   于是 _cut_cave_hole 拿到的还是**细分前**的索引数组。
+		#   顶点表与索引表不是同一套拓扑 → 裁洞时大量三角形被判废
+		#   → 碰撞面从 148,224 掉到 10,413，玩家一踩就穿到星球内部。
+		#   实测：只有带空穴的青岚星（最差 -14.8 m）与
+		#   赭崖星（-28.4 m）两颗 30/30 落点全下沉，其余 18 颗正常。
+		plain[Mesh.ARRAY_INDEX] = refined[1]
+		plain[Mesh.ARRAY_INDEX] = _cut_cave_hole(plain, vertices)
+		arrays = plain
 	var raw := ArrayMesh.new()
 	raw.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	var st := SurfaceTool.new()
