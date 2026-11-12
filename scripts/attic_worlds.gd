@@ -132,6 +132,76 @@ func build() -> void:
 
 # --- 公共构件 ---------------------------------------------------------------
 
+# --- Lux3D 摆件加载（2026-11-12 接入）----------------------------------------
+#
+# 六个口袋世界里的独立摆件（松树/路灯/望远镜/飞艇/灯笼/镜塔…）改用
+# Aholo Lux3D 文生 3D 的写实模型；**地形、墙、栈桥、隔墙保持程序化** —— 
+# 那些必须精确对齐、能走上去，AI 模型尺寸不可控会穿模。
+#
+# ⚠ 全部可回退：模型在 assets/models/props/attic-worlds/（.gitignore 例外名单），
+#   别人 clone 若缺失，照样退回程序化几何，世界不会空也不会崩。
+const WORLD_PROP_DIR := "res://assets/models/props/attic-worlds/"
+var _world_prop_cache: Dictionary = {}
+
+
+## 取一个世界摆件实例，失败返回 null（调用方回退程序化）。
+## target_height 用于归一化：模型原始尺寸不可控，按高度缩放最稳。
+func _prop(name: String, target_height: float) -> Node3D:
+	if _world_prop_cache.has(name):
+		var cached = _world_prop_cache[name]
+		if cached == null:
+			return null
+		return (cached as Node3D).duplicate() as Node3D
+	var dir: String = WORLD_PROP_DIR + name + "/"
+	var glb_path := ""
+	for candidate in ["model.glb", "model_glb.glb"]:
+		if ResourceLoader.exists(dir + candidate):
+			glb_path = dir + candidate
+			break
+	if glb_path == "":
+		_world_prop_cache[name] = null
+		return null
+	var packed := load(glb_path) as PackedScene
+	if packed == null:
+		_world_prop_cache[name] = null
+		return null
+	var instance := packed.instantiate() as Node3D
+	if instance == null:
+		_world_prop_cache[name] = null
+		return null
+	var aabb := AABB()
+	var first := true
+	for node in instance.find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var xf := Transform3D.IDENTITY
+		var walker: Node = mi
+		while walker != null and walker != instance:
+			if walker is Node3D:
+				xf = (walker as Node3D).transform * xf
+			walker = walker.get_parent()
+		var box: AABB = xf * mi.get_aabb()
+		aabb = box if first else aabb.merge(box)
+		first = false
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if first or aabb.size.y < 0.0001:
+		instance.queue_free()
+		_world_prop_cache[name] = null
+		return null
+	var holder := Node3D.new()
+	holder.name = "Prop_" + name
+	holder.add_child(instance)
+	var scale_k: float = target_height / aabb.size.y
+	instance.scale = Vector3.ONE * scale_k
+	instance.position = Vector3(
+		-aabb.get_center().x * scale_k,
+		-aabb.position.y * scale_k,
+		-aabb.get_center().z * scale_k)
+	_world_prop_cache[name] = holder
+	return (holder as Node3D).duplicate() as Node3D
+
+
 func _mat(color: Color, emission := 0.0) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
@@ -266,6 +336,12 @@ func _build_pine(holder: Node3D, at: Vector3, scale: float, trunk: Material, nee
 	tree.position = at
 	tree.scale = Vector3.ONE * scale
 	holder.add_child(tree)
+	# 优先用 Lux3D 模型（雪夜一次种 11 棵，是这套里收益最大的替换）。
+	# 目标高度 3.2 m 对应原来的程序化松树总高（树干 3.2 + 冠层）。
+	var pine := _prop("pine-tree", 3.2)
+	if pine != null:
+		tree.add_child(pine)
+		return
 	_cyl(tree, 0.16, 0.3, 3.2, Vector3(0, 1.6, 0), trunk, 8)
 	for i in range(4):
 		_cyl(tree, 0.0, 1.5 - i * 0.26, 2.2 - i * 0.16, Vector3(0, 3.0 + i * 0.95, 0), needles, 9)
@@ -328,9 +404,15 @@ func _build_snow(holder: Node3D) -> Dictionary:
 			0.85 + float(i % 3) * 0.18, wood, _mat(Color("2d4a44")))
 	_build_bench(holder, Vector3(-2.4, 0, 0.6), wood, iron)
 	# 路灯
-	_cyl(holder, 0.08, 0.12, 3.2, Vector3(2.8, 1.6, 0.4), iron, 8)
+	var street_lamp := _prop("snow-lantern", 3.4)
+	if street_lamp != null:
+		street_lamp.position = Vector3(2.8, 0, 0.4)
+		holder.add_child(street_lamp)
+	else:
+		_cyl(holder, 0.08, 0.12, 3.2, Vector3(2.8, 1.6, 0.4), iron, 8)
 	var lamp_mat := _mat(Color("ffd9a0"), 1.8)
-	_sphere(holder, 0.26, Vector3(2.8, 3.3, 0.4), lamp_mat)
+	var lamp_glow := _sphere(holder, 0.26, Vector3(2.8, 3.3, 0.4), lamp_mat)
+	lamp_glow.name = "LampGlow"
 	_light(holder, Vector3(2.8, 3.2, 0.4), Color("ffd9a0"), 2.0, 16.0)
 	# 天上的冷月
 	var moon := _sphere(holder, 26.0, Vector3(-90, 120, -160), _mat(Color("dfe9f6"), 0.9))
@@ -447,8 +529,17 @@ func _build_alley(holder: Node3D) -> Dictionary:
 	var lamp_n := int(round(4.0 * _scenery_density("alley")))
 	for i in range(lamp_n):
 		var z := -7.0 + float(i) * 4.4
-		var lamp := _sphere(holder, 0.24, Vector3(0, 3.2, z), _mat(Color("ffb867"), 2.4))
-		lamp.name = "Lantern"
+		# 灯笼本体用 Lux3D 模型；发光球（Lantern 节点）保留 —— 它是「亮着」的视觉，
+		# 模型本身不带自发光。
+		var lamp_prop := _prop("alley-lantern", 0.55)
+		if lamp_prop != null:
+			lamp_prop.position = Vector3(0, 2.95, z)
+			holder.add_child(lamp_prop)
+		else:
+			var lamp := _sphere(holder, 0.24, Vector3(0, 3.2, z), _mat(Color("ffb867"), 2.4))
+			lamp.name = "Lantern"
+		var glow := _sphere(holder, 0.20, Vector3(0, 3.2, z), _mat(Color("ffb867"), 2.4))
+		glow.name = "LanternGlow"
 		_cyl(holder, 0.02, 0.02, 0.8, Vector3(0, 3.7, z), iron, 5)
 		_light(holder, Vector3(0, 3.2, z), Color("ffb867"), 1.5, 11.0)
 	# 巷子尽头的门
@@ -491,10 +582,22 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 	# 棱镜之心：悬浮在房间中央的台座上
 	var pedestal := _cyl(holder, 0.55, 0.75, 1.0, Vector3(0, 0.7, 0), _mat(Color("4a5260")), 10)
 	pedestal.name = "Pedestal"
-	var heart := _cyl(holder, 0.0, 0.34, 1.5, Vector3(0, 2.0, 0), _mat(Color("d9efff"), 2.6), 6)
+	# 用 Lux3D 棱镜模型当**外观**，但里面保留一颗强自发光核心 ——
+	# 它是剧情核心物件，必须「看得出发光」，外部模型的 PBR 材质做不到。
+	var heart_prop := _prop("prism-heart", 1.5)
+	if heart_prop != null:
+		heart_prop.position = Vector3(0, 1.3, 0)
+		heart_prop.name = "PrismHeartModel"
+		holder.add_child(heart_prop)
+	var heart := _cyl(holder, 0.0, 0.22, 1.1, Vector3(0, 2.0, 0), _mat(Color("d9efff"), 2.6), 6)
 	heart.name = "PrismHeart"
-	var heart_base := _cyl(holder, 0.34, 0.0, 0.9, Vector3(0, 2.0, 0), _mat(Color("d9efff"), 2.6), 6)
+	if heart_prop != null:
+		# 有模型时把自发光核心缩小、塞进模型内部当「心脏」
+		heart.scale = Vector3(0.55, 0.7, 0.55)
+	var heart_base := _cyl(holder, 0.22, 0.0, 0.7, Vector3(0, 2.0, 0), _mat(Color("d9efff"), 2.6), 6)
 	heart_base.rotation.z = PI
+	if heart_prop != null:
+		heart_base.scale = Vector3(0.55, 0.7, 0.55)
 	_light(holder, Vector3(0, 1.9, 0), Color("d9efff"), 3.4, 20.0)
 	_light(holder, Vector3(-4.0, 2.6, 3.0), Color("b9cfe0"), 2.0, 16.0)
 	_light(holder, Vector3(4.0, 2.6, -3.0), Color("b9cfe0"), 2.0, 16.0)
@@ -880,6 +983,41 @@ func _build_props(holder: Node3D, key: String) -> void:
 
 ## 按 id 造对应的立体造型（都以锚点为父，原点在道具脚下）
 func _make_prop_mesh(anchor: Node3D, id: String) -> void:
+	# ── Lux3D 模型优先（2026-11-12）────────────────────────────────
+	#
+	# 13 个纯装饰/结构性道具直接用 Lux3D 模型；**带发光件的保留程序化发光体**，
+	# 因为 `_lighten_prop()` 靠遍历 anchor 子节点里 emission 材质来「用一次就亮」，
+	# 换成不搞自发光的外部模型，这个交互反馈就没了。
+	#
+	# 映射表：id -> [模型名, 目标高度米]
+	# ⚠ GDScript 没有元组字面量，`("a", 0.5)` 会解析失败，必须用数组 []。
+	# 高度按各分支原来程序化造型的视觉高度估的，改模型尺寸时只需改这里。
+	var prop_map := {
+		"sled": ["snow-sled", 0.55],
+		"cloud_scope": ["telescope", 1.75],
+		"wood_drum": ["wood-drum", 1.0],
+		"mushroom": ["glow-mushroom", 0.55],
+		"umbrella": ["paper-umbrella", 1.75],
+		"stone_cat": ["stone-cat", 0.95],
+		"paper_boat": ["paper-boat", 0.35],
+		"cloud_winch": ["cloud-wincht", 1.2],
+		"wind_organ": ["wind-organ", 1.7],
+		"waterwheel": ["waterwheel", 2.3],
+	}
+	if prop_map.has(id):
+		var spec: Array = prop_map[id]
+		var model := _prop(String(spec[0]), float(spec[1]))
+		if model != null:
+			anchor.add_child(model)
+			return
+	# 带发光件的道具：只把「外壳」换模型，发光体在后面各自保留。
+	#   sign_*      → wooden-sign（牌子本身没发光）
+	#   lantern_snow / ranger_lamp / cloud_beacon / hearth_snow → 保留程序化外壳+火焰
+	if id.begins_with("sign_"):
+		var sign_model := _prop("wooden-sign", 1.45)
+		if sign_model != null:
+			anchor.add_child(sign_model)
+			return
 	var wood := _mat(Color("6b5138"))
 	var dark := _mat(Color("3c2e20"))
 	var stone := _mat(Color("8d949c"))
@@ -1347,6 +1485,14 @@ func _build_airship(holder: Node3D) -> void:
 	airship.name = "Airship"
 	airship.position = airship_center
 	holder.add_child(airship)
+	# 飞艇本体优先用 Lux3D 模型。⚠ 巡游动画移动的是 airship 这个父节点，
+	# 所以模型挂成子节点、local 位置归零即可，不影响 `_update_airship`。
+	var airship_prop := _prop("airship", 5.2)
+	if airship_prop != null:
+		airship.add_child(airship_prop)
+		_light(airship, Vector3(0, -2.5, 0), Color("ffd9a0"), 1.6, 9.0)
+		airship_node = airship
+		return
 	# 气囊
 	var bag := _sphere(airship, 1.9, Vector3(0, 0, 0), hull)
 	bag.scale = Vector3(1.0, 1.0, 2.35)
@@ -1820,7 +1966,16 @@ func _build_dungeon(holder: Node3D) -> Dictionary:
 			"boss": Color("c8a0d8"),
 		}.get(kind, Color("9fb0c0"))
 		var pillar_mat := _mat(accent, 0.4 if kind != "boss" else 0.9)
-		_cyl(holder, 0.5, 0.7, 2.6, Vector3(0, 1.3, center_z), pillar_mat, 8)
+		# 镜塔：用 Lux3D 六边形镜面塔当外观，内部保留一根细发光柱 ——
+		# 不同房型配色不同（combat 银 / boon 黄绿 / boss 紫），模型本身不带这层色，
+		# 所以发光柱必须留着，否则「房型区分」就丢了。
+		var tower_prop := _prop("mirror-tower", 2.6)
+		if tower_prop != null:
+			tower_prop.position = Vector3(0, 0, center_z)
+			holder.add_child(tower_prop)
+			_cyl(holder, 0.18, 0.24, 2.4, Vector3(0, 1.2, center_z), pillar_mat, 8)
+		else:
+			_cyl(holder, 0.5, 0.7, 2.6, Vector3(0, 1.3, center_z), pillar_mat, 8)
 		_cyl(holder, 0.9, 0.9, 0.06, Vector3(0, 0.22, center_z), trim, 20)
 		room_anchors.append(_anchor(holder, "DungeonRoomAnchor_%d" % i, Vector3(0, 1.0, center_z + leg * 0.1)))
 		if kind == "boon":
