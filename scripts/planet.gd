@@ -1671,6 +1671,31 @@ static func _prop_mesh_for_instancing(prop_id: String) -> Mesh:
 
 ## 排入一个 AI 道具（地标）。size 是**世界米数**（道具高度）。
 ## altitude 是相对地表的抬升（负值=压入地面）。
+## 可交互道具：prop_id → 交互类型。全部复用已有 AI 资产，零额度。
+##
+## ⚠ 只收「走到跟前看得清」的东西；远处高山巨石不入表，
+##   否则每颗星球会有几百个可交互点，查询和存档都变贵。
+const INTERACTIVE_PROPS := {
+	"crystal-cluster": "crystal",
+	"crystal-cluster-lo": "crystal",
+	"crystal-flora": "crystal",
+	"crystal-flora-lo": "crystal",
+	"cargo-pod": "cargo",
+	"cargo-pod-lo": "cargo",
+	"antenna-mast": "cargo",
+	"geyser-basin": "vent",
+	"vent": "vent",
+	"vent-lo": "vent",
+	"ruin-arch": "relic",
+	"stone-idol": "relic",
+	"obelisk": "relic",
+	"rubble-wall": "relic",
+}
+
+## 每颗星球的可交互点：{id, kind, dir, size, used}
+var interactive_spots: Array = []
+
+
 func _add_prop(prop_id: String, direction: Vector3, size: float,
 		altitude := 0.0, tint := Color.WHITE, respect_cap := true) -> void:
 	if _prop_mesh(prop_id) == null:
@@ -1683,13 +1708,59 @@ func _add_prop(prop_id: String, direction: Vector3, size: float,
 		var cap: int = int(PROP_INSTANCE_CAP.get(prop_id, 20))
 		if (prop_queue[prop_id] as Array).size() >= cap:
 			return
+	var ndir: Vector3 = direction.normalized()
 	prop_queue[prop_id].append({
-		"dir": direction.normalized(),
+		"dir": ndir,
 		"size": size,
 		"altitude": altitude,
 		"yaw": rng.randf() * TAU,
 		"tint": tint,
 	})
+	# 可交互道具另外记一条，供 main.gd 的 E 键查询。
+	var ikind := String(INTERACTIVE_PROPS.get(prop_id, ""))
+	if ikind != "":
+		interactive_spots.append({
+			"id": prop_id,
+			"kind": ikind,
+			"dir": ndir,
+			"size": size,
+			"altitude": altitude,
+			"used": false,
+		})
+
+
+## 离玩家最近的可交互道具。没有则返回空字典。
+##
+## `world_pos` 是世界坐标（玩家脚下）；内部换成星球局部坐标再比距离。
+## 距离用「实体最大半径 x 1.6」当阈值，体量大的东西走近就能触发。
+func nearest_interactive(world_pos: Vector3, extra := 4.0) -> Dictionary:
+	if interactive_spots.is_empty():
+		return {}
+	var local: Vector3 = global_transform.affine_inverse() * world_pos
+	var best := -1
+	var best_d := INF
+	for i in range(interactive_spots.size()):
+		var spot: Dictionary = interactive_spots[i]
+		if bool(spot["used"]):
+			continue
+		var p: Vector3 = surface_position(spot["dir"], float(spot["altitude"]))
+		var reach: float = maxf(float(spot["size"]) * 0.75, 3.0) + extra
+		var d: float = local.distance_to(p)
+		if d < reach and d < best_d:
+			best_d = d
+			best = i
+	if best < 0:
+		return {}
+	var out: Dictionary = (interactive_spots[best] as Dictionary).duplicate()
+	out["index"] = best
+	out["distance"] = best_d
+	return out
+
+
+## 标记某个交互点已用掉（采集/拆解过就不能再采）。
+func consume_interactive(index: int) -> void:
+	if index >= 0 and index < interactive_spots.size():
+		(interactive_spots[index] as Dictionary)["used"] = true
 
 
 ## 给站点附近的道具补静态碰撞体。
@@ -1848,6 +1919,8 @@ func _build_landmark_props() -> void:
 			_add_prop(gid, gdir, gsize, -2.0 * prop_scale, _prop_tint(), false)
 	# 基地周边点缀：平地外缘一圈小物件（走出去不再是一片荒）
 	_build_base_surroundings()
+	# 互动种子：保证每颗星球都有晶簇/货舱/喷口可用
+	_build_interactive_seeds()
 	# 铺量混排：4~5 种低模混在一起，替代「同一种模型重复 90 次」
 	_build_scatter_mix()
 	# 目标 ④：大型地貌件（把已有资产放大，零额度）
@@ -1855,6 +1928,39 @@ func _build_landmark_props() -> void:
 	# 地标与地貌件都是在 _build_landscape 之后才排进队列的，所以必须在这里补 flush
 	# （_flush_props 内部有 _flushed_prop_ids 去重，铺量那批不会重复实例化）。
 	_flush_props()
+
+
+## 互动种子：保证每颗星球都有四种互动可用。
+##
+## ⚠ 实测青岚星只有 10 个遗迹点、**晶簇/货舱/喷口一个都没有**，
+##   因为它的铺量组合里没这些类型 —— 玩家跑到母星就采不到东西。
+##   这里按固定配额补齐，与星球风格无关。
+const INTERACTIVE_SEED := [
+	["crystal-cluster-lo", 2, 2, 4],
+	["cargo-pod-lo", 1, 3, 5],
+	["vent-lo", 1, 2, 4],
+]
+
+
+func _build_interactive_seeds() -> void:
+	for entry in INTERACTIVE_SEED:
+		var pid: String = entry[0]
+		if _prop_mesh(pid) == null:
+			continue
+		for _i in range(int(entry[1])):
+			var size: float = rng.randf_range(float(entry[2]), float(entry[3])) * prop_scale
+			# 放在基地外缘一圈（和旁边缀同一个区域），玩家一出基地就能碰到
+			var site: Vector3 = site_direction.normalized()
+			var perp: Vector3 = site.cross(Vector3.FORWARD)
+			if perp.length_squared() < 0.01:
+				perp = site.cross(Vector3.RIGHT)
+			perp = perp.normalized()
+			var axis: Vector3 = perp.rotated(site, rng.randf() * TAU)
+			var pad_angle: float = site_pad_radius / maxf(radius, 1.0)
+			var dir: Vector3 = site.rotated(axis, pad_angle * rng.randf_range(1.05, 1.45)).normalized()
+			if _near_cave(dir, 0.03):
+				continue
+			_add_prop(pid, dir, size, -1.0 * prop_scale, _prop_tint(), false)
 
 
 ## 基地周边点缀（零额度）：平地外缘一圈小体量物件。

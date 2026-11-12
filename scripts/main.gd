@@ -2406,6 +2406,70 @@ func _unhandled_input(event: InputEvent) -> void:
 		_interact()
 
 
+## 星球上的 E 键交互（晶簇/货舱/喷口/遗迹）。处理了就返回 true。
+##
+## 遗迹扫描记录存在 `relic_seen`（以「星球+索引」为键）。
+## 不沿用 progress 的成就系统 —— 那边的 key 是手写的，
+## 每颗星球几十个遗迹点会把成就表撞开。
+var relic_seen: Dictionary = {}
+
+
+func _planet_interact() -> bool:
+	if player == null:
+		return false
+	var host: Node = player.get_parent()
+	if host == null or not host.has_method("nearest_interactive"):
+		return false
+	var spot: Dictionary = host.nearest_interactive(player.global_position, 4.0)
+	if spot.is_empty():
+		return false
+	var index: int = int(spot.get("index", -1))
+	var kind := String(spot.get("kind", ""))
+	var pid := String(spot.get("id", ""))
+	match kind:
+		"crystal":
+			player.fuel = minf(player.fuel + 35.0, 100.0)
+			hud.show_toast("采集晶簇 · 喷气燃料 +35", 2.6)
+			audio.play_ui(880.0)
+		"cargo":
+			player.oxygen = minf(player.oxygen + 30.0, 100.0)
+			hud.show_toast("拆解货舱 · 氧气 +30", 2.6)
+			audio.play_ui(620.0)
+		"vent":
+			# 上升气流：沿星球表面法线给一个向上速度
+			var up: Vector3 = (player.global_position - host.global_position).normalized()
+			player.velocity += up * 16.0
+			hud.show_toast("地热气流托起你", 2.2)
+			audio.play_ui(420.0)
+		"relic":
+			var key := "%s:%d" % [String(host.get("planet_id")), index]
+			if relic_seen.has(key):
+				hud.show_toast("这处遗迹已记录过", 2.0)
+				return true
+			relic_seen[key] = true
+			hud.show_toast("扫描记录 · %s" % _relic_line(pid), 3.6)
+			audio.play_ui(760.0)
+		_:
+			return false
+	host.consume_interactive(index)
+	return true
+
+
+## 遗迹扫描的一行说明。
+func _relic_line(pid: String) -> String:
+	match pid:
+		"ruin-arch":
+			return "旧时代的一道门洞，两侧槛石仍然对得上"
+		"stone-idol":
+			return "风蚀的石像，脸上的五官已经看不出来"
+		"obelisk":
+			return "碑面上的刻痕太浅，只能认出一个圆弧"
+		"rubble-wall":
+			return "断墙比予期的厚，里面奇着一层灰"
+		_:
+			return "记下了这一处的形状"
+
+
 func _interact() -> void:
 	if map_open:
 		return
@@ -2576,6 +2640,11 @@ func _interact() -> void:
 			elif roast != null:
 				roast.start()
 			audio.play_ui(520.0)
+		# 星球互动道具（晶簇/货舱/喷口/遗迹）。
+		# ⚠ 没有可交互物件时 _planet_interact() 返回 false，
+		#   不弹提示也不 return，所以不影响回舱、开气闸等后续分支。
+		if _planet_interact():
+			return
 	elif state == "ship":
 		if ship.docked:
 			# 远景站也有内部舱室了，按 E 进站；进站后再按 E（站在出口环上）回飞船。
