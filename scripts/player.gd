@@ -160,7 +160,11 @@ func _physics_process(delta: float) -> void:
 		if vertical_speed < 0.0:
 			vertical_speed = -0.8
 		if Input.is_action_just_pressed("jump"):
-			vertical_speed = 9.5 * body_scale
+			# ⚠ 起跳也跟喷气保持一致：乘 sqrt(body_scale) 而不是 body_scale。
+			#   旧版 9.5 × 5 = 47.5 m/s（170 km/h）—— 单按一下空格就是弹射。
+			#   现在 9.5 × 2.24 ≈ 21 m/s，跳起高度约 4.6 米（1g 下），
+			#   正好够翻过一架楼梯、跳上小平台，不会一按就上云。
+			vertical_speed = 9.5 * sqrt(maxf(body_scale, 0.001))
 		fuel = minf(100.0, fuel + delta * 14.0)
 	else:
 		if in_station or game.in_attic:
@@ -171,8 +175,21 @@ func _physics_process(delta: float) -> void:
 
 	var jetting := false
 	if Input.is_action_pressed("jetpack") and fuel > 0.0 and not game.map_open:
-		vertical_speed += 46.0 * delta * body_scale
-		vertical_speed = minf(vertical_speed, 17.0 * body_scale)
+		# ⚠ 2026-11-13 修「稍微按一下喷气就飞这么高」（用户原话）。
+		#
+		#   旧版把加速度和速度上限**都**乘了 body_scale（星球上 = 5）：
+		#     加速度 46 × 5 = 230 m/s²（比地球重力还大 23 倍）
+		#     上限   17 × 5 =  85 m/s（306 km/h）
+		#   结果按住 0.37 秒就顶到上限，一按就窜天。
+		#
+		#   现在：
+		#     · 加速度**不乘**（46 m/s²，约 5 倍地球重力，手感跟站内一致）
+		#     · 上限乘 sqrt(body_scale) = ×2.24 → 38 m/s，跟 5 倍大的建筑尺度配得上
+		#   按住 1 秒约飞 38 米，既跟得上地面移动速度（8.5 × 5 = 42.5），
+		#   又不会一按就脱离视野。
+		var jet_cap: float = 17.0 * sqrt(maxf(body_scale, 0.001))
+		vertical_speed += 46.0 * delta
+		vertical_speed = minf(vertical_speed, jet_cap)
 		fuel = maxf(0.0, fuel - delta * (18.0 + gravity_strength * 0.22))
 		jetting = true
 	velocity = horizontal + normal * vertical_speed

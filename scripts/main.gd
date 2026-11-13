@@ -347,6 +347,10 @@ func _build_world_progressive() -> void:
 	handbook.name = "Handbook"
 	add_child(handbook)
 	handbook.setup(self)
+	codex = CodexScript.new()
+	codex.name = "Codex"
+	add_child(codex)
+	codex.setup(self)
 	travel_journal = TravelJournalScript.new()
 	travel_journal.name = "TravelJournal"
 	add_child(travel_journal)
@@ -460,6 +464,8 @@ func _build_input_map() -> void:
 	_add_key("unstuck", KEY_R)
 	_add_key("bag", KEY_B)
 	_add_key("handbook", KEY_H)
+	# 星图图鉴：C 已被「飞船下降」占用，改用 G（Codex 无其它冲突键）
+	_add_key("codex", KEY_G)
 
 
 func _add_key(action: StringName, key: Key) -> void:
@@ -602,6 +608,9 @@ func _dev_clear_overlays() -> void:
 	if handbook_open and handbook != null:
 		handbook.close()
 		handbook_open = false
+	if codex_open and codex != null:
+		codex.close()
+		codex_open = false
 	if journal_book_open and travel_journal != null:
 		travel_journal.close()
 		journal_book_open = false
@@ -2310,6 +2319,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if journal_book_open:
 			toggle_travel_journal()
+		elif codex_open:
+			toggle_codex()
 		elif handbook_open:
 			toggle_handbook()
 		elif hud != null and hud.help.visible:
@@ -2350,6 +2361,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		hud.show_toast("自动航行已开启" if ship.autopilot else "已切换手动驾驶", 1.8)
 	elif event.is_action_pressed("handbook"):
 		toggle_handbook()
+	elif event.is_action_pressed("codex"):
+		toggle_codex()
+	elif codex_open and event is InputEventKey and event.pressed and not event.echo:
+		var cx_code: String = OS.get_keycode_string((event as InputEventKey).physical_keycode)
+		if cx_code == "Up":
+			codex.move_cursor(-1)
+		elif cx_code == "Down":
+			codex.move_cursor(1)
 	elif handbook_open and event is InputEventKey and event.pressed and not event.echo:
 		var hb_code: String = OS.get_keycode_string((event as InputEventKey).physical_keycode)
 		if hb_code == "Left":
@@ -2488,6 +2507,11 @@ func _planet_interact() -> bool:
 				hud.show_toast("这处遗迹已记录过", 2.0)
 				return true
 			(host.interactive_spots[index] as Dictionary)["scanned"] = true
+			# ⚠ 同时写进 relic_seen（键 "星球id:索引"）。
+			#   scanned 只活在当前星球节点上，星球一旦重建（切星球 / 轮回重置）
+			#   就丢了；relic_seen 由 main 持有，生命周期跟存档一致，
+			#   图鉴面板（codex.gd）读的就是它。
+			relic_seen["%s:%d" % [String(host.get("planet_id")), index]] = true
 			host.consume_interactive(index)
 			var prog: Array = host.relic_progress()
 			var done: int = int(prog[0])
@@ -3096,6 +3120,7 @@ const BagPanelScript = preload("res://scripts/bag_panel.gd")
 const DungeonScript = preload("res://scripts/dungeon.gd")
 const FishingHudScript = preload("res://scripts/fishing_hud.gd")
 const HandbookScript = preload("res://scripts/handbook.gd")
+const CodexScript = preload("res://scripts/codex.gd")
 const TravelJournalScript = preload("res://scripts/travel_journal.gd")
 const GuideScript = preload("res://scripts/guide.gd")
 const RunSummaryScript = preload("res://scripts/run_summary.gd")
@@ -3202,6 +3227,9 @@ func toggle_travel_journal() -> void:
 		if handbook_open and handbook != null:
 			handbook.close()
 			handbook_open = false
+		if codex_open and codex != null:
+			codex.close()
+			codex_open = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -3556,6 +3584,27 @@ func toggle_handbook() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+## 星图图鉴（G 键）。跟手册一样：打开时收鼠标、盖住其它面板；关掉时把鼠标还给镜头。
+func toggle_codex() -> void:
+	if codex == null:
+		return
+	if minigame_open:
+		return
+	# 和手册互斥，避免两大幅面板叠在一起看不清
+	if handbook_open and handbook != null:
+		handbook.close()
+		handbook_open = false
+	codex.toggle()
+	codex_open = codex.open
+	if codex_open:
+		if bag_open and bag != null:
+			bag.close()
+			bag_open = false
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
 ## 「下一件值得做的事」：照原作判定顺序给出当前该做什么。
 func next_worth_doing() -> String:
 	if attic_worlds == null:
@@ -3697,6 +3746,9 @@ var sky_material: ShaderMaterial
 ## 旅人手册是否打开（H 键）
 var handbook: CanvasLayer
 var handbook_open := false
+## 星图图鉴（C 键）：汇总走过的星球与遗迹扫描进度。
+var codex: CanvasLayer
+var codex_open := false
 ## 旅行小册（阁楼茶几上，按 E 翻开）
 var travel_journal: CanvasLayer
 var journal_book_open := false

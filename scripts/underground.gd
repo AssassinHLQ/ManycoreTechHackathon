@@ -41,6 +41,8 @@ static func build(planet, kind: String) -> void:
 	anchor.name = "CaveAnomalyAnchor"
 	# 窟穴陈设（批六的 cave-* 资产）
 	_build_cave_props(root, planet, chamber_radius, floor_y, ceiling_y, shaft_radius)
+	# 窟穴交互点：让玩家在洞里也有事可做，而不是只能看一眼
+	_build_cave_interactives(root, planet, chamber_radius, floor_y, ceiling_y, shaft_radius)
 	anchor.position = Vector3(0, floor_y + 0.1, -chamber_radius * 0.26)
 	root.add_child(anchor)
 	_limit_range(root, 900.0)
@@ -125,6 +127,97 @@ static func _limit_range(node: Node, end: float) -> void:
 		node.visibility_range_end = end
 	for child in node.get_children():
 		_limit_range(child, end)
+
+
+## 窟穴交互点：内室里放三处可以按 E 用的东西。
+##
+## 为什么需要：
+##   批六给每颗带洞的星球摆了 11 件陈设，但全是死的 —— 玩家爬下去只能
+##   看一眼再爬上来。这里给内室补上「矿脉 / 补给 / 遗迹」三种，让下洞有回报。
+##
+## ⚠ 坐标换算（最容易错的一步）：
+##   洞穴挂在 `_prop_parent()` 返回的 root 上，root 自己带
+##   `position = surface_position(...)` 和 `scale = prop_scale`。
+##   `nearest_interactive()` 比对的是**星球局部坐标**，所以这里必须把
+##   洞内坐标经 `root.transform` 变过去，再写进 spot["local_pos"]。
+##   直接塞局部坐标的话，玩家站在洞里也永远触发不了（差了一个球面位置 + 5 倍缩放）。
+static func _build_cave_interactives(root: Node3D, planet, chamber_radius: float,
+		floor_y: float, ceiling_y: float, shaft_radius: float) -> void:
+	if planet == null:
+		return
+	# ⚠ 用 `"interactive_spots" in planet` 判断属性是否存在。
+	#   Node 没有 has() 方法（那是 Dictionary 的），写成 planet.has("x") 会直接报
+	#   "Nonexistent function 'has' in base 'Node3D'"。
+	if not ("interactive_spots" in planet):
+		return
+	var clear_r: float = shaft_radius + 2.0
+	var outer: float = chamber_radius - 3.0
+	if outer <= clear_r:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = abs(String(planet.planet_id).hash()) + 8837
+
+	# [资产 id, 交互类型, 半径系数, 方位角, 高度]
+	# 半径系数是「在 clear_r..outer 之间的插值位置」，0=靠竖井，1=贴墙
+	var plan := [
+		["cave-crystal-cluster", "crystal", 0.62, 0.6, 1.8],
+		["cave-altar", "relic", 0.78, 3.4, 1.8],
+		["cave-lantern", "cargo", 0.55, 5.2, 1.4],
+	]
+	for entry in plan:
+		var pid := String(entry[0])
+		var kind := String(entry[1])
+		var mesh: Mesh = planet._prop_mesh(pid)
+		if mesh == null:
+			continue
+		var frac: float = float(entry[2])
+		var ang: float = float(entry[3]) + rng.randf_range(-0.25, 0.25)
+		var size: float = float(entry[4])
+		var rad: float = lerpf(clear_r, outer, frac)
+		var ab: AABB = mesh.get_aabb()
+		var h: float = maxf(ab.size.y, 0.001)
+		var k: float = size / h
+		var basis := Basis(Quaternion(Vector3.UP, Vector3.UP)).rotated(
+			Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * k)
+		var y: float = floor_y - ab.position.y * k
+		var local := Vector3(cos(ang) * rad, y, sin(ang) * rad)
+
+		# 摆一个带材质的 MeshInstance3D（跟陈设同一套画法，但这一件要能被调暗）
+		var mi := MeshInstance3D.new()
+		mi.name = "CaveInteract_%s" % pid
+		mi.mesh = mesh
+		mi.transform = Transform3D(basis, local)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		root.add_child(mi)
+
+		# 换算到星球局部坐标
+		var planet_local: Vector3 = root.transform * local
+		var cfg: Array = planet.INTERACTIVE_CHARGES.get(kind, [1, 0.0])
+		var idx: int = planet.interactive_spots.size()
+		planet.interactive_spots.append({
+			"id": pid,
+			"kind": kind,
+			"dir": planet.cave_direction,
+			"size": size * float(planet.prop_scale),
+			"altitude": 0.0,
+			# 关键字段：nearest_interactive 看到它就跳过球面换算
+			"local_pos": planet_local,
+			"cave": true,
+			"used": false,
+			"charges": int(cfg[0]),
+			"max_charges": int(cfg[0]),
+			"cooldown": float(cfg[1]),
+			"ready_at": 0,
+			"scanned": false,
+			"tint": planet._prop_tint(),
+			"node": mi,
+			"mi": -1,
+		})
+		# 让 consume_interactive → _set_spot_dim 能把这一个实例调暗
+		# （MultiMesh 那条路用 mi 下标，这里是普通 MeshInstance3D，
+		#   所以直接把节点本身记进 node，_set_spot_dim 会识别）
+		planet.interactive_spots[idx]["node"] = mi
+	print("[CAVE] %s：补入交互点（洞内）" % planet.planet_id)
 
 
 static func _palette(planet, kind: String) -> Dictionary:

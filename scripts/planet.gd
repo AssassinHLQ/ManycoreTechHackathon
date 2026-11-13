@@ -2253,8 +2253,17 @@ func _add_prop(prop_id: String, direction: Vector3, size: float,
 
 ## 离玩家最近的可交互道具。没有则返回空字典。
 ##
+## 离玩家最近的可交互道具。没有则返回空字典。
+##
 ## `world_pos` 是世界坐标（玩家脚下）；内部换成星球局部坐标再比距离。
 ## 距离用「实体最大半径 x 1.6」当阈值，体量大的东西走近就能触发。
+##
+## ⚠ 两类交互点的坐标来源不同：
+##   · 地表交互点（晶簇/货舱/遗迹…）：用 `surface_position(dir, altitude)` 现算，
+##     它们贴在球面上，这样算最省事；
+##   · 地下 / 建筑内交互点：带 `local_pos` 字段，直接用那个局部坐标。
+##     洞穴在 `_prop_parent(cave_direction)` 这棵子树里，坐标是**该子树的局部系**，
+##     不是星球球面系 —— 所以由 UndergroundScript 提前算好写进 local_pos。
 func nearest_interactive(world_pos: Vector3, extra := 4.0) -> Dictionary:
 	if interactive_spots.is_empty():
 		return {}
@@ -2267,7 +2276,11 @@ func nearest_interactive(world_pos: Vector3, extra := 4.0) -> Dictionary:
 			continue
 		if int(spot["charges"]) <= 0:
 			continue          # 采空了，等冷却
-		var p: Vector3 = surface_position(spot["dir"], float(spot["altitude"]))
+		var p: Vector3
+		if spot.has("local_pos"):
+			p = spot["local_pos"]
+		else:
+			p = surface_position(spot["dir"], float(spot["altitude"]))
 		var reach: float = maxf(float(spot["size"]) * 0.75, 3.0) + extra
 		var d: float = local.distance_to(p)
 		if d < reach and d < best_d:
@@ -2301,19 +2314,37 @@ func consume_interactive(index: int) -> int:
 
 
 ## 把某个交互实例的颜色调暗 / 恢复（采空的直观反馈）。
+## 把一个交互点对应的实例调暗 / 恢复。
+##
+## 两种承载形式：
+##   · 地表道具：MultiMesh 里的某一个实例（node 是 MultiMeshInstance3D，mi 是下标）
+##     —— 只改那一个实例色，同组其它道具不受影响；
+##   · 洞内道具：独立的 MeshInstance3D（mi = -1），直接改它自己的材质。
 func _set_spot_dim(spot: Dictionary, dim: bool) -> void:
 	var node = spot.get("node")
-	var mi: int = int(spot.get("mi", -1))
-	if node == null or not is_instance_valid(node) or mi < 0:
-		return
-	var mm: MultiMesh = (node as MultiMeshInstance3D).multimesh
-	if mm == null or mi >= mm.instance_count:
+	if node == null or not is_instance_valid(node):
 		return
 	var tint: Color = spot["tint"]
-	if dim:
-		mm.set_instance_color(mi, Color(tint.r * 0.22, tint.g * 0.22, tint.b * 0.22, tint.a))
-	else:
-		mm.set_instance_color(mi, tint)
+	var mi: int = int(spot.get("mi", -1))
+	if mi >= 0 and node is MultiMeshInstance3D:
+		var mm: MultiMesh = (node as MultiMeshInstance3D).multimesh
+		if mm == null or mi >= mm.instance_count:
+			return
+		if dim:
+			mm.set_instance_color(mi, Color(tint.r * 0.22, tint.g * 0.22, tint.b * 0.22, tint.a))
+		else:
+			mm.set_instance_color(mi, tint)
+		return
+	# 独立 MeshInstance3D：改它自己的材质（override，不改共享的网格材质）
+	if node is MeshInstance3D:
+		var mesh_node := node as MeshInstance3D
+		if dim:
+			var dark := StandardMaterial3D.new()
+			dark.albedo_color = Color(tint.r * 0.25, tint.g * 0.25, tint.b * 0.25, tint.a)
+			dark.roughness = 0.95
+			mesh_node.material_override = dark
+		else:
+			mesh_node.material_override = null
 
 
 ## 按距离整组开关道具容器（C：性能优化）。
