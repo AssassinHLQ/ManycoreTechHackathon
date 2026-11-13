@@ -4,6 +4,8 @@ const ArchitectureScript = preload("res://scripts/architecture.gd")
 const UndergroundScript = preload("res://scripts/underground.gd")
 const PlanetShader = preload("res://shaders/planet.gdshader")
 const CloudShader = preload("res://shaders/clouds.gdshader")
+## 读取 LOD 距离档位用。settings.gd 不 preload 任何脚本，无循环依赖。
+const SettingsScript = preload("res://scripts/settings.gd")
 
 var game: Node3D
 var planet_id := ""
@@ -723,6 +725,15 @@ const PROP_MODELS := {
 
 ## 已加载的 AI 网格缓存（prop_id -> Mesh），同一进程里 20 颗星球共用一份。
 static var _prop_mesh_cache := {}
+## 缓存上限（LRU）。高模网格单个 10~20 MB，48 个已经足够覆盖
+## 「当前星球 + 相邻几颗」的常用道具，再多的部分淘汰掉。
+const PROP_CACHE_LIMIT := 48
+## LRU 顺序：队尾最新。淘汰时从队首摘。
+static var _prop_cache_order: Array = []
+## 「正在使用」的 prop_id -> 引用它的星球数。
+## 淘汰时必须跳过这些：它们的 Mesh 被 MultiMesh 持有，卸载只会导致
+## 下次重新载入一份新的，而旧的仍然活着 —— 内存不降反升。
+static var _prop_in_use := {}
 
 ## 待落地的高模地标：prop_id -> Array[Dictionary]（见 _add_prop）
 var prop_queue: Dictionary = {}
@@ -2012,6 +2023,7 @@ func _crystal_cluster_mesh(height: float) -> ArrayMesh:
 ## 立刻释放实例 —— mesh 资源本身会被 MultiMesh 持有。
 static func _prop_mesh(prop_id: String) -> Mesh:
 	if _prop_mesh_cache.has(prop_id):
+		_prop_cache_touch(prop_id)
 		return _prop_mesh_cache[prop_id]
 	var mesh: Mesh = null
 	var path: String = PROP_MODELS.get(prop_id, "")
@@ -2027,7 +2039,39 @@ static func _prop_mesh(prop_id: String) -> Mesh:
 						break
 				inst.free()
 	_prop_mesh_cache[prop_id] = mesh
+	_prop_cache_touch(prop_id)
 	return mesh
+
+
+## 把 prop_id 挪到 LRU 队尾，并在超过上限时淘汰队首。
+##
+## ⚠ 淘汰只删除**缓存里的引用**。如果某个星球的 MultiMesh 仍然持有该
+##   Mesh，引用计数会让它继续存活（不会黑模/掉贴图）。下次再需要时
+##   重新载入 GLB 即可 —— 一次 PackedScene.instantiate，代价很小。
+static func _prop_cache_touch(prop_id: String) -> void:
+	_prop_cache_order.erase(prop_id)
+	_prop_cache_order.append(prop_id)
+	if _prop_cache_order.size() <= PROP_CACHE_LIMIT:
+		return
+	# 只淘汰「没有任何星球在用」的条目。
+	# 在用条目若被淘汰，下次请求会重新载入一份新 Mesh，而旧的仍被 MultiMesh
+	# 持有 —— 反而变成两份，内存不降反升（实测踩过：1786 MB -> 2000 MB）。
+	var excess: int = _prop_cache_order.size() - PROP_CACHE_LIMIT
+	var survivors: Array = []
+	for key in _prop_cache_order:
+		var k: String = String(key)
+		if excess > 0 and k != prop_id and not _prop_in_use.has(k):
+			_prop_mesh_cache.erase(k)
+			excess -= 1
+		else:
+			survivors.append(k)
+	_prop_cache_order = survivors
+
+
+## 标记某个 prop_id 已经落成 MultiMesh（正被某颗星球使用）。
+## 由 _flush_props 在把 mesh 交给 MultiMesh 之后调用。
+static func _prop_mark_in_use(prop_id: String) -> void:
+	_prop_in_use[prop_id] = int(_prop_in_use.get(prop_id, 0)) + 1
 
 
 ## 把 AI 网格包成可被 MultiMesh 实例化的版本：
@@ -2860,18 +2904,36 @@ func _flush_props() -> void:
 		var instance := MultiMeshInstance3D.new()
 		instance.name = "Prop_%s" % prop_id
 		instance.multimesh = mm
+		# 这个 mesh 从此被本星球的 MultiMesh 持有，不能再被 LRU 淘汰
+		_prop_mark_in_use(prop_id)
 		# 把交互点绑到实例上（采空后需要单独调暗那一个）
 		for pair in pending_spots:
 			var si: int = int(pair[0])
 			if si >= 0 and si < interactive_spots.size():
 				(interactive_spots[si] as Dictionary)["node"] = instance
 				(interactive_spots[si] as Dictionary)["mi"] = int(pair[1])
-		instance.visibility_range_end = 2200.0
+		instance.visibility_range_end = _lod_view_distance_for(prop_id)
 		if _prop_root != null:
 			_prop_root.add_child(instance)
 		else:
 			add_child(instance)
 		_add_prop_colliders(entries, prop_id)
+
+
+## 该类道具的绘制距离（米），跟随设置里的 LOD 档位。
+##
+## 建场时 settings 还没创建（它在 _build_world_progressive 里排在行星之后），
+## 所以先按默认档位 2；settings 建好后会调 _apply_lod() 用同一套数值再刷一遍，
+## 因此两者不会打架。
+## 地标（lm-*）与大地貌件（lf-*）乘 1.6，与 settings._apply_lod 保持一致。
+func _lod_view_distance_for(prop_id: String) -> float:
+	var level: int = 2
+	if game != null and game.settings != null:
+		level = clampi(int(game.settings.values.lod), 0, 3)
+	var d: float = float(SettingsScript.LOD_DISTANCE[clampi(level, 0, 3)])
+	if prop_id.contains("lm-") or prop_id.contains("lf-"):
+		return d * 1.6
+	return d
 
 
 func _flush_vegetation() -> void:
