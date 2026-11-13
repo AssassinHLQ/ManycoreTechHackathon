@@ -2290,14 +2290,24 @@ func relic_progress() -> Array:
 ##   实例加碰撞体，结果 90 个树实例里**命中 0 个** —— 因为 _build_landscape 的
 ##   方向是整球随机分布，506 米只占周长的 4%。
 ##   现在改成「站点附近的优先 + 按队列顺序补到上限」，两种覆盖都拿到。
-const PROP_COLLIDER_CAP := 34
+const PROP_COLLIDER_CAP := 260
 
 
+## 给道具补静态碰撞体。
+##
+## ⚠ 2026-11-13 重写（用户：「资产全都没有碰撞」）：
+##   旧版每个实例建一个独立 StaticBody3D，为了省物理对象把上限压到 34 个/类 ——
+##   但一颗星球单类植被就有 90 个实例，于是**六成道具是穿模的**。
+##
+##   现在改成「**同类道具共用 1 个 StaticBody3D**，逐个加 CollisionShape3D 子节点」：
+##   · 物理对象数从「实例数」降到「道具种类数」（约 20 个），开销可以忽略
+##   · 于是可以把上限放到 260，基本覆盖玩家会走到的全部实例
+##   · 每个实例仍按自己的位置与朝向摆碰撞形状，互不影响
 func _add_prop_colliders(entries: Array, prop_id: String) -> void:
 	var limit: float = site_pad_radius * 2.2
 	var profile := _prop_collider_profile(prop_id)
 	var site_dir: Vector3 = site_direction.normalized()
-	# 先挑出站点附近的（玩家真会走过去），再按顺序补到上限。
+	# 站点附近的优先（玩家真会走过去），其余按顺序补到上限。
 	var picked: Array = []
 	var rest: Array = []
 	for e in entries:
@@ -2310,29 +2320,34 @@ func _add_prop_colliders(entries: Array, prop_id: String) -> void:
 		if picked.size() >= PROP_COLLIDER_CAP:
 			break
 		picked.append(e)
-	picked = picked.slice(0, PROP_COLLIDER_CAP)
+	if picked.is_empty():
+		return
+	# 一个物理体承载该类道具的所有碰撞形状。
+	var body := StaticBody3D.new()
+	body.name = "PropCollision_%s" % prop_id
+	body.collision_layer = 1
+	body.collision_mask = 0
+	add_child(body)
 	for e in picked:
 		var dir: Vector3 = e["dir"]
 		var size: float = float(e["size"])
 		var origin: Vector3 = surface_position(dir, float(e["altitude"]))
-		var body := StaticBody3D.new()
-		body.collision_layer = 1
-		body.collision_mask = 0
-		body.transform = Transform3D(Basis(Quaternion(Vector3.UP, dir)), origin)
 		var collision := CollisionShape3D.new()
+		# ⚠ 形状挂在 body 局部空间，所以要把本地方向编进每个形状自己的
+		#   transform，不能整体旋转 body（那会把所有实例转到同一朝向）。
+		var basis := Basis(Quaternion(Vector3.UP, dir))
 		if profile.x < 0.3:
 			var shape := CylinderShape3D.new()
 			shape.radius = profile.x * size
 			shape.height = profile.y * size
 			collision.shape = shape
-			collision.position.y = profile.y * size * 0.5
+			collision.transform = Transform3D(basis, origin + dir * (profile.y * size * 0.5))
 		else:
 			var shape := SphereShape3D.new()
 			shape.radius = profile.x * size
 			collision.shape = shape
-			collision.position.y = profile.x * size
+			collision.transform = Transform3D(basis, origin + dir * (profile.x * size))
 		body.add_child(collision)
-		add_child(body)
 
 
 ## 把 prop_queue 里排好的道具落成 MultiMeshInstance3D。

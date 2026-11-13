@@ -89,7 +89,7 @@ const AUTOPILOT_FUEL_PER_DV := 0.003
 ##     · 从 2000 刹停约 2.7 万米（用打折后的 73.5 算）——
 ##       在 9.2 万米外就进入刹车段，有充足余量反复修正
 ##     · 2000 m/s 横穿星系（15 万米）约 75 秒，玩家不会觉得慢
-const AUTOPILOT_CRUISE := 2000.0
+const AUTOPILOT_CRUISE := 2600.0
 ## 速度剖面按「可用减速度的多少比例」来设计。
 ##
 ## 剖面假设的刹车能力 = 可用减速度 × 本值。
@@ -111,7 +111,7 @@ const AUTOPILOT_CRUISE := 2000.0
 ##   为什么留 10% 余量而不是 1.0：剖面是「刚好刹住」的临界值，
 ##   飞行中还有跟踪误差、地形起伏、目标在动，留一点才不会冲过落点。
 ##   要再快就调小 AUTOPILOT_CRUISE（巡航速度），别再动这里。
-const AUTOPILOT_BRAKE_FRACTION := 0.90
+const AUTOPILOT_BRAKE_FRACTION := 0.46
 ## 可用减速度的下限。行星引力最大 32，留个地板免得剖面被压成 0 而卡死。
 const AUTOPILOT_BRAKE_FLOOR := 30.0
 ## 末端指数逼近的时间常数（秒）。d/tau 就是最后几米的下降速度。
@@ -131,7 +131,7 @@ const AUTOPILOT_CREEP_TIME := 1.0
 ##   这条只需要兜住「极高处还保留很大速度」的极端情况，4 秒足够：
 ##     3000 m: feasible 1138 vs d/4=750   → 取 750（仍是这条更紧，但不再磨）
 ##      500 m: feasible  464 vs d/4=125   → 取 125（近地仍然稳稳收住）
-const AUTOPILOT_APPROACH_TIME := 4.0
+const AUTOPILOT_APPROACH_TIME := 6.0
 ## 期望停在地表上方多高。留 2.6 米，落点判定（< 3.4 米）之前就已经几乎悬停。
 const AUTOPILOT_TOUCHDOWN_ALT := 2.6
 const MANUAL_FUEL_PER_DV := 0.00625
@@ -1703,6 +1703,11 @@ func _reset_cockpit_camera() -> void:
 func _physics_process(delta: float) -> void:
 	if game.state != "ship" or game.paused or game.supernova_active or game.map_open:
 		thrust_level = 0.0
+		# ⚠ 2026-11-13：这里必须显式把引擎音关掉。
+		#   之前只 return，不调 set_engine —— 一旦状态切走（死亡/菜单/暂停），
+		#   引擎循环音会永远停在最后一次的音量上，玩家死亡重生后还一直响。
+		if game.audio != null:
+			game.audio.set_engine(false, 0.0)
 		return
 	impact_cooldown = maxf(0.0, impact_cooldown - delta)
 	dock_cooldown = maxf(0.0, dock_cooldown - delta)
