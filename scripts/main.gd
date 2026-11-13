@@ -2719,7 +2719,7 @@ func _interact() -> void:
 			else:
 				hud.show_toast("气闸在舱室中央 · 站到地面发光环上再按 E", 2.2)
 			return
-		if near_ship_to_board():
+		if player.global_position.distance_to(ship.global_position) < 8.0:
 			if roast != null:
 				roast.cancel(false)
 			state = "ship"
@@ -2752,20 +2752,6 @@ func _interact() -> void:
 			exit_ship()
 		else:
 			ship.try_land()
-
-
-## 玩家是否站在飞船旁（登船判定）。
-## ⚠ 2026-11-13：原来写死 8 m —— 那是机长 14 m 时代的半径。机长放大到 70 m 后，
-##   站在机翼/机头旁边离船体原点 20~35 m，8 m 根本够不着（用户「进不去飞船」）。
-##   改成按船体 AABB 外扩 6 m：贴着机身任意一侧、机头机尾都能登船。
-func near_ship_to_board() -> bool:
-	if ship == null or player == null:
-		return false
-	var half := Vector3(ship.ship_model_span, ship.ship_model_height, ship.ship_model_length) * 0.5
-	var local: Vector3 = ship.global_transform.affine_inverse() * player.global_position
-	var outside: Vector3 = (local - ship.ship_model_center).abs() - half
-	outside = Vector3(maxf(outside.x, 0.0), maxf(outside.y, 0.0), maxf(outside.z, 0.0))
-	return outside.length() < 6.0
 
 
 func exit_ship() -> void:
@@ -3000,7 +2986,7 @@ func get_prompt() -> String:
 			return prop_hint
 		if _near_cave_mouth():
 			return "洞口敞开 · 沿螺旋石阶下到洞底，寻找可扫描的回声"
-		if near_ship_to_board():
+		if player.global_position.distance_to(ship.global_position) < 8.0:
 			if touch_ui_active():
 				return "「互动」按钮登船　·　靠近篝火可补给"
 			return "E 登船　·　靠近篝火可补给"
