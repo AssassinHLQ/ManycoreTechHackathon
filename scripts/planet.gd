@@ -2074,22 +2074,69 @@ static func _prop_mark_in_use(prop_id: String) -> void:
 	_prop_in_use[prop_id] = int(_prop_in_use.get(prop_id, 0)) + 1
 
 
-## 把 AI 网格包成可被 MultiMesh 实例化的版本：
-##   · 复制一份（各星球独立，互不影响材质）
-##   · 每个面的材质复制后打开 vertex_color_use_as_albedo，
-##     这样 MultiMesh 的实例色能直接给整颗星球的道具调色，
-##     而 AI 生成的贴图本身仍然是原样
+## 道具按星球调色用的共享材质缓存：原始材质 RID -> 开了顶点色的副本。
+##
+## ⚠ 为什么按「材质 RID」而不是按 prop_id 缓存：
+##   同一份 AI 资产被多颗星球使用时，GLB 只加载一次，材质也是**同一个对象**
+##   （`_prop_mesh` 走 LRU 缓存，同一个 Mesh 实例）。所以只要原始材质 RID 相同，
+##   派生出来的「开顶点色」版本也可以全进程共用一份 —— 每颗星球都 fork 一份
+##   完全相同的材质是纯浪费（一个 StandardMaterial3D 连同它的贴图句柄、
+##   shader 参数几十 KB，44 种道具 × 20 颗星球很可观）。
+static var _prop_tint_material_cache := {}
+
+
+## 取某个原始材质的「可按实例色调色」版本（全进程共享）。
+##
+## 只有 `StandardMaterial3D` 才需要派生（要打开 vertex_color_use_as_albedo）；
+## 其它材质类型原样返回。
+static func _prop_tint_material(orig: Material) -> Material:
+	if orig == null:
+		return null
+	if not (orig is StandardMaterial3D):
+		return orig
+	var key: int = orig.get_instance_id()
+	var cached = _prop_tint_material_cache.get(key)
+	if cached != null:
+		return cached
+	var dup: StandardMaterial3D = (orig as StandardMaterial3D).duplicate()
+	dup.vertex_color_use_as_albedo = true
+	_prop_tint_material_cache[key] = dup
+	return dup
+
+
+## 把 AI 网格包成可被 MultiMesh 实例化的版本 —— **顶点数据全进程共享，零拷贝**。
+##
+## ⚠ 2026-11-13 显存优化（用户「优化显存占用」），走过两条弯路，结论如下：
+##
+##   ① 旧实现 `base.duplicate()`（深拷贝）：每颗星球都完整复制一份
+##      顶点/索引/法线/切线/UV。20 颗星球 × 44 种道具 × 几万面，白白吃 1~1.5 GB。
+##
+##   ② 改成 `base.duplicate(false)`：**没有用**。实测 `duplicate()` 无论深浅
+##      都给新对象分配一个新的 RID（见 `_tools/_tmp/probe_share.gd` 的验证输出），
+##      顶点缓冲照样被复制一份。
+##
+##   ③ 最终方案（当前）：**直接返回原始 Mesh，不做任何复制**；
+##      按星球独立的「调色」改由 `MultiMeshInstance3D.material_override` 承担
+##      （见 `_prop_tint_material` 与 `_flush_props`）。
+##      · 顶点/索引缓冲：全进程只有 GLB 里那一份，所有星球共享同一个 RID；
+##      · 材质：override 挂在实例节点上，每颗星球各自独立，互不污染；
+##      · 前提：道具网格必须是**单表面**（180 个资产已全部实测为单表面），
+##        多表面网格会被 override 统一成一种材质 —— 真出现时回退到拷贝路径。
 static func _prop_mesh_for_instancing(prop_id: String) -> Mesh:
 	var base: Mesh = _prop_mesh(prop_id)
 	if base == null:
 		return null
+	# 单表面：可以直接共享，调色走 material_override（零拷贝）。
+	# 多表面：override 会把所有面刷成同一种材质，贴图会乱 —— 回退成拷贝，
+	# 并把每个表面的材质都派生一份打开顶点色（保留原来的调色能力）。
+	if base.get_surface_count() <= 1:
+		return base
 	var copy: Mesh = base.duplicate()
 	for s in range(copy.get_surface_count()):
 		var mat: Material = copy.surface_get_material(s)
-		if mat is StandardMaterial3D:
-			var dup: StandardMaterial3D = (mat as StandardMaterial3D).duplicate()
-			dup.vertex_color_use_as_albedo = true
-			copy.surface_set_material(s, dup)
+		var tinted: Material = _prop_tint_material(mat)
+		if tinted != null:
+			copy.surface_set_material(s, tinted)
 	return copy
 
 
@@ -2904,6 +2951,11 @@ func _flush_props() -> void:
 		var instance := MultiMeshInstance3D.new()
 		instance.name = "Prop_%s" % prop_id
 		instance.multimesh = mm
+		# 单表面网格走「共享顶点 + 实例级材质」路线（见 _prop_mesh_for_instancing）：
+		# 网格本身仍是 GLB 里那一份，调色交给 material_override，
+		# 这样顶点缓冲全进程只有一份，而每颗星球的色调互不影响。
+		if mesh.get_surface_count() <= 1:
+			instance.material_override = _prop_tint_material(mesh.surface_get_material(0))
 		# 这个 mesh 从此被本星球的 MultiMesh 持有，不能再被 LRU 淘汰
 		_prop_mark_in_use(prop_id)
 		# 把交互点绑到实例上（采空后需要单独调暗那一个）

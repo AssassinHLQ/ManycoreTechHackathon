@@ -2,11 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://4a6s8gyp13lu"
-path.s3tc="res://.godot/imported/model_1.jpg-46a50103e7b7edf84f5a8a75777ec053.s3tc.ctex"
+uid="uid://2o78pa6b4xh0"
+path="res://.godot/imported/model_1.jpg-46a50103e7b7edf84f5a8a75777ec053.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
 "md5": "1456930f489695beb768b87a6ed9b9e9"
@@ -15,11 +14,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/ice-shard/model_1.jpg"
-dest_files=["res://.godot/imported/model_1.jpg-46a50103e7b7edf84f5a8a75777ec053.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_1.jpg-46a50103e7b7edf84f5a8a75777ec053.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

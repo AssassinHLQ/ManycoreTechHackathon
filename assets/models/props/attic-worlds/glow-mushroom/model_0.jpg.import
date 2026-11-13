@@ -2,11 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ck7heg0exc6to"
-path.s3tc="res://.godot/imported/model_0.jpg-aade4d93d8139d66cb52c2d9987925ef.s3tc.ctex"
+uid="uid://cf3m12eoehwe3"
+path="res://.godot/imported/model_0.jpg-aade4d93d8139d66cb52c2d9987925ef.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
 "md5": "b0aaa773dc5f6a5e9abaa8cfd6f87c3d"
@@ -15,11 +14,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/glow-mushroom/model_0.jpg"
-dest_files=["res://.godot/imported/model_0.jpg-aade4d93d8139d66cb52c2d9987925ef.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_0.jpg-aade4d93d8139d66cb52c2d9987925ef.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

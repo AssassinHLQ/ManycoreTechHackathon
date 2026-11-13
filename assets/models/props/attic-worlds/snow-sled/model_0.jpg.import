@@ -2,11 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dbglub1epufyl"
-path.s3tc="res://.godot/imported/model_0.jpg-7560378eb14b6406d0743e6928d1f34c.s3tc.ctex"
+uid="uid://cyxyl1ttoccni"
+path="res://.godot/imported/model_0.jpg-7560378eb14b6406d0743e6928d1f34c.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
 "md5": "c4201266738f558fa2f235db7f7be72e"
@@ -15,11 +14,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/snow-sled/model_0.jpg"
-dest_files=["res://.godot/imported/model_0.jpg-7560378eb14b6406d0743e6928d1f34c.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_0.jpg-7560378eb14b6406d0743e6928d1f34c.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

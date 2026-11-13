@@ -2,11 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c5pmmqraes7bs"
-path.s3tc="res://.godot/imported/model_0.jpg-02fe7013c4c8d3fddedcfc86b68da1ac.s3tc.ctex"
+uid="uid://dd46isdchij5c"
+path="res://.godot/imported/model_0.jpg-02fe7013c4c8d3fddedcfc86b68da1ac.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
 "md5": "78ad2c611e74f9b0117086c0d4fffe1d"
@@ -15,11 +14,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/stone-firepit/model_0.jpg"
-dest_files=["res://.godot/imported/model_0.jpg-02fe7013c4c8d3fddedcfc86b68da1ac.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_0.jpg-02fe7013c4c8d3fddedcfc86b68da1ac.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1

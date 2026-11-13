@@ -2,11 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cinyrutqos326"
-path.s3tc="res://.godot/imported/model_0.jpg-a8c35839bce84fca7a6ad7d4324667ee.s3tc.ctex"
+uid="uid://dhmycqrrdiu3c"
+path="res://.godot/imported/model_0.jpg-a8c35839bce84fca7a6ad7d4324667ee.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 generator_parameters={
 "md5": "ead377a2490f6bf5c0645410eaabc2bb"
@@ -15,11 +14,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/prism-heart/model_0.jpg"
-dest_files=["res://.godot/imported/model_0.jpg-a8c35839bce84fca7a6ad7d4324667ee.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_0.jpg-a8c35839bce84fca7a6ad7d4324667ee.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -41,4 +40,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1
