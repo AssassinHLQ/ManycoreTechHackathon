@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cdnmm0ncp45sa"
-path="res://.godot/imported/base_color.jpg-b916b9f62df79046748ff413250b3033.ctex"
+uid="uid://ci81uict1q2ua"
+path="res://.godot/imported/orm.png-68d801e47830270c980f58bfaa9559f8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/ship-fighter/textures/base_color.jpg"
-dest_files=["res://.godot/imported/base_color.jpg-b916b9f62df79046748ff413250b3033.ctex"]
+source_file="res://assets/models/qinglan-planet/textures/orm.png"
+dest_files=["res://.godot/imported/orm.png-68d801e47830270c980f58bfaa9559f8.ctex"]
 
 [params]
 

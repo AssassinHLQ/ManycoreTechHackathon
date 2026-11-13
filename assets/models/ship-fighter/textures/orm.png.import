@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cu0ow26c3t1jq"
-path="res://.godot/imported/emissive.jpg-b684a71cd4d9678dd3389cc2ed7ccd8f.ctex"
+uid="uid://cv6ljuc2gw0hk"
+path="res://.godot/imported/orm.png-963fcedea9e153e0c9835329eb28fa8c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/space-station/textures/emissive.jpg"
-dest_files=["res://.godot/imported/emissive.jpg-b684a71cd4d9678dd3389cc2ed7ccd8f.ctex"]
+source_file="res://assets/models/ship-fighter/textures/orm.png"
+dest_files=["res://.godot/imported/orm.png-963fcedea9e153e0c9835329eb28fa8c.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bl4dupx81kevb"
-path="res://.godot/imported/orm.jpg-7f5b642a33d72a7f3020c191e3dd7c78.ctex"
+uid="uid://bsjam8o4wop5h"
+path="res://.godot/imported/orm.png-0a7ddf84d103c422b9a95fb75a4d1496.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/qinglan-planet/textures/orm.jpg"
-dest_files=["res://.godot/imported/orm.jpg-7f5b642a33d72a7f3020c191e3dd7c78.ctex"]
+source_file="res://assets/models/space-station-3/textures/orm.png"
+dest_files=["res://.godot/imported/orm.png-0a7ddf84d103c422b9a95fb75a4d1496.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dttkxa5votov2"
-path="res://.godot/imported/orm.jpg-d9a66224b47f06389cc0b81c980f3277.ctex"
+uid="uid://cfnthv2hxj2v8"
+path="res://.godot/imported/spacestation_main_metallic-spacestation_main_roughness_orm.png-398397b488e33bccade4aa7d1626081e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/ship-fighter/textures/orm.jpg"
-dest_files=["res://.godot/imported/orm.jpg-d9a66224b47f06389cc0b81c980f3277.ctex"]
+source_file="res://assets/models/space-station-3/textures/spacestation_main_metallic-spacestation_main_roughness_orm.png"
+dest_files=["res://.godot/imported/spacestation_main_metallic-spacestation_main_roughness_orm.png-398397b488e33bccade4aa7d1626081e.ctex"]
 
 [params]
 

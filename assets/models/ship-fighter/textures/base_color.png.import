@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://onau8bvqy42e"
-path="res://.godot/imported/orm.jpg-4d0e91efa7211c150081497accb3e8c7.ctex"
+uid="uid://b2buwg2i4itdf"
+path="res://.godot/imported/base_color.png-0cde8f496f95069d7cdc94fc1e2c79b4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/space-station-3/textures/orm.jpg"
-dest_files=["res://.godot/imported/orm.jpg-4d0e91efa7211c150081497accb3e8c7.ctex"]
+source_file="res://assets/models/ship-fighter/textures/base_color.png"
+dest_files=["res://.godot/imported/base_color.png-0cde8f496f95069d7cdc94fc1e2c79b4.ctex"]
 
 [params]
 
