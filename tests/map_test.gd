@@ -26,6 +26,12 @@ func _run() -> void:
 	await game.await_world_ready()
 	await process_frame
 	game.start_game()
+	# 等全量建场完成：本测试后面按索引取行星，建场没完成会越界
+	# （实测 planets[3] 直接报 Invalid access，脚本中断、进程空转）。
+	var build_guard := 0
+	while game.planets.size() < 20 and build_guard < 3600:
+		await process_frame
+		build_guard += 1
 	for i in range(15):
 		await physics_frame
 	game.toggle_map()
@@ -41,7 +47,7 @@ func _run() -> void:
 	game._cycle_map_selection(1)
 	_check(game.map_selected != selected_before, "Q/E cycling changes selection")
 	var size: Vector2 = game.get_viewport().get_visible_rect().size
-	var target_index := 3
+	var target_index := mini(3, game.planets.size() - 1)
 	var target_screen: Vector2 = game.map_screen_of(game.planets[target_index].global_position, size)
 	game._select_map_body(target_screen, size)
 	_check(game.map_selected == target_index, "clicking a body selects it")
