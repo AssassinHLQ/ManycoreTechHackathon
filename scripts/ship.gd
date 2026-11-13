@@ -919,6 +919,10 @@ const EXHAUST_NOZZLES := [
 ## _build_external_exhaust 见到它就跳过 ref_size 换算 —— 那套换算是给
 ## 旧坐标体系用的，对新值只会把位置算歪。
 const EXHAUST_NOZZLES_ARE_FINAL := true
+## 尾焰起点相对喷口的前移量（占机长比例）。
+## ⚠ 2026-11-13：放大到 70 m 后，尾焰起点仍落在尾椎末端、比发动机喷口偏后
+##   （用户「喷气还是位置不对，朝前一点点就行」）。0.021 ≈ 70 m 时前移 1.5 m。
+const EXHAUST_PLUME_FORWARD_RATIO := 0.021
 
 
 func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
@@ -1007,6 +1011,8 @@ func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 		#   现在机长可调（70 m），必须按比例缩放，否则喷焰会缩在机身中段。
 		var ref_scale: float = length / 14.0
 		var nozzle: Vector3 = (EXHAUST_NOZZLES[i] as Vector3) * ref_scale
+		# 朝机头（-Z）方向前移一点，让火焰起点对上发动机喷口而不是尾椎末端
+		nozzle.z -= length * EXHAUST_PLUME_FORWARD_RATIO
 		var is_center := i == 1
 		# ⚠ 2026-11-11 用户要求「三个蓝光中间大两边小」。
 		#   原来 1.35 只比两侧粗 35%，远看三束几乎一样大。
@@ -2685,6 +2691,12 @@ var land_impact_sink := 0.0
 var land_flare_start_alt := 0.0
 ## 接地时的高度（缓冲行程从这里插值到 LANDING_REST_ALT）
 var land_touch_alt := 2.3
+
+
+## 停靠时船体原点应离地多高（机腹贴地）。
+## main.gd 摆放开局停靠点时用它 —— 之前写死 2.3，机长放大后机腹陷地 9.2 m。
+func ground_rest_altitude() -> float:
+	return LANDING_REST_ALT
 
 
 ## 请求降落。**不再瞬移**，只是进入降落状态机。

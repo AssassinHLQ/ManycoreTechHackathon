@@ -1872,14 +1872,14 @@ func _reset_positions() -> void:
 	if base_tangent.length_squared() < 0.01:
 		base_tangent = site_direction.cross(Vector3.RIGHT).normalized()
 	var parking_tangent: Vector3 = base_tangent
-	var ship_direction: Vector3 = (site_direction + base_tangent * (30.0 * layout_scale / float(home.radius))).normalized()
-	var ship_position: Vector3 = home.surface_position(ship_direction, 2.3)
+	var ship_direction: Vector3 = (site_direction + base_tangent * (40.0 * layout_scale / float(home.radius))).normalized()
+	var ship_position: Vector3 = home.surface_position(ship_direction, ship.ground_rest_altitude())
 	if not _ship_parking_clear(ship_position):
 		for step in range(1, 9):
 			var offset := float(step) * 0.12 * (1.0 if step % 2 == 1 else -1.0)
 			var candidate_tangent: Vector3 = base_tangent.rotated(site_direction, offset)
-			var candidate_direction: Vector3 = (site_direction + candidate_tangent * (30.0 * layout_scale / float(home.radius))).normalized()
-			var candidate_position: Vector3 = home.surface_position(candidate_direction, 2.3)
+			var candidate_direction: Vector3 = (site_direction + candidate_tangent * (40.0 * layout_scale / float(home.radius))).normalized()
+			var candidate_position: Vector3 = home.surface_position(candidate_direction, ship.ground_rest_altitude())
 			if _ship_parking_clear(candidate_position):
 				parking_tangent = candidate_tangent
 				ship_direction = candidate_direction
@@ -1925,6 +1925,9 @@ func _reset_positions() -> void:
 	ship.basis = Basis(Quaternion(Vector3.UP, ship_direction))
 	ship.velocity = Vector3.ZERO
 	ship.landed = true
+	# 开局停靠点的地表法线 —— landed 分支每帧重钉时用，跟着停靠点走，
+	# 不写 Vector3.UP（否则上船第一帧会被拽到站点正上方）。
+	ship.landing_normal = ship_direction.normalized()
 	ship.landed_planet = home
 	ship.autopilot = false
 	ship.fuel = 100.0
