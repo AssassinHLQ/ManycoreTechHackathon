@@ -39,9 +39,85 @@ static func build(planet, kind: String) -> void:
 	_build_chamber(root, body, shaft_radius, chamber_radius, floor_y, ceiling_y, palette, planet, kind)
 	var anchor := Node3D.new()
 	anchor.name = "CaveAnomalyAnchor"
+	# 窟穴陈设（批六的 cave-* 资产）
+	_build_cave_props(root, planet, chamber_radius, floor_y, ceiling_y, shaft_radius)
 	anchor.position = Vector3(0, floor_y + 0.1, -chamber_radius * 0.26)
 	root.add_child(anchor)
 	_limit_range(root, 900.0)
+
+
+## 把窟穴陈设摆进内室。
+##
+## ⚠ 位置都是 root 局部坐标（root 已经被 prop_scale 放大），
+##   所以这里用的尺寸都是「设计米数」。
+static func _build_cave_props(root: Node3D, planet, chamber_radius: float,
+		floor_y: float, ceiling_y: float, shaft_radius: float) -> void:
+	if planet == null or not planet.has_method("_prop_mesh"):
+		return
+	var clear_r: float = shaft_radius + 2.0        # 竖井 + 坡道不能堵
+	var outer: float = chamber_radius - 2.5        # 留一圈贴墙余量
+	var rng := RandomNumberGenerator.new()
+	rng.seed = abs(String(planet.planet_id).hash()) + 5171
+
+	# [资产 id, 数量, 尺寸下限, 尺寸上限, 形态]
+	# 形态：floor / hang / pillar / wall / center
+	var table := [
+		["cave-stalagmite", 4, 1.6, 3.2, "floor"],
+		["cave-stalactite", 4, 1.4, 2.6, "hang"],
+		["cave-crystal-cluster", 2, 1.2, 2.2, "floor"],
+		["cave-lantern", 3, 1.0, 1.4, "wall"],
+		["cave-mine-cart", 1, 1.2, 1.8, "floor"],
+		["cave-altar", 1, 1.4, 2.0, "center"],
+		["cave-pillar", 2, 1.0, 1.0, "pillar"],
+		["cave-lake-stone", 3, 1.0, 1.8, "floor"],
+		["cave-fossil-wall", 1, 1.6, 2.4, "wall"],
+		["cave-rail", 2, 1.2, 1.8, "floor"],
+		["cave-elevator", 1, 1.4, 2.0, "wall"],
+	]
+	var placed := 0
+	for entry in table:
+		var pid: String = entry[0]
+		var mesh: Mesh = planet._prop_mesh(pid)
+		if mesh == null:
+			continue
+		var mode: String = entry[4]
+		for _i in range(int(entry[1])):
+			var ang: float = rng.randf() * TAU
+			var rad: float = rng.randf_range(clear_r, outer)
+			var size: float = rng.randf_range(float(entry[2]), float(entry[3]))
+			var mi := MeshInstance3D.new()
+			mi.name = "CaveProp_%s" % pid
+			mi.mesh = mesh
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			var ab: AABB = mesh.get_aabb()
+			var h: float = maxf(ab.size.y, 0.001)
+			var k: float = size / h
+			var y: float = floor_y - ab.position.y * k
+			var basis := Basis(Quaternion(Vector3.UP, Vector3.UP))
+			basis = basis.rotated(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * k)
+			match mode:
+				"hang":
+					# 钟乳石：上下翻转，顶部贴天花板
+					basis = basis.rotated(Vector3.RIGHT, PI)
+					y = ceiling_y + ab.position.y * k
+				"pillar":
+					# 石柱：高度直接取净高，从地板顶到天花板
+					var span: float = ceiling_y - floor_y
+					k = span / h
+					basis = Basis(Quaternion(Vector3.UP, Vector3.UP)).rotated(
+						Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * k)
+					y = floor_y - ab.position.y * k
+				"wall":
+					rad = rng.randf_range(outer - 2.0, outer)
+				"center":
+					rad = rng.randf_range(clear_r + 1.0, clear_r + 4.0)
+				_:
+					pass
+			mi.transform = Transform3D(basis, Vector3(cos(ang) * rad, y, sin(ang) * rad))
+			root.add_child(mi)
+			placed += 1
+	if placed > 0:
+		print("[CAVE] %s：摆入 %d 件陈设" % [planet.planet_id, placed])
 
 
 static func _limit_range(node: Node, end: float) -> void:

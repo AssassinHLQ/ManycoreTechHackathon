@@ -65,6 +65,35 @@ const PROP_INSTANCE_CAP := {
 	"crystal-cluster-lo": 40,
 	"vent-lo": 40,
 	"stone-bridge": 4,
+	"mod-doorframe": 6,
+	"mod-railing": 6,
+	"mod-stairs": 6,
+	"mod-tower-top": 6,
+	"mod-platform": 6,
+	"mod-archway": 6,
+	"mod-window-panel": 6,
+	"mod-ladder": 6,
+	"mod-pipe-run": 6,
+	"mod-signage": 6,
+	"creature-beetle-swarm": 6,
+	"creature-crystal-crawler": 6,
+	"creature-glow-jelly": 6,
+	"creature-pack-hound": 6,
+	"creature-spore-drifter": 6,
+	"creature-ice-herd": 6,
+	"creature-lava-mite": 6,
+	"fern-cluster": 20,
+	"vine-drape": 20,
+	"moss-mat": 20,
+	"spore-pod": 20,
+	"giant-fungus": 20,
+	"grass-plume": 20,
+	"reed-stand": 20,
+	"bulb-plant": 20,
+	"thorn-vine": 20,
+	"canopy-shrub": 20,
+	"lichen-rock": 20,
+	"seed-head": 20,
 	"lm2-qinglan": 2,
 	"lm2-zheya": 2,
 	"lm2-cangbo": 2,
@@ -310,26 +339,26 @@ const PROP_FLOATING := ["floating-rock"]
 ## 数量刻意压得很少（每球 3~5 只）—— 星球是无人区，生物该是稀客而不是动物园。
 ## 体型用「设计米数」：食草兽约 2.2~3.2，高足行者约 4.5~6（细高，比人高一头到两头）。
 const CREATURE_PROPS := {
-	"qinglan": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.5], ["creature-glider", 2, 3.0, 4.0]],
-	"zheya": [["creature-grazer", 2, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5]],
-	"cangbo": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.8, 5.8], ["creature-glider", 1, 3.0, 4.0]],
-	"xuanjing": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 2, 4.5, 5.5], ["creature-ruin-guardian", 1, 4.0, 5.0]],
-	"xuanyuan": [["creature-tall-walker", 2, 5.0, 6.0], ["creature-ruin-guardian", 1, 4.2, 5.2]],
-	"baiyao": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.5, 5.5], ["creature-glider", 1, 3.0, 3.8]],
-	"pansha": [["creature-grazer", 4, 2.0, 2.8], ["creature-burrower", 3, 2.5, 3.5]],
-	"taiyuan": [["creature-grazer", 3, 2.2, 3.0], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-glider", 2, 3.0, 4.0]],
-	"liuwu": [["creature-grazer", 2, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5]],
-	"jianmo": [["creature-tall-walker", 3, 4.8, 6.0], ["creature-ruin-guardian", 2, 4.0, 5.2]],
-	"jiangxiao": [["creature-grazer", 3, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5]],
-	"cangwu": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 2, 4.5, 5.5], ["creature-glider", 2, 3.2, 4.2]],
-	"jinwu": [["creature-grazer", 2, 2.0, 2.6], ["creature-burrower", 2, 2.4, 3.2]],
-	"yuheng": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-glider", 1, 3.0, 3.8]],
-	"sue": [["creature-grazer", 3, 2.0, 2.8], ["creature-ruin-guardian", 1, 4.0, 5.0]],
-	"danxia": [["creature-grazer", 3, 2.0, 2.8], ["creature-tall-walker", 1, 4.8, 5.6], ["creature-burrower", 2, 2.5, 3.4]],
-	"biluo": [["creature-grazer", 2, 2.2, 3.0], ["creature-glider", 2, 3.0, 3.8]],
-	"youdu": [["creature-tall-walker", 3, 5.0, 6.0], ["creature-ruin-guardian", 1, 4.2, 5.2]],
-	"yaoguang": [["creature-tall-walker", 2, 4.5, 5.5], ["creature-grazer", 1, 2.0, 2.6], ["creature-glider", 1, 3.0, 3.8]],
-	"xuanpu": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-burrower", 2, 2.5, 3.5]],
+	"qinglan": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.5], ["creature-glider", 2, 3.0, 4.0], ["creature-beetle-swarm", 1, 1.0, 1.6]],
+	"zheya": [["creature-grazer", 2, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5], ["creature-pack-hound", 2, 1.6, 2.2]],
+	"cangbo": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.8, 5.8], ["creature-glider", 1, 3.0, 4.0], ["creature-ice-herd", 2, 2.2, 3.0]],
+	"xuanjing": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 2, 4.5, 5.5], ["creature-ruin-guardian", 1, 4.0, 5.0], ["creature-crystal-crawler", 2, 1.4, 2.0]],
+	"xuanyuan": [["creature-tall-walker", 2, 5.0, 6.0], ["creature-ruin-guardian", 1, 4.2, 5.2], ["creature-pack-hound", 2, 1.6, 2.2]],
+	"baiyao": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 1, 4.5, 5.5], ["creature-glider", 1, 3.0, 3.8], ["creature-ice-herd", 2, 2.2, 3.0]],
+	"pansha": [["creature-grazer", 4, 2.0, 2.8], ["creature-burrower", 3, 2.5, 3.5], ["creature-beetle-swarm", 1, 1.0, 1.5]],
+	"taiyuan": [["creature-grazer", 3, 2.2, 3.0], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-glider", 2, 3.0, 4.0], ["creature-glow-jelly", 2, 1.2, 1.8]],
+	"liuwu": [["creature-grazer", 2, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5], ["creature-lava-mite", 3, 0.9, 1.4]],
+	"jianmo": [["creature-tall-walker", 3, 4.8, 6.0], ["creature-ruin-guardian", 2, 4.0, 5.2], ["creature-spore-drifter", 2, 1.2, 1.8]],
+	"jiangxiao": [["creature-grazer", 3, 2.0, 2.8], ["creature-burrower", 2, 2.5, 3.5], ["creature-lava-mite", 3, 0.9, 1.4]],
+	"cangwu": [["creature-grazer", 3, 2.2, 3.2], ["creature-tall-walker", 2, 4.5, 5.5], ["creature-glider", 2, 3.2, 4.2], ["creature-beetle-swarm", 2, 1.0, 1.6]],
+	"jinwu": [["creature-grazer", 2, 2.0, 2.6], ["creature-burrower", 2, 2.4, 3.2], ["creature-lava-mite", 2, 0.9, 1.3]],
+	"yuheng": [["creature-grazer", 2, 2.0, 2.8], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-glider", 1, 3.0, 3.8], ["creature-crystal-crawler", 2, 1.4, 2.0]],
+	"sue": [["creature-grazer", 3, 2.0, 2.8], ["creature-ruin-guardian", 1, 4.0, 5.0], ["creature-spore-drifter", 1, 1.2, 1.7]],
+	"danxia": [["creature-grazer", 3, 2.0, 2.8], ["creature-tall-walker", 1, 4.8, 5.6], ["creature-burrower", 2, 2.5, 3.4], ["creature-pack-hound", 2, 1.6, 2.2]],
+	"biluo": [["creature-grazer", 2, 2.2, 3.0], ["creature-glider", 2, 3.0, 3.8], ["creature-glow-jelly", 3, 1.2, 1.8]],
+	"youdu": [["creature-tall-walker", 3, 5.0, 6.0], ["creature-ruin-guardian", 1, 4.2, 5.2], ["creature-ice-herd", 2, 2.2, 3.0]],
+	"yaoguang": [["creature-tall-walker", 2, 4.5, 5.5], ["creature-grazer", 1, 2.0, 2.6], ["creature-glider", 1, 3.0, 3.8], ["creature-crystal-crawler", 2, 1.4, 2.0]],
+	"xuanpu": [["creature-grazer", 3, 2.0, 3.0], ["creature-tall-walker", 1, 4.5, 5.2], ["creature-burrower", 2, 2.5, 3.5], ["creature-glow-jelly", 2, 1.2, 1.7]],
 }
 
 ## 构图模式装饰组：[prop_id, 数量, 模式, 尺寸下限, 尺寸上限]
@@ -388,26 +417,26 @@ const PATTERN_PROPS := {
 ##   SCATTER_MIX 负责「远看有东西」，这一层负责「走近有细节」。
 ## 位置在站点 0.18~0.9 弧度（约 360~1800 米），不压平地、不堵楼梯。
 const DETAIL_PROPS := {
-	"qinglan": [["stone-cairn", 4, 2, 3], ["mossy-boulder", 6, 2, 4], ["bleached-log", 5, 3, 6], ["rope-coil", 3, 1, 2]],
-	"zheya": [["ore-scrap", 6, 2, 4], ["rusted-hull", 4, 3, 6], ["gravel-pile", 6, 2, 3], ["dead-shrub", 5, 2, 3]],
-	"cangbo": [["icicle-cluster", 6, 2, 4], ["stone-cairn", 4, 2, 3], ["gravel-pile", 5, 2, 3]],
-	"xuanjing": [["glass-shards", 6, 2, 3], ["twisted-metal", 5, 3, 5], ["ore-scrap", 5, 2, 4]],
-	"xuanyuan": [["bone-fossil", 4, 3, 6], ["stone-cairn", 5, 2, 3], ["gravel-pile", 5, 2, 3]],
-	"baiyao": [["icicle-cluster", 8, 2, 4], ["stone-cairn", 3, 2, 3]],
-	"pansha": [["dune-grass", 8, 1, 2], ["bleached-log", 5, 3, 6], ["gravel-pile", 5, 2, 3]],
-	"taiyuan": [["dead-shrub", 7, 2, 3], ["stone-cairn", 4, 2, 3], ["rope-coil", 3, 1, 2]],
-	"liuwu": [["rusted-hull", 5, 3, 6], ["pipe-cluster", 4, 2, 4], ["ore-scrap", 5, 2, 4]],
-	"jianmo": [["glass-shards", 5, 2, 3], ["stone-cairn", 5, 2, 3]],
-	"jiangxiao": [["ore-scrap", 6, 2, 4], ["gravel-pile", 6, 2, 3], ["rusted-hull", 3, 3, 5]],
-	"cangwu": [["mossy-boulder", 6, 2, 4], ["bleached-log", 5, 3, 6], ["dead-shrub", 5, 2, 3]],
-	"jinwu": [["gravel-pile", 7, 2, 3], ["bleached-log", 4, 3, 6], ["dune-grass", 5, 1, 2]],
-	"yuheng": [["mossy-boulder", 5, 2, 4], ["glass-shards", 5, 2, 3], ["stone-cairn", 4, 2, 3]],
-	"sue": [["gravel-pile", 7, 2, 3], ["stone-cairn", 5, 2, 3], ["bone-fossil", 3, 3, 6]],
-	"danxia": [["gravel-pile", 6, 2, 3], ["ore-scrap", 5, 2, 4], ["dune-grass", 4, 1, 2]],
-	"biluo": [["glass-shards", 6, 2, 3], ["mossy-boulder", 4, 2, 4], ["rope-coil", 3, 1, 2]],
-	"youdu": [["icicle-cluster", 7, 2, 4], ["glass-shards", 4, 2, 3], ["stone-cairn", 3, 2, 3]],
-	"yaoguang": [["glass-shards", 7, 2, 3], ["stone-cairn", 4, 2, 3], ["icicle-cluster", 4, 2, 4]],
-	"xuanpu": [["mossy-boulder", 5, 2, 4], ["dead-shrub", 6, 2, 3], ["rope-coil", 3, 1, 2]],
+	"qinglan": [["stone-cairn", 4, 2, 3], ["mossy-boulder", 6, 2, 4], ["bleached-log", 5, 3, 6], ["rope-coil", 3, 1, 2], ["thorn-vine", 6, 1, 2]],
+	"zheya": [["ore-scrap", 6, 2, 4], ["rusted-hull", 4, 3, 6], ["gravel-pile", 6, 2, 3], ["dead-shrub", 5, 2, 3], ["moss-mat", 6, 1, 2]],
+	"cangbo": [["icicle-cluster", 6, 2, 4], ["stone-cairn", 4, 2, 3], ["gravel-pile", 5, 2, 3], ["spore-pod", 6, 1, 2]],
+	"xuanjing": [["glass-shards", 6, 2, 3], ["twisted-metal", 5, 3, 5], ["ore-scrap", 5, 2, 4], ["bulb-plant", 6, 1, 2]],
+	"xuanyuan": [["bone-fossil", 4, 3, 6], ["stone-cairn", 5, 2, 3], ["gravel-pile", 5, 2, 3], ["lichen-rock", 6, 1, 3]],
+	"baiyao": [["icicle-cluster", 8, 2, 4], ["stone-cairn", 3, 2, 3], ["spore-pod", 6, 1, 2]],
+	"pansha": [["dune-grass", 8, 1, 2], ["bleached-log", 5, 3, 6], ["gravel-pile", 5, 2, 3], ["seed-head", 6, 1, 2]],
+	"taiyuan": [["dead-shrub", 7, 2, 3], ["stone-cairn", 4, 2, 3], ["rope-coil", 3, 1, 2], ["canopy-shrub", 5, 2, 3]],
+	"liuwu": [["rusted-hull", 5, 3, 6], ["pipe-cluster", 4, 2, 4], ["ore-scrap", 5, 2, 4], ["moss-mat", 5, 1, 2]],
+	"jianmo": [["glass-shards", 5, 2, 3], ["stone-cairn", 5, 2, 3], ["lichen-rock", 6, 1, 3]],
+	"jiangxiao": [["ore-scrap", 6, 2, 4], ["gravel-pile", 6, 2, 3], ["rusted-hull", 3, 3, 5], ["seed-head", 5, 1, 2]],
+	"cangwu": [["mossy-boulder", 6, 2, 4], ["bleached-log", 5, 3, 6], ["dead-shrub", 5, 2, 3], ["canopy-shrub", 6, 2, 4]],
+	"jinwu": [["gravel-pile", 7, 2, 3], ["bleached-log", 4, 3, 6], ["dune-grass", 5, 1, 2], ["seed-head", 5, 1, 2]],
+	"yuheng": [["mossy-boulder", 5, 2, 4], ["glass-shards", 5, 2, 3], ["stone-cairn", 4, 2, 3], ["bulb-plant", 5, 1, 2]],
+	"sue": [["gravel-pile", 7, 2, 3], ["stone-cairn", 5, 2, 3], ["bone-fossil", 3, 3, 6], ["moss-mat", 5, 1, 2]],
+	"danxia": [["gravel-pile", 6, 2, 3], ["ore-scrap", 5, 2, 4], ["dune-grass", 4, 1, 2], ["seed-head", 5, 1, 2]],
+	"biluo": [["glass-shards", 6, 2, 3], ["mossy-boulder", 4, 2, 4], ["rope-coil", 3, 1, 2], ["moss-mat", 6, 1, 2]],
+	"youdu": [["icicle-cluster", 7, 2, 4], ["glass-shards", 4, 2, 3], ["stone-cairn", 3, 2, 3], ["giant-fungus", 3, 2, 3]],
+	"yaoguang": [["glass-shards", 7, 2, 3], ["stone-cairn", 4, 2, 3], ["icicle-cluster", 4, 2, 4], ["moss-mat", 5, 1, 2]],
+	"xuanpu": [["mossy-boulder", 5, 2, 4], ["dead-shrub", 6, 2, 3], ["rope-coil", 3, 1, 2], ["fern-cluster", 6, 2, 3]],
 }
 
 ## 细节点缀层·第二张表（第五批的「生态专属装饰」）。
@@ -446,45 +475,45 @@ const DETAIL_PROPS_EXTRA := {
 const SCATTER_MIX := {
 	"qinglan": [["alien-tree-lo", 45, 4, 8], ["alien-mushroom-lo", 30, 3, 6],
 		["thorn-shrub-lo", 35, 2, 3], ["rock-cluster-lo", 35, 2, 5],
-		["dead-tree-lo", 20, 4, 9]],
+		["dead-tree-lo", 20, 4, 9], ["fern-cluster", 30, 2, 4]],
 	"zheya": [["rock-cluster-lo", 40, 2, 6], ["lava-boulder-lo", 40, 2, 5],
-		["thorn-shrub-lo", 30, 2, 3], ["dune-arch-lo", 18, 7, 14]],
+		["thorn-shrub-lo", 30, 2, 3], ["dune-arch-lo", 18, 7, 14], ["seed-head", 26, 1, 2], ["reed-stand", 20, 1, 2]],
 	"cangbo": [["ice-spike-lo", 55, 3, 9], ["crystal-flora-lo", 45, 1, 3],
-		["rock-cluster-lo", 40, 2, 5]],
+		["rock-cluster-lo", 40, 2, 5], ["moss-mat", 30, 1, 2]],
 	"xuanjing": [["crystal-cluster-lo", 40, 3, 7], ["crystal-flora-lo", 45, 1, 3],
-		["rock-spire-lo", 35, 3, 8], ["cargo-pod-lo", 15, 3, 6]],
+		["rock-spire-lo", 35, 3, 8], ["cargo-pod-lo", 15, 3, 6], ["lichen-rock", 24, 1, 3]],
 	"xuanyuan": [["rock-spire-lo", 45, 3, 9], ["lava-boulder-lo", 40, 2, 5],
-		["dead-tree-lo", 20, 4, 9]],
+		["dead-tree-lo", 20, 4, 9], ["lichen-rock", 22, 1, 3]],
 	"baiyao": [["ice-spike-lo", 60, 3, 10], ["crystal-flora-lo", 40, 1, 3],
-		["rock-spire-lo", 35, 3, 8]],
+		["rock-spire-lo", 35, 3, 8], ["moss-mat", 26, 1, 2]],
 	"pansha": [["rock-spire-lo", 45, 3, 9], ["dune-arch-lo", 25, 8, 16],
-		["rock-cluster-lo", 45, 2, 6], ["dead-tree-lo", 18, 4, 9]],
+		["rock-cluster-lo", 45, 2, 6], ["dead-tree-lo", 18, 4, 9], ["grass-plume", 30, 1, 2]],
 	"taiyuan": [["alien-tree-lo", 40, 4, 8], ["thorn-shrub-lo", 45, 2, 3],
-		["rock-cluster-lo", 40, 2, 5], ["alien-mushroom-lo", 20, 3, 6]],
+		["rock-cluster-lo", 40, 2, 5], ["alien-mushroom-lo", 20, 3, 6], ["fern-cluster", 30, 2, 4]],
 	"liuwu": [["vent-lo", 40, 3, 7], ["lava-boulder-lo", 45, 2, 5],
-		["rock-cluster-lo", 40, 2, 5], ["cargo-pod-lo", 15, 3, 6]],
+		["rock-cluster-lo", 40, 2, 5], ["cargo-pod-lo", 15, 3, 6], ["seed-head", 24, 1, 2]],
 	"jianmo": [["rock-spire-lo", 50, 3, 9], ["crystal-cluster-lo", 40, 3, 7],
-		["crystal-flora-lo", 35, 1, 3], ["dead-tree-lo", 15, 4, 9]],
+		["crystal-flora-lo", 35, 1, 3], ["dead-tree-lo", 15, 4, 9], ["lichen-rock", 24, 1, 3]],
 	"jiangxiao": [["rock-cluster-lo", 45, 2, 6], ["rock-spire-lo", 40, 3, 9],
-		["lava-boulder-lo", 40, 2, 5]],
+		["lava-boulder-lo", 40, 2, 5], ["seed-head", 24, 1, 2]],
 	"cangwu": [["alien-tree-lo", 55, 4, 9], ["alien-mushroom-lo", 30, 3, 6],
-		["thorn-shrub-lo", 40, 2, 3], ["rock-cluster-lo", 30, 2, 5]],
+		["thorn-shrub-lo", 40, 2, 3], ["rock-cluster-lo", 30, 2, 5], ["vine-drape", 24, 2, 4]],
 	"jinwu": [["rock-cluster-lo", 50, 2, 6], ["lava-boulder-lo", 45, 2, 5],
-		["dead-tree-lo", 20, 4, 9], ["dune-arch-lo", 15, 8, 15]],
+		["dead-tree-lo", 20, 4, 9], ["dune-arch-lo", 15, 8, 15], ["grass-plume", 26, 1, 2]],
 	"yuheng": [["rock-cluster-lo", 50, 2, 6], ["crystal-flora-lo", 40, 1, 3],
-		["alien-tree-lo", 30, 4, 8], ["crystal-cluster-lo", 30, 3, 7]],
+		["alien-tree-lo", 30, 4, 8], ["crystal-cluster-lo", 30, 3, 7], ["moss-mat", 24, 1, 2]],
 	"sue": [["rock-cluster-lo", 55, 2, 6], ["rock-spire-lo", 40, 3, 8],
-		["crystal-flora-lo", 30, 1, 3]],
+		["crystal-flora-lo", 30, 1, 3], ["lichen-rock", 26, 1, 3]],
 	"danxia": [["rock-cluster-lo", 55, 2, 6], ["rock-spire-lo", 40, 3, 9],
-		["dune-arch-lo", 20, 8, 16], ["lava-boulder-lo", 35, 2, 5]],
+		["dune-arch-lo", 20, 8, 16], ["lava-boulder-lo", 35, 2, 5], ["grass-plume", 26, 1, 2]],
 	"biluo": [["crystal-flora-lo", 50, 1, 3], ["rock-cluster-lo", 45, 2, 5],
-		["crystal-cluster-lo", 30, 3, 7], ["cargo-pod-lo", 12, 3, 6]],
+		["crystal-cluster-lo", 30, 3, 7], ["cargo-pod-lo", 12, 3, 6], ["bulb-plant", 24, 1, 2]],
 	"youdu": [["ice-spike-lo", 50, 3, 9], ["crystal-cluster-lo", 40, 3, 7],
-		["rock-spire-lo", 35, 3, 8], ["alien-tree-lo", 20, 4, 8]],
+		["rock-spire-lo", 35, 3, 8], ["alien-tree-lo", 20, 4, 8], ["spore-pod", 24, 1, 2]],
 	"yaoguang": [["crystal-cluster-lo", 50, 3, 7], ["crystal-flora-lo", 45, 1, 3],
-		["rock-spire-lo", 35, 3, 9], ["ice-spike-lo", 25, 3, 8]],
+		["rock-spire-lo", 35, 3, 9], ["ice-spike-lo", 25, 3, 8], ["giant-fungus", 16, 2, 4]],
 	"xuanpu": [["alien-tree-lo", 45, 4, 8], ["alien-mushroom-lo", 35, 3, 6],
-		["thorn-shrub-lo", 40, 2, 3], ["crystal-cluster-lo", 30, 3, 7]],
+		["thorn-shrub-lo", 40, 2, 3], ["crystal-cluster-lo", 30, 3, 7], ["giant-fungus", 18, 2, 4]],
 }
 
 const GENERIC_PROPS := {
@@ -524,6 +553,47 @@ const PROP_MODELS := {
 	"crystal-cluster-lo": "res://assets/models/props/crystal-cluster-lo/model.glb",
 	"vent-lo": "res://assets/models/props/vent-lo/model.glb",
 	"stone-bridge": "res://assets/models/props/stone-bridge/model.glb",
+	"cave-stalagmite": "res://assets/models/props/cave-stalagmite/model.glb",
+	"cave-stalactite": "res://assets/models/props/cave-stalactite/model.glb",
+	"cave-crystal-cluster": "res://assets/models/props/cave-crystal-cluster/model.glb",
+	"cave-mine-cart": "res://assets/models/props/cave-mine-cart/model.glb",
+	"cave-elevator": "res://assets/models/props/cave-elevator/model.glb",
+	"cave-lantern": "res://assets/models/props/cave-lantern/model.glb",
+	"cave-altar": "res://assets/models/props/cave-altar/model.glb",
+	"cave-pillar": "res://assets/models/props/cave-pillar/model.glb",
+	"cave-lake-stone": "res://assets/models/props/cave-lake-stone/model.glb",
+	"cave-bridge": "res://assets/models/props/cave-bridge/model.glb",
+	"cave-fossil-wall": "res://assets/models/props/cave-fossil-wall/model.glb",
+	"cave-rail": "res://assets/models/props/cave-rail/model.glb",
+	"mod-doorframe": "res://assets/models/props/mod-doorframe/model.glb",
+	"mod-railing": "res://assets/models/props/mod-railing/model.glb",
+	"mod-stairs": "res://assets/models/props/mod-stairs/model.glb",
+	"mod-tower-top": "res://assets/models/props/mod-tower-top/model.glb",
+	"mod-platform": "res://assets/models/props/mod-platform/model.glb",
+	"mod-archway": "res://assets/models/props/mod-archway/model.glb",
+	"mod-window-panel": "res://assets/models/props/mod-window-panel/model.glb",
+	"mod-ladder": "res://assets/models/props/mod-ladder/model.glb",
+	"mod-pipe-run": "res://assets/models/props/mod-pipe-run/model.glb",
+	"mod-signage": "res://assets/models/props/mod-signage/model.glb",
+	"creature-beetle-swarm": "res://assets/models/props/creature-beetle-swarm/model.glb",
+	"creature-crystal-crawler": "res://assets/models/props/creature-crystal-crawler/model.glb",
+	"creature-glow-jelly": "res://assets/models/props/creature-glow-jelly/model.glb",
+	"creature-pack-hound": "res://assets/models/props/creature-pack-hound/model.glb",
+	"creature-spore-drifter": "res://assets/models/props/creature-spore-drifter/model.glb",
+	"creature-ice-herd": "res://assets/models/props/creature-ice-herd/model.glb",
+	"creature-lava-mite": "res://assets/models/props/creature-lava-mite/model.glb",
+	"fern-cluster": "res://assets/models/props/fern-cluster/model.glb",
+	"vine-drape": "res://assets/models/props/vine-drape/model.glb",
+	"moss-mat": "res://assets/models/props/moss-mat/model.glb",
+	"spore-pod": "res://assets/models/props/spore-pod/model.glb",
+	"giant-fungus": "res://assets/models/props/giant-fungus/model.glb",
+	"grass-plume": "res://assets/models/props/grass-plume/model.glb",
+	"reed-stand": "res://assets/models/props/reed-stand/model.glb",
+	"bulb-plant": "res://assets/models/props/bulb-plant/model.glb",
+	"thorn-vine": "res://assets/models/props/thorn-vine/model.glb",
+	"canopy-shrub": "res://assets/models/props/canopy-shrub/model.glb",
+	"lichen-rock": "res://assets/models/props/lichen-rock/model.glb",
+	"seed-head": "res://assets/models/props/seed-head/model.glb",
 	"lm2-qinglan": "res://assets/models/props/lm2-qinglan/model.glb",
 	"lm2-zheya": "res://assets/models/props/lm2-zheya/model.glb",
 	"lm2-cangbo": "res://assets/models/props/lm2-cangbo/model.glb",
@@ -2384,6 +2454,8 @@ func _build_landmark_props() -> void:
 	_build_pattern_props()
 	# 外星生物：稀少的群居活物
 	_build_creatures()
+	# 工坊区：拿模块化建筑件拼一小片
+	_build_workshop()
 	# 铺量混排：4~5 种低模混在一起，替代「同一种模型重复 90 次」
 	_build_scatter_mix()
 	# 目标 ④：大型地貌件（把已有资产放大，零额度）
@@ -2391,6 +2463,72 @@ func _build_landmark_props() -> void:
 	# 地标与地貌件都是在 _build_landscape 之后才排进队列的，所以必须在这里补 flush
 	# （_flush_props 内部有 _flushed_prop_ids 去重，铺量那批不会重复实例化）。
 	_flush_props()
+
+
+## 基地附近拼一小片「工坊区」（模块化建筑件）。
+##
+## 这些是建筑**零件**（门框/栅杆/楼梯/平台…），单独摆一件很奇怪，
+## 所以按「小工坊」组合：平台做底座，周围围栅杆，一侧靠楼梯，
+## 再立一个门框与标识牌，附近放管线与梯子。
+##
+## 每颗星球拼 1 组，位置在平地外缘 (pad_angle × 1.05~1.5)。
+const WORKSHOP_LAYOUT := [
+	["mod-platform", 0.0, 0.0, 3.0],
+	["mod-railing", 0.0, 3.0, 2.4],
+	["mod-railing", 2.0, -2.2, 2.4],
+	["mod-stairs", -3.1, 0.0, 2.2],
+	["mod-doorframe", 2.6, 2.4, 2.6],
+	["mod-signage", -2.4, 2.6, 1.6],
+	["mod-pipe-run", 3.2, -2.6, 1.8],
+	["mod-ladder", -2.8, -2.4, 2.0],
+	["mod-window-panel", 1.2, 3.4, 2.2],
+	["mod-tower-top", 0.0, 0.0, 3.4],
+]
+
+## 独立的拱门通道（单独一组，不与工坊叠在一起）
+const ARCHWAY_LAYOUT := [
+	["mod-archway", 0.0, 0.0, 4.2],
+]
+
+
+func _build_workshop() -> void:
+	var site: Vector3 = site_direction.normalized()
+	var perp: Vector3 = site.cross(Vector3.FORWARD)
+	if perp.length_squared() < 0.01:
+		perp = site.cross(Vector3.RIGHT)
+	perp = perp.normalized()
+	var pad_angle: float = site_pad_radius / maxf(radius, 1.0)
+	# 工坊中心：平地外缘
+	var center: Vector3 = site.rotated(
+		perp.rotated(site, rng.randf() * TAU),
+		pad_angle * rng.randf_range(1.05, 1.5)).normalized()
+	var t1: Vector3 = center.cross(Vector3.UP)
+	if t1.length_squared() < 0.01:
+		t1 = center.cross(Vector3.RIGHT)
+	t1 = t1.normalized()
+	var t2: Vector3 = center.cross(t1).normalized()
+	for entry in WORKSHOP_LAYOUT:
+		var pid: String = entry[0]
+		if _prop_mesh(pid) == null:
+			continue
+		# 局部平面坐标（米）换算成球面方向：除以 radius 得到弧度
+		var dx: float = float(entry[1]) * prop_scale
+		var dy: float = float(entry[2]) * prop_scale
+		var dir: Vector3 = (center + t1 * (dx / radius) + t2 * (dy / radius)).normalized()
+		if _near_cave(dir, 0.03):
+			continue
+		var size: float = float(entry[3]) * prop_scale
+		_add_prop(pid, dir, size, -0.2 * prop_scale, _prop_tint(), false)
+	# 独立拱门通道：绕站点再偏一个角度，避免和工坊叠在一起
+	for entry in ARCHWAY_LAYOUT:
+		var ap: String = entry[0]
+		if _prop_mesh(ap) == null:
+			continue
+		var adir: Vector3 = site.rotated(perp, pad_angle * rng.randf_range(1.8, 2.4)).normalized()
+		if _near_cave(adir, 0.03):
+			continue
+		_add_prop(ap, adir, float(entry[3]) * prop_scale, -0.2 * prop_scale,
+			_prop_tint(), false)
 
 
 ## 外星生物布置（见 CREATURE_PROPS）。
