@@ -734,6 +734,9 @@ static var _prop_cache_order: Array = []
 ## 淘汰时必须跳过这些：它们的 Mesh 被 MultiMesh 持有，卸载只会导致
 ## 下次重新载入一份新的，而旧的仍然活着 —— 内存不降反升。
 static var _prop_in_use := {}
+## 每种道具的共享碰撞形状（由可见网格三角面生成，见 _prop_collision_shape）。
+## 同一进程里所有星球复用 —— 形状的 BVH 只建一次。
+static var _prop_shape_cache := {}
 
 ## 待落地的高模地标：prop_id -> Array[Dictionary]（见 _add_prop）
 var prop_queue: Dictionary = {}
@@ -2425,9 +2428,10 @@ const PROP_COLLIDER_CAP := 260
 ##   · 物理对象数从「实例数」降到「道具种类数」（约 20 个），开销可以忽略
 ##   · 于是可以把上限放到 260，基本覆盖玩家会走到的全部实例
 ##   · 每个实例仍按自己的位置与朝向摆碰撞形状，互不影响
-func _add_prop_colliders(entries: Array, prop_id: String) -> void:
+func _add_prop_colliders(entries: Array, prop_id: String, mesh: Mesh, aabb: AABB) -> void:
 	var limit: float = site_pad_radius * 2.2
 	var profile := _prop_collider_profile(prop_id)
+	var shared_shape: Shape3D = _prop_collision_shape(prop_id, mesh)
 	var site_dir: Vector3 = site_direction.normalized()
 	# 站点附近的优先（玩家真会走过去），其余按顺序补到上限。
 	var picked: Array = []
@@ -2453,23 +2457,53 @@ func _add_prop_colliders(entries: Array, prop_id: String) -> void:
 	for e in picked:
 		var dir: Vector3 = e["dir"]
 		var size: float = float(e["size"])
-		var origin: Vector3 = surface_position(dir, float(e["altitude"]))
 		var collision := CollisionShape3D.new()
 		# ⚠ 形状挂在 body 局部空间，所以要把本地方向编进每个形状自己的
 		#   transform，不能整体旋转 body（那会把所有实例转到同一朝向）。
-		var basis := Basis(Quaternion(Vector3.UP, dir))
-		if profile.x < 0.3:
-			var shape := CylinderShape3D.new()
-			shape.radius = profile.x * size
-			shape.height = profile.y * size
-			collision.shape = shape
-			collision.transform = Transform3D(basis, origin + dir * (profile.y * size * 0.5))
+		if shared_shape != null:
+			# ① 精确碰撞：直接复用可见网格的三角面。
+			#    变换必须和 MultiMesh 实例逐项一致（缩放 / 绕法线朝向 / 底面贴地），
+			#    否则形状和画面会错位 —— 旧版球/圆柱既没缩放也没带 yaw，
+			#    实测到处对不上（用户「很多地方碰撞都不对」）。
+			var k: float = size / maxf(aabb.size.y, 0.001)
+			var basis := Basis(Quaternion(Vector3.UP, dir))
+			basis = basis.rotated(dir, float(e["yaw"]))
+			basis = basis.scaled(Vector3.ONE * k)
+			var origin: Vector3 = surface_position(dir,
+				float(e["altitude"]) - aabb.position.y * k)
+			collision.shape = shared_shape
+			collision.transform = Transform3D(basis, origin)
 		else:
-			var shape := SphereShape3D.new()
-			shape.radius = profile.x * size
-			collision.shape = shape
-			collision.transform = Transform3D(basis, origin + dir * (profile.x * size))
+			# ② 网格异常（没有三角面）时回退：按包围盒估球/圆柱。
+			var origin: Vector3 = surface_position(dir, float(e["altitude"]))
+			var basis := Basis(Quaternion(Vector3.UP, dir))
+			if profile.x < 0.3:
+				var shape := CylinderShape3D.new()
+				shape.radius = profile.x * size
+				shape.height = profile.y * size
+				collision.shape = shape
+				collision.transform = Transform3D(basis, origin + dir * (profile.y * size * 0.5))
+			else:
+				var shape := SphereShape3D.new()
+				shape.radius = profile.x * size
+				collision.shape = shape
+				collision.transform = Transform3D(basis, origin + dir * (profile.x * size))
 		body.add_child(collision)
+
+
+## 由可见网格生成共享碰撞形状（三角面），全进程每种道具一份。
+static func _prop_collision_shape(prop_id: String, mesh: Mesh) -> Shape3D:
+	if _prop_shape_cache.has(prop_id):
+		return _prop_shape_cache[prop_id]
+	var shape: Shape3D = null
+	if mesh != null:
+		var faces: PackedVector3Array = mesh.get_faces()
+		if faces.size() >= 3:
+			var concave := ConcavePolygonShape3D.new()
+			concave.set_faces(faces)
+			shape = concave
+	_prop_shape_cache[prop_id] = shape
+	return shape
 
 
 ## 把 prop_queue 里排好的道具落成 MultiMeshInstance3D。
@@ -3000,7 +3034,7 @@ func _flush_props() -> void:
 			_prop_root.add_child(instance)
 		else:
 			add_child(instance)
-		_add_prop_colliders(entries, prop_id)
+		_add_prop_colliders(entries, prop_id, mesh, aabb)
 
 
 ## 该类道具的绘制距离（米），跟随设置里的 LOD 档位。
