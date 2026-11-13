@@ -19,7 +19,7 @@ var third_person := false
 var orbit_yaw := 0.0
 var orbit_pitch := 0.28
 ## 第三人称相机的跟随距离（米）。滚轮也能调。
-var orbit_distance := 11.5
+var orbit_distance := 58.0
 ## 第三人称相机的**目标**跟随距离。滚轮只改这个，实际 orbit_distance
 ## 每帧向它插值逼近 —— 这样滚轮像第一人称的长焦一样丝滑，
 ## 而不是「咔」地跳一格。
@@ -27,7 +27,7 @@ var orbit_distance := 11.5
 ## ⚠ 2026-11-11：旧版滚轮直接改 orbit_distance（*0.9 / *1.1），
 ##   一次跳 10% 且没有过渡，玩家反馈「僵硬」。这里拆成
 ##   「目标值 + 每帧指数插值」，时间常数与第一人称 FOV 一致（8.0）。
-var orbit_distance_target := 11.5
+var orbit_distance_target := 58.0
 ## 插值时间常数。越大越快贴上去；第一人称 FOV 用的是 8.0。
 const ORBIT_LERP_SPEED := 8.0
 
@@ -688,13 +688,13 @@ const SHIP_MODEL_ROTATION := Vector3.ZERO
 ## 又不会大到把小岛和台阶压得不像样。
 ## 注意：改这个值会连带影响碰撞盒、座舱相机、着陆高度与登船判定半径
 ## （它们都从 ship_model_length / height / span 推导，见 _ready 与 _build_external_model）。
-const SHIP_MODEL_TARGET_LENGTH := 14.0
+const SHIP_MODEL_TARGET_LENGTH := 70.0
 ## 落地下压量（米）：land() 把船体原点放在 surface_position(normal, 2.3)，
 ## 即离地 2.3 m。模型底面是**平的**（没有起落架，见 tests/probe_ship_facing.gd
 ## 的 -Y 仰视图），所以要让底面贴地就得整体压下 2.3 m。
 ## 旧值 0.96 是照着**旧朝向**的模型调的 —— 那时机头还在 -X（横着飞），
 ## 修正朝向后模型底面相对原点的位置变了，0.96 会让船悬空 1.34 m。
-const SHIP_MODEL_GROUND_SINK := 2.3
+const SHIP_MODEL_GROUND_SINK := 11.5
 ## 模型原始机长（Z, 米），用来把碰撞盒与相机按比例摆到船体上。
 var ship_model_length := 0.0
 var ship_model_height := 0.0
@@ -1001,7 +1001,10 @@ func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 		# EXHAUST_NOZZLES 已经是 ship 局部空间的**米**坐标（实测），
 		# 不再做 ref_size/ref_pos 换算 —— 那套换算基于更早一版模型，
 		# 对新坐标只会把位置算歪（这正是「尾焰没对准喷口」的根因）。
-		var nozzle: Vector3 = EXHAUST_NOZZLES[i]
+		# ⚠ 2026-11-13：EXHAUST_NOZZLES 是在**机长 14 m** 时实测的坐标。
+		#   现在机长可调（70 m），必须按比例缩放，否则喷焰会缩在机身中段。
+		var ref_scale: float = length / 14.0
+		var nozzle: Vector3 = (EXHAUST_NOZZLES[i] as Vector3) * ref_scale
 		var is_center := i == 1
 		# ⚠ 2026-11-11 用户要求「三个蓝光中间大两边小」。
 		#   原来 1.35 只比两侧粗 35%，远看三束几乎一样大。
@@ -1029,7 +1032,7 @@ func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 		#   而喷口本身跨度 2.87 m（左 -1.417 到右 +1.456）—— 火焰细得像针。
 		#   现在按「喷口间距」定基准：单个喷口直径约 0.95 m，
 		#   火舌半径取 0.62×0.95≈0.59 作为基准，中间 2.0 倍 → 1.18 m。
-		var nozzle_d: float = 0.95      # 实测单喷口直径（米）
+		var nozzle_d: float = 0.95 * ref_scale   # 实测单喷口直径（14 m 基准）x 比例
 		var base_r: float = nozzle_d * 0.62
 
 		var halo := MeshInstance3D.new()
@@ -1100,7 +1103,7 @@ func _build_ventral_exhaust(holder: Node3D, bounds: AABB) -> void:
 	# 腹部高度：用**实测的 ship 局部坐标**。
 	# 机身 AABB 的 y 是 [-SINK, height-SINK]（实测 -2.30 ~ 1.00），
 	# 船底就是 -SINK，喷口贴在船底上方一点。
-	var belly_y: float = -SHIP_MODEL_GROUND_SINK + 0.10
+	var belly_y: float = -SHIP_MODEL_GROUND_SINK + SHIP_MODEL_GROUND_SINK * 0.0435
 
 	# 三个腹部喷口：前后各一 + 中间一（三角布局，悬停时看起来更稳）
 	var vent_nozzles := [
@@ -1564,12 +1567,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				# 步长比第一人称的 1.18 温和一些：相机距离对画面的影响是平方级的
 				# （远处几米的差别眼睛看不出来，近处一点就很明显），
 				# 所以用 1.12 让「靠近」和「拉远」手感对称、不会一顿一顿。
-				orbit_distance_target = clampf(orbit_distance_target * 0.88, 4.5, 30.0)
+				orbit_distance_target = clampf(orbit_distance_target * 0.88, 22.0, 150.0)
 			else:
 				zoom = clampf(zoom * 1.18, 1.0, 16.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			if third_person:
-				orbit_distance_target = clampf(orbit_distance_target * 1.12, 4.5, 30.0)
+				orbit_distance_target = clampf(orbit_distance_target * 1.12, 22.0, 150.0)
 			else:
 				zoom = clampf(zoom / 1.18, 1.0, 16.0)
 		if zoom < 1.01:
@@ -1678,8 +1681,12 @@ func toggle_third_person() -> bool:
 		# 第三人称从「机尾斜后上方」开始看，一眼能看清整艘船。
 		orbit_yaw = PI
 		orbit_pitch = 0.28
-		orbit_distance = 13.0
-		orbit_distance_target = 13.0
+		# ⚠ 2026-11-13：这里原来硬编码 13.0。飞船放大到 70 m 后，
+		#   13 m 的距离会让相机落进机身内部。改为按机长推导：
+		#   14 m 机长时约 11.6 m（与旧值接近），70 m 时约 58 m。
+		var start_dist: float = ship_model_length * 0.83 if ship_model_length > 0.01 else 11.6
+		orbit_distance = start_dist
+		orbit_distance_target = start_dist
 		# 立刻把相机摆过去 —— 不能等下一帧 _physics_process，
 		# 否则切过去的第一帧镜头还留在座舱里（会闪一下）。
 		_update_third_person_camera(0.0)
