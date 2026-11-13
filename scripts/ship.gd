@@ -689,9 +689,11 @@ const SHIP_MODEL_ROTATION := Vector3.ZERO
 ## 注意：改这个值会连带影响碰撞盒、座舱相机、着陆高度与登船判定半径
 ## （它们都从 ship_model_length / height / span 推导，见 _ready 与 _build_external_model）。
 const SHIP_MODEL_TARGET_LENGTH := 70.0
-## 落地下压量（米）：land() 把船体原点放在 surface_position(normal, 2.3)，
-## 即离地 2.3 m。模型底面是**平的**（没有起落架，见 tests/probe_ship_facing.gd
-## 的 -Y 仰视图），所以要让底面贴地就得整体压下 2.3 m。
+## 落地下压量（米）：模型底面在船体局部空间里位于 y = -GROUND_SINK
+## （holder 已把 AABB 底边压到这个位置）。模型底面是**平的**（没有起落架，
+## 见 tests/probe_ship_facing.gd 的 -Y 仰视图）。
+## 停靠高度 LANDING_REST_ALT 必须与它相等，机腹才正好贴地 —— 改机长时
+## 这两个值要一起走（2026-11-13 只改了这里，导致船陷地 9.2 m）。
 ## 旧值 0.96 是照着**旧朝向**的模型调的 —— 那时机头还在 -X（横着飞），
 ## 修正朝向后模型底面相对原点的位置变了，0.96 会让船悬空 1.34 m。
 const SHIP_MODEL_GROUND_SINK := 11.5
@@ -2655,8 +2657,12 @@ enum LandPhase { NONE, APPROACH, FLARE, TOUCHDOWN }
 const LANDING_FLARE_ALT := 14.0
 ## 完全贴地后，缓冲行程走完所需时间（秒）
 const LANDING_TOUCHDOWN_TIME := 0.45
-## 停靠高度：机腹离地表多高算「落稳」
-const LANDING_REST_ALT := 2.3
+## 停靠高度：船体原点离地表多高算「落稳」。
+## 必须等于 SHIP_MODEL_GROUND_SINK：机腹在局部空间 y = -GROUND_SINK，
+## 原点放在 +GROUND_SINK 处，机腹才正好贴地。
+## ⚠ 2026-11-13：机长 14→70 m 时下压量 2.3→11.5，这里漏改，
+##   机腹陷进地形 9.2 m（用户截图「飞船陷地里面了」）。
+const LANDING_REST_ALT := SHIP_MODEL_GROUND_SINK
 ## FLARE 阶段允许的最大下降速度（米/秒）
 const LANDING_FLARE_SINK := 5.5
 ## APPROACH 阶段的下降速度上限（米/秒）
