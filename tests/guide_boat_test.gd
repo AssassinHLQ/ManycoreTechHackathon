@@ -36,7 +36,7 @@ func _run() -> void:
 	_check(not game.guide_card.active, "引导初始不显示")
 	_check(game.guide_card.STEPS[0][0] == "先走两步", "第一步标题照原作")
 	_check(String(game.guide_card.STEPS[1][1]).contains("黄铜天气旋钮"), "第二步提到天气旋钮")
-	_check(String(game.guide_card.STEPS[2][1]).contains("跨过门槛"), "第三步提到跨门槛")
+	_check(String(game.guide_card.STEPS[2][1]).contains("回程门按 E"), "第三步说明实际的回程门交互")
 	_check(String(game.guide_card.STEPS[3][0]).contains("此刻的小事"), "第四步标题提到此刻的小事")
 	_check(String(game.guide_card.STEPS[3][1]).contains("纪念"), "第四步正文提到纪念")
 

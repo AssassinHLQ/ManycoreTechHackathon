@@ -26,7 +26,7 @@ const STEPS := [
 	["让窗外换一个世界",
 		"走到门边，对准黄铜天气旋钮按 E。窗外会按云海、萤火森林、雨巷、雪夜的顺序轮换。"],
 	["推门，跨过门槛",
-		"对准门按 E 推开它，再向前跨过门槛。远方就在门外，沿原路走回即可回家。"],
+		"走近四扇门中的任意一扇，按 E 进入对应的世界。天气旋钮只改变窗景；靠近世界里的回程门按 E 即可回家。"],
 	["看看「此刻的小事」",
 		"左上角会列出当前能做的事。完成每个世界的小事，带回纪念放上旅行架；按 H 可随时查看完整手册。"],
 ]
@@ -87,12 +87,17 @@ func advance(index: int) -> void:
 func finish() -> void:
 	if not active:
 		return
-	active = false
-	auto_timer = 0.0
-	_hide()
+	dismiss()
 	if game != null and game.progress != null:
 		game.progress.guide_done = true
 		game.progress.save()
+
+
+## Hide a partial guide during scene changes without recording it as completed.
+func dismiss() -> void:
+	active = false
+	auto_timer = 0.0
+	_hide()
 
 
 ## G 键跳过

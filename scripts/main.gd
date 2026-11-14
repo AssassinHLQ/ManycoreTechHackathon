@@ -1851,6 +1851,7 @@ func _update_comet() -> void:
 
 
 func _reset_positions() -> void:
+	_clear_attic_context()
 	in_station = false
 	ship.docked = false
 	ship.docked_station = null
@@ -2180,6 +2181,9 @@ func start_game() -> void:
 func return_to_menu() -> void:
 	if roast != null:
 		roast.cancel(false)
+	_clear_attic_context()
+	if player != null and player.get_parent() != self:
+		player.reparent(self, true)
 	in_station = false
 	if ship != null:
 		ship.docked = false
@@ -3648,7 +3652,7 @@ func next_worth_doing() -> String:
 	if tea_step < 3:
 		return "四件纪念都归架了。回阁楼茶桌，慢慢泡完一壶茶。"
 	if not dungeon_cleared():
-		return "主线已经完成。阁楼的穿衣镜通向镜界回廊，那是一段自愿参加的凝光试炼。"
+		return "主线已经完成。阁楼的穿衣镜通向镜界回廊，可以带回棱镜之心，也可进入东侧镜牢参加自愿试炼。"
 	# 三个小游戏都留过成绩
 	var games_ok := true
 	if progress != null:
@@ -3661,7 +3665,7 @@ func next_worth_doing() -> String:
 		return "主线已经完成。雨巷尽头的旧门后还藏着一座听雨院，点亮三盏听雨灯，在檐下坐一会儿。"
 	var clears: int = int(progress.dungeon.get("clears", 0)) if progress != null else 0
 	if clears < 1:
-		return "主线已经完成。镜界东侧的镜牢门已经升起，去试试三种武器与三形态的镜心余影。"
+		return "主线已经完成。还可以走进镜界东侧的镜牢门，试试三种武器与三形态的镜心余影。"
 	# 风琴礁：三种来风都听过没有
 	if not wind_organ_solved():
 		return "主线已经完成。云海栈桥东侧还有一座风琴礁，可以去听三种来风。"
@@ -3742,16 +3746,25 @@ func bag_scroll(step: int) -> void:
 func _restore_progress() -> void:
 	if progress == null:
 		return
-	var saved_keepsakes: Array = progress.achievements.keys()
-	for key in ["snow", "cloud", "firefly", "alley"]:
-		if saved_keepsakes.has("keepsake_" + key) and not keepsakes.has(key):
+	for key in progress.KEEPSAKE_ACHIEVEMENTS:
+		if progress.is_unlocked(progress.KEEPSAKE_ACHIEVEMENTS[key]) and not keepsakes.has(key):
 			keepsakes[key] = true
 			if attic != null:
 				attic.add_keepsake(key)
-	if saved_keepsakes.has("prism_heart") and not has_prism_heart:
+	if attic != null:
+		if keepsakes.has("alley"):
+			attic.show_swallow()
+		if progress.is_unlocked("tea_full"):
+			while attic.tea_step < 3:
+				attic.advance_tea()
+	if progress.is_unlocked("prism_heart"):
 		has_prism_heart = true
 		if attic != null:
 			attic.show_prism_heart()
+		if attic_worlds != null:
+			var original = attic_worlds.heart_node("mirror")
+			if original != null:
+				(original as Node3D).visible = false
 
 
 ## 四个小世界带回的纪念：world_key -> true
@@ -3873,14 +3886,48 @@ func _sync_guide_step() -> void:
 		guide_card.advance(1)
 
 
+## Clear local activities before changing back to universe gravity or restarting.
+func _clear_attic_context() -> void:
+	if not in_attic and pocket_key == "":
+		return
+	if demo_active:
+		stop_demo()
+	if scope_active:
+		_exit_scope()
+	boat_seated = false
+	if attic_worlds != null:
+		attic_worlds.boat_active = false
+	fishing_hole = -1
+	fishing_phase = ""
+	dungeon_active = false
+	if is_instance_valid(dungeon_controller):
+		dungeon_controller.queue_free()
+		dungeon_controller = null
+	guide_start_timer = -1.0
+	guide_turned_dial = false
+	guide_opened_door = false
+	guide_entered_world = false
+	if guide_card != null:
+		guide_card.dismiss()
+	in_attic = false
+	pocket_key = ""
+	if key_light != null:
+		key_light.visible = _sun_was_visible
+	apply_sky("space")
+
+
 func enter_attic() -> void:
 	# 地面线入口：把玩家放进阁楼，暂停太阳系那套重力与光照。
 	if attic == null or player == null:
 		return
+	_clear_attic_context()
 	in_attic = true
 	in_station = false
 	supernova_active = false
 	state = "walk"
+	paused = false
+	journal_open = false
+	map_open = false
 	if key_light != null:
 		_sun_was_visible = key_light.visible
 		key_light.visible = false
@@ -3903,11 +3950,8 @@ func leave_attic() -> void:
 	# 离开阁楼：回到飞船旁边，恢复太阳系光照与轮计时。
 	if not in_attic:
 		return
-	in_attic = false
-	apply_sky("space")
+	_clear_attic_context()
 	player.reparent(self, false)
-	if key_light != null:
-		key_light.visible = _sun_was_visible
 	var landing: Vector3 = ship.global_position if ship != null else player.global_position
 	player.global_transform = Transform3D(Basis.IDENTITY, landing + Vector3(0.0, 2.4, 0.0))
 	player.velocity = Vector3.ZERO
@@ -4075,7 +4119,7 @@ func collect_keepsake(key: String) -> void:
 	hud.show_toast("%s · 已放上阁楼旅行架" % title, 4.2)
 	audio.play_ui(720.0)
 	var unlocked_lines: Array = []
-	if progress != null and progress.unlock("keepsake_" + key):
+	if progress != null and progress.unlock(progress.KEEPSAKE_ACHIEVEMENTS[key]):
 		unlocked_lines.append("成就 · " + title)
 	if keepsakes.size() >= 4 and progress != null and progress.unlock("keepsake_all"):
 		unlocked_lines.append("成就 · 四件纪念")
@@ -4536,7 +4580,7 @@ func on_minigame_finished(kind: String, score: int, complete: bool, message: Str
 
 ## 镜界里：是否站在棱镜之心旁边，以及能否拾取。
 func near_prism_heart() -> bool:
-	if pocket_key != "mirror" or attic_worlds == null or player == null:
+	if has_prism_heart or pocket_key != "mirror" or attic_worlds == null or player == null:
 		return false
 	var anchor = attic_worlds.heart_anchor("mirror")
 	if anchor == null:

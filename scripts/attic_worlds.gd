@@ -609,21 +609,25 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 
 	# 用 Lux3D 棱镜模型当**外观**，但里面保留一颗强自发光核心 ——
 	# 它是剧情核心物件，必须「看得出发光」，外部模型的 PBR 材质做不到。
+	# 拾取时整件隐藏，不能只拿走发光核心、把模型和下半部留在台座上。
+	var heart_bundle := Node3D.new()
+	heart_bundle.name = "PrismHeartObject"
+	holder.add_child(heart_bundle)
 	var heart_prop := _prop("prism-heart", 1.5)
 	if heart_prop != null:
 		heart_prop.position = Vector3(0, 1.3, 0)
 		heart_prop.name = "PrismHeartModel"
-		holder.add_child(heart_prop)
-	var heart := _cyl(holder, 0.0, 0.22, 1.1, Vector3(0, 2.0, 0), _mat(Color("d9efff"), 2.6), 6)
+		heart_bundle.add_child(heart_prop)
+	var heart := _cyl(heart_bundle, 0.0, 0.22, 1.1, Vector3(0, 2.0, 0), _mat(Color("d9efff"), 2.6), 6)
 	heart.name = "PrismHeart"
 	if heart_prop != null:
 		# 有模型时把自发光核心缩小、塞进模型内部当「心脏」
 		heart.scale = Vector3(0.55, 0.7, 0.55)
-	var heart_base := _cyl(holder, 0.22, 0.0, 0.7, Vector3(0, 2.0, 0), _mat(Color("d9efff"), 2.6), 6)
+	var heart_base := _cyl(heart_bundle, 0.22, 0.0, 0.7, Vector3(0, 2.0, 0), _mat(Color("d9efff"), 2.6), 6)
 	heart_base.rotation.z = PI
 	if heart_prop != null:
 		heart_base.scale = Vector3(0.55, 0.7, 0.55)
-	_light(holder, Vector3(0, 1.9, 0), Color("d9efff"), 3.4, 20.0)
+	_light(heart_bundle, Vector3(0, 1.9, 0), Color("d9efff"), 3.4, 20.0)
 	_light(holder, Vector3(-4.0, 2.6, 3.0), Color("b9cfe0"), 2.0, 16.0)
 	_light(holder, Vector3(4.0, 2.6, -3.0), Color("b9cfe0"), 2.0, 16.0)
 	_light(holder, Vector3(0, 3.0, 4.2), Color("dfe9f6"), 1.6, 12.0)
@@ -644,7 +648,7 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 	_light(gate_root, Vector3(0, 2.2, 0.8), Color("cfe0e6"), 1.8, 12.0)
 	var gate_anchor := _anchor(gate_root, "WorldAnchor_DungeonGate", Vector3(0, 1.0, 1.4))
 	return {"spawn": Vector3(0, 1.05, 6.0), "return": portal_anchor,
-		"heart": heart, "heart_anchor": heart_anchor, "gate_anchor": gate_anchor, "title": "镜界"}
+		"heart": heart_bundle, "heart_anchor": heart_anchor, "gate_anchor": gate_anchor, "title": "镜界"}
 
 
 # --- 对外接口 ---------------------------------------------------------------

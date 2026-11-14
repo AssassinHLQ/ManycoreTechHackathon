@@ -5,6 +5,15 @@ extends Node
 
 const SAVE_PATH_DEFAULT := "user://starward_progress.json"
 
+## World IDs and achievement IDs predate one another; keep their mapping explicit.
+const KEEPSAKE_ACHIEVEMENTS := {
+	"snow": "keepsake_snow", "cloud": "keepsake_cloud",
+	"firefly": "keepsake_forest", "alley": "keepsake_rain",
+}
+const LEGACY_KEEPSAKE_IDS := {
+	"keepsake_firefly": "keepsake_forest", "keepsake_alley": "keepsake_rain",
+}
+
 ## 原作鱼谱：id -> [名字, 基础价值, 稀有度权重]
 ## 九种鱼来自同伴版 Di 表：冰纹鲫 / 星鳞鱼 / 极光鳟 / 雪灯鱼 / 铜铃鲢 / 月白鳜 / 云纹鳐 / 银河鳗 / 镜心鲤
 const FISH_TABLE := {
@@ -521,6 +530,10 @@ func load_progress() -> void:
 	coins = int(data.get("coins", 0))
 	fish = data.get("fish", {})
 	achievements = data.get("achievements", {})
+	for legacy in LEGACY_KEEPSAKE_IDS:
+		if achievements.has(legacy):
+			achievements[LEGACY_KEEPSAKE_IDS[legacy]] = achievements[legacy]
+			achievements.erase(legacy)
 	game_best = data.get("game_best", {})
 	wind_heard = data.get("wind_heard", [false, false, false])
 	wind_solved = bool(data.get("wind_solved", false))
