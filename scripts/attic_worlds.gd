@@ -6,6 +6,8 @@ extends Node3D
 ## 每个世界都是自成一体的封闭小场地：平台 + 边界碰撞 + 一处回程门，玩家走进去、看一圈、再走回来。
 ## 世界之间相距很远，也和太阳系（原点附近）完全分开，所以互不干扰。
 
+const Placement := preload("res://scripts/prop_placement.gd")
+
 const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror", "dungeon"]
 
 ## 镜牢回廊的门禁碰撞（每道隔墙一个），战斗室清空前挡住门洞
@@ -141,65 +143,12 @@ func build() -> void:
 # ⚠ 全部可回退：模型在 assets/models/props/attic-worlds/（.gitignore 例外名单），
 #   别人 clone 若缺失，照样退回程序化几何，世界不会空也不会崩。
 const WORLD_PROP_DIR := "res://assets/models/props/attic-worlds/"
-var _world_prop_cache: Dictionary = {}
+var _prop_placer := Placement.new()
 
 
-## 取一个世界摆件实例，失败返回 null（调用方回退程序化）。
-## target_height 用于归一化：模型原始尺寸不可控，按高度缩放最稳。
 func _prop(name: String, target_height: float) -> Node3D:
-	if _world_prop_cache.has(name):
-		var cached = _world_prop_cache[name]
-		if cached == null:
-			return null
-		return (cached as Node3D).duplicate() as Node3D
-	var dir: String = WORLD_PROP_DIR + name + "/"
-	var glb_path := ""
-	for candidate in ["model.glb", "model_glb.glb"]:
-		if ResourceLoader.exists(dir + candidate):
-			glb_path = dir + candidate
-			break
-	if glb_path == "":
-		_world_prop_cache[name] = null
-		return null
-	var packed := load(glb_path) as PackedScene
-	if packed == null:
-		_world_prop_cache[name] = null
-		return null
-	var instance := packed.instantiate() as Node3D
-	if instance == null:
-		_world_prop_cache[name] = null
-		return null
-	var aabb := AABB()
-	var first := true
-	for node in instance.find_children("*", "MeshInstance3D", true, false):
-		var mi := node as MeshInstance3D
-		if mi.mesh == null:
-			continue
-		var xf := Transform3D.IDENTITY
-		var walker: Node = mi
-		while walker != null and walker != instance:
-			if walker is Node3D:
-				xf = (walker as Node3D).transform * xf
-			walker = walker.get_parent()
-		var box: AABB = xf * mi.get_aabb()
-		aabb = box if first else aabb.merge(box)
-		first = false
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	if first or aabb.size.y < 0.0001:
-		instance.queue_free()
-		_world_prop_cache[name] = null
-		return null
-	var holder := Node3D.new()
-	holder.name = "Prop_" + name
-	holder.add_child(instance)
-	var scale_k: float = target_height / aabb.size.y
-	instance.scale = Vector3.ONE * scale_k
-	instance.position = Vector3(
-		-aabb.get_center().x * scale_k,
-		-aabb.position.y * scale_k,
-		-aabb.get_center().z * scale_k)
-	_world_prop_cache[name] = holder
-	return (holder as Node3D).duplicate() as Node3D
+	return _prop_placer.instantiate(name, target_height,
+		[WORLD_PROP_DIR, "res://assets/models/props/attic/", "res://assets/models/props/"])
 
 
 func _mat(color: Color, emission := 0.0) -> StandardMaterial3D:
@@ -331,14 +280,15 @@ func _build_bench(holder: Node3D, at: Vector3, wood: Material, iron: Material) -
 		_box(bench, Vector3(0.1, 0.46, 0.46), Vector3(side * 0.82, 0.23, 0), iron)
 
 
-func _build_pine(holder: Node3D, at: Vector3, scale: float, trunk: Material, needles: Material) -> void:
+func _build_pine(holder: Node3D, at: Vector3, scale: float, trunk: Material, needles: Material,
+		model_name := "pine-tree") -> void:
 	var tree := Node3D.new()
 	tree.position = at
 	tree.scale = Vector3.ONE * scale
 	holder.add_child(tree)
 	# 优先用 Lux3D 模型（雪夜一次种 11 棵，是这套里收益最大的替换）。
 	# 目标高度 3.2 m 对应原来的程序化松树总高（树干 3.2 + 冠层）。
-	var pine := _prop("pine-tree", 3.2)
+	var pine := _prop(model_name, 3.2)
 	if pine != null:
 		tree.add_child(pine)
 		return
@@ -403,6 +353,8 @@ func _build_snow(holder: Node3D) -> Dictionary:
 			var drift := _sphere(holder, 1.2 + float(i % 3) * 0.5,
 				drift_at + Vector3(0, 0.1, 0), snow_ground)
 			drift.scale = Vector3(1.6, 0.4, 1.4)
+	if drift_prop_tpl != null:
+		drift_prop_tpl.free()
 	# 松林：两圈，外圈错开，免得放大后中间空
 	var pine_n := int(round(11.0 * _scenery_density("snow")))
 	for i in range(pine_n):
@@ -433,6 +385,12 @@ func _build_snow(holder: Node3D) -> Dictionary:
 	snow.initial_velocity_max = 1.8
 	snow.direction = Vector3(0, -1, 0)
 	snow.spread = 12.0
+	for i in range(4):
+		var shard := _prop("ice-shard", 0.65 + float(i % 2) * 0.18)
+		if shard != null:
+			shard.position = Vector3(-7.0 + float(i) * 1.4, 0, -7.5)
+			shard.rotation.y = float(i) * 1.3
+			holder.add_child(shard)
 	_build_fishing_holes(holder)
 	var anchor := _build_return_portal(holder, "snow", Color("cfe4f2"), Vector3(0, 0, 9.0))
 	return {"spawn": Vector3(0, 1.05, 6.4), "return": anchor, "title": "雪夜"}
@@ -466,16 +424,19 @@ func _build_cloud(holder: Node3D) -> Dictionary:
 		var puff_y: float = -2.6 + float(i % 3) * 0.5
 		if puff_tpl != null:
 			var c: Node3D = puff_tpl.duplicate() as Node3D
-			c.position = at + Vector3(0, puff_y, 0)
 			c.rotation.y = float(i) * 0.9
 			# 大小抖动，避免一模一样
 			var k: float = (3.0 + float(i % 4) * 1.6) / 4.5
 			c.scale = Vector3.ONE * k
+			# The loader anchors the bottom, so subtract the full cloud height.
+			c.position = at + Vector3(0, -4.5 * k - 0.65, 0)
 			holder.add_child(c)
 		else:
 			var puff := _sphere(holder, _cloud_len(3.0 + float(i % 4) * 1.6),
 				at + Vector3(0, puff_y, 0), cloud_mat)
 			puff.scale = Vector3(1.5, 0.35, 1.5)
+	if puff_tpl != null:
+		puff_tpl.free()
 	# 望远镜：挪到西岛上（原作也在西侧）
 	var scope := Node3D.new()
 	scope.name = "Telescope"
@@ -515,7 +476,7 @@ func _build_firefly(holder: Node3D) -> Dictionary:
 		var angle := TAU * float(i) / float(pine_n) + 0.5
 		var radius := 8.0 + float(i % 4) * 2.2
 		_build_pine(holder, Vector3(cos(angle) * radius, 0, sin(angle) * radius),
-			0.7 + float(i % 3) * 0.2, wood, _mat(Color("1e3a30")))
+			0.7 + float(i % 3) * 0.2, wood, _mat(Color("1e3a30")), "alien-tree-lo")
 	# 火塘
 	# 石圈用 Lux3D 模型；**余烬 ember 与光源保留程序化** —— 那是「火在烧」的视觉。
 	var pit_prop := _prop("stone-firepit", 0.5)
@@ -637,8 +598,15 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 		var x := -4.8 + float(i) * 1.6
 		_box(holder, Vector3(0.06, 2.6, 0.06), Vector3(x, 1.5, -half_z + 0.5), glow)
 	# 棱镜之心：悬浮在房间中央的台座上
-	var pedestal := _cyl(holder, 0.55, 0.75, 1.0, Vector3(0, 0.7, 0), _mat(Color("4a5260")), 10)
+	var pedestal := _prop("mirror-plinth", 0.9)
+	if pedestal != null:
+		Placement.fit(pedestal, Vector3(1.5, 0.9, 1.5))
+		pedestal.position = Vector3(0, 0.2, 0)
+		holder.add_child(pedestal)
+	else:
+		pedestal = _cyl(holder, 0.55, 0.75, 0.9, Vector3(0, 0.65, 0), _mat(Color("4a5260")), 10)
 	pedestal.name = "Pedestal"
+
 	# 用 Lux3D 棱镜模型当**外观**，但里面保留一颗强自发光核心 ——
 	# 它是剧情核心物件，必须「看得出发光」，外部模型的 PBR 材质做不到。
 	var heart_prop := _prop("prism-heart", 1.5)
@@ -739,13 +707,13 @@ const PROP_TABLE := {
 	"mushroom": ["firefly", Vector3(2.2, 0.0, 4.8), "E · 轻碰窗边的蘑菇",
 		"蘑菇醒了，森林便有了回应。"],
 	# --- 雨巷水钟 ---
-	"sign_alley": ["alley", Vector3(-3.8, 0.0, 4.4), "E · 读雨巷的木牌",
+	"sign_alley": ["alley", Vector3(-2.55, 0.0, 4.4), "E · 读雨巷的木牌",
 		"木牌上写着：拨正三只檐兽，水钟就会醒来。伞下没有雨，只有灯和一小片安静。"],
-	"umbrella": ["alley", Vector3(3.4, 0.0, -4.2), "E · 撑开油纸伞",
+	"umbrella": ["alley", Vector3(2.0, 0.0, -4.2), "E · 撑开油纸伞",
 		"伞下没有雨，只有灯和一小片安静。"],
-	"stone_cat": ["alley", Vector3(6.2, 0.0, -1.4), "E · 摇响石猫的铃铛",
+	"stone_cat": ["alley", Vector3(2.35, 0.0, -1.4), "E · 摇响石猫的铃铛",
 		"铃铛一响，雨声也轻了一拍。"],
-	"paper_boat": ["alley", Vector3(-5.6, 0.0, -2.8), "E · 把纸船放进水槽",
+	"paper_boat": ["alley", Vector3(2.75, 0.54, 5.0), "E · 把纸船放进水槽",
 		"纸船正顺着水槽漂向水钟。"],
 }
 
@@ -1061,11 +1029,32 @@ func _make_prop_mesh(anchor: Node3D, id: String) -> void:
 		"wind_organ": ["wind-organ", 1.7],
 		"waterwheel": ["waterwheel", 2.3],
 	}
+	var lit_models := {
+		"lantern_snow": ["snow-lantern", 1.85, Vector3(0, 1.62, 0), Color("ffcf9a")],
+		"cloud_beacon": ["cloud-beacon", 4.1, Vector3(0, 3.65, 0), Color("ffd9a0")],
+		"ranger_lamp": ["ranger-lamp", 2.1, Vector3(0, 1.65, 0), Color("d6f282")],
+		"hearth_snow": ["snow-hearth", 1.65, Vector3(0, 0.48, 0.32), Color("ffab5b")],
+	}
+	if lit_models.has(id):
+		var row: Array = lit_models[id]
+		var housing := _prop(String(row[0]), float(row[1]))
+		if housing != null:
+			anchor.add_child(housing)
+			var glow := _sphere(anchor, 0.12 if id != "hearth_snow" else 0.18,
+				row[2], _mat(row[3], 1.6))
+			var light := _light(anchor, row[2], row[3], 1.6, 7.0)
+			if id == "hearth_snow":
+				glow.name = "Flame"
+				hearth_node = anchor
+				hearth_light = light
+			return
 	if prop_map.has(id):
 		var spec: Array = prop_map[id]
 		var model := _prop(String(spec[0]), float(spec[1]))
 		if model != null:
 			anchor.add_child(model)
+			if id == "cloud_winch":
+				_build_winch_bridge(anchor)
 			return
 	# 带发光件的道具：只把「外壳」换模型，发光体在后面各自保留。
 	#   sign_*      → wooden-sign（牌子本身没发光）
@@ -1112,17 +1101,7 @@ func _make_prop_mesh(anchor: Node3D, id: String) -> void:
 			_box(handle, Vector3(1.05, 0.1, 0.1), Vector3(0.48, 0, 0), brass)
 			_cyl(handle, 0.16, 0.16, 0.08, Vector3(0, 0, 0), _mat(Color("8f6f2f")), 16)
 			_box(handle, Vector3(0.055, 0.055, 0.35), Vector3(0.98, -0.25, 0), dark)
-			# 桥面本体（收起时贴着平台，放下时伸出去）
-			bridge_node = Node3D.new()
-			bridge_node.name = "CloudBridge"
-			bridge_node.position = Vector3(0, 0.02, 1.4)
-			anchor.add_child(bridge_node)
-			for i in range(14):
-				_box(bridge_node, Vector3(2.5, 0.14, 0.32),
-					Vector3(0, 0, -0.35 - float(i) * 0.33),
-					wood if i % 4 != 0 else pale)
-			for side in [-1.2, 1.2]:
-				_box(bridge_node, Vector3(0.1, 0.11, 4.6), Vector3(float(side), 0.86, -2.2), dark)
+			_build_winch_bridge(anchor)
 		"cloud_scope":
 			# 望远镜：三脚架 + 黄铜镜筒（指向云海）
 			var iron2 := _mat(Color("4a4f56"))
@@ -1232,6 +1211,24 @@ func _make_prop_mesh(anchor: Node3D, id: String) -> void:
 				var sail := _box(anchor, Vector3(0.02, 0.28, 0.58), Vector3(float(side) * 0.13, 0.2, 0),
 					_mat(Color("f6efdd")))
 				sail.rotation.z = float(side) * 0.5
+
+
+func _build_winch_bridge(anchor: Node3D) -> void:
+	var wood := _mat(Color("6b5138"))
+	var pale := _mat(Color("cdbfa4"))
+	var dark := _mat(Color("3c2e20"))
+	# 桥面本体（收起时贴着平台，放下时伸出去）
+	bridge_node = Node3D.new()
+	bridge_node.name = "CloudBridge"
+	bridge_node.position = Vector3(0, 0.02, 1.4)
+	anchor.add_child(bridge_node)
+	for i in range(14):
+		_box(bridge_node, Vector3(2.5, 0.14, 0.32),
+			Vector3(0, 0, -0.35 - float(i) * 0.33),
+			wood if i % 4 != 0 else pale)
+	for side in [-1.2, 1.2]:
+		_box(bridge_node, Vector3(0.1, 0.11, 4.6), Vector3(float(side), 0.86, -2.2), dark)
+	bridge_node.visible = false
 
 
 func _add_devices(holder: Node3D, key: String) -> void:
@@ -1909,7 +1906,7 @@ func _build_rain_court(holder: Node3D) -> void:
 	# 巷尾檐下的长凳与雨棚
 	var bench_root := Node3D.new()
 	bench_root.name = "CourtBench"
-	bench_root.position = Vector3(0.0, 0.0, -9.6)
+	bench_root.position = Vector3(-2.4, 0.0, -8.5)
 	holder.add_child(bench_root)
 	_box(bench_root, Vector3(0.6, 0.12, 3.4), Vector3(0, 3.0, 0), roof)
 	for z in [-1.5, 1.5]:
