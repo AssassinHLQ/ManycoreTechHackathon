@@ -15,6 +15,12 @@ const RoastScript = preload("res://scripts/roast.gd")
 const TouchScript = preload("res://scripts/touch_controls.gd")
 const StationScript = preload("res://scripts/station.gd")
 const DistantStationScript = preload("res://scripts/distant_station.gd")
+const RouteLinkScript = preload("res://scripts/route_link.gd")
+var route_link = RouteLinkScript.new()
+var route_board_open := false
+var _route_board_was_paused := false
+## Parent-local coordinates keep a returning traveller attached to the moving planet/station.
+var _attic_return: Dictionary = {}
 
 const LOOP_DURATION := 1020.0
 ## 打印跨帧建场各阶段耗时（排查首屏卡顿时打开）
@@ -1168,6 +1174,7 @@ func _build_planets(home_only := false) -> void:
 		anomaly.position = planet.surface_position(anomaly_direction, -0.18)
 		anomaly.basis = Basis(Quaternion(Vector3.UP, anomaly_direction))
 		anomalies.append(anomaly)
+		route_link.build_echo(self, planet, anomaly)
 		# 每颗星球建完让出一帧：地形与地标是最贵的一段，逐个分片才能避免长卡顿
 		_stage_end("planet " + planet.planet_id)
 		await _yield_frame()
@@ -1851,6 +1858,8 @@ func _update_comet() -> void:
 
 
 func _reset_positions() -> void:
+	_attic_return.clear()
+	_close_route_context()
 	_clear_attic_context()
 	in_station = false
 	ship.docked = false
@@ -2179,6 +2188,8 @@ func start_game() -> void:
 
 
 func return_to_menu() -> void:
+	_attic_return.clear()
+	_close_route_context()
 	if roast != null:
 		roast.cancel(false)
 	_clear_attic_context()
@@ -2320,6 +2331,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			guide_card.skip()
 			return
 	if event.is_action_pressed("ui_cancel"):
+		if route_board_open:
+			close_route_board()
+			return
 		if demo_active:
 			stop_demo()
 			return
@@ -2582,10 +2596,13 @@ func _relic_line(pid: String) -> String:
 
 
 func _interact() -> void:
-	if map_open:
+	if map_open or paused or route_board_open:
 		return
 	if state == "walk":
 		if in_attic:
+			if near_route_record():
+				open_route_board()
+				return
 			# 阁楼本体：雨停后窗台的燕子
 			if not in_pocket() and near_swallow():
 				greet_swallow()
@@ -2947,6 +2964,8 @@ func _hidden_echo_progress() -> Array:
 	var total := 0
 	var found := 0
 	for anomaly in anomalies:
+		if route_link.key_for(anomaly.anomaly_id) != "":
+			continue
 		if anomaly.anomaly_id in ["qinglan", "zheya", "cangbo", "xuanjing", "xuanyuan"]:
 			continue
 		total += 1
@@ -2979,6 +2998,8 @@ func get_prompt() -> String:
 			return "WASD 移动 · E 互动 / 读木牌 / 推门 · B 行囊 · H 旅人手册 · Esc 菜单"
 		if touch_ui_active():
 			return "「互动」互动 / 推门　·　「行囊」查看进度"
+		if near_route_record():
+			return "E 航海回声台 · 解读阁楼与宇宙的线索 / 继续航行"
 		# 燕子特写：站在窗台/壁炉边时给出对应提示
 		if near_swallow():
 			if attic != null and attic.swallow_perched():
@@ -3076,7 +3097,7 @@ func _update_scanner(delta: float) -> void:
 
 
 func _find_scan_target() -> Node3D:
-	if state not in ["walk", "ship"] or map_open:
+	if state not in ["walk", "ship"] or map_open or in_attic or paused:
 		return null
 	var camera := get_active_camera()
 	var origin := camera.global_position
@@ -3084,6 +3105,8 @@ func _find_scan_target() -> Node3D:
 	var best_score := INF
 	var result: Node3D = null
 	for anomaly in anomalies:
+		if not route_link.can_scan(anomaly.anomaly_id):
+			continue
 		var offset: Vector3 = anomaly.global_position + anomaly.global_transform.basis.y * 3.0 - origin
 		var distance := offset.length()
 		var max_distance := 55.0 if state == "walk" else 190.0
@@ -3120,6 +3143,8 @@ func missing_clues() -> Array:
 
 
 func discover(id: String) -> void:
+	if not route_link.can_scan(id):
+		return
 	if discovered.has(id):
 		return
 	discovered[id] = true
@@ -3129,6 +3154,13 @@ func discover(id: String) -> void:
 	var anomaly := _anomaly_by_id(id)
 	if anomaly != null:
 		hud.show_toast("新条目 · " + anomaly.title, 4.0)
+	if id == "qinglan":
+		hud.show_toast("风车塔里传来阁楼的回声。已解锁 Esc → 回到阁楼；落地或对接后可进入。", 7.0)
+	if route_link.key_for(id) != "":
+		if route_link.tracked == route_link.key_for(id):
+			route_link.tracked = ""
+		_save_knowledge()
+		hud.show_toast("回声已验证 %d/4 · 回阁楼航海回声台查看回应。" % route_link.verified_count(self), 6.0)
 	if id == "xuanyuan":
 		end_text = anomaly.body
 		previous_state = state
@@ -3633,6 +3665,8 @@ func toggle_codex() -> void:
 
 ## 「下一件值得做的事」：照原作判定顺序给出当前该做什么。
 func next_worth_doing() -> String:
+	if keepsakes.size() >= 4 and not route_link.completed:
+		return "四件纪念已归架。到唱片柜旁的航海回声台，把它们与宇宙扫描记录对照；已验证 %d/4。" % route_link.verified_count(self)
 	if attic_worlds == null:
 		return "下一件值得做的事：回阁楼，转动黄铜天气旋钮。"
 	var snow := keepsakes.has("snow")
@@ -3920,6 +3954,20 @@ func enter_attic() -> void:
 	# 地面线入口：把玩家放进阁楼，暂停太阳系那套重力与光照。
 	if attic == null or player == null:
 		return
+	if in_attic:
+		if in_pocket():
+			leave_pocket()
+		state = "walk"
+		paused = false
+		_set_mouse_capture()
+		return
+	if state == "menu":
+		start_game()
+	_capture_attic_return()
+	_close_route_context()
+	_dev_clear_overlays()
+	if roast != null:
+		roast.cancel(false)
 	_clear_attic_context()
 	in_attic = true
 	in_station = false
@@ -3934,6 +3982,7 @@ func enter_attic() -> void:
 	player.reparent(attic, false)
 	player.global_transform = Transform3D(Basis.IDENTITY, attic.to_global(Vector3(0.0, 1.05, 1.4)))
 	player.velocity = Vector3.ZERO
+	player.camera.rotation = Vector3.ZERO
 	player.visible = true
 	player.camera.current = true
 	_set_mouse_capture()
@@ -3947,16 +3996,127 @@ func enter_attic() -> void:
 
 
 func leave_attic() -> void:
-	# 离开阁楼：回到飞船旁边，恢复太阳系光照与轮计时。
 	if not in_attic:
 		return
+	_close_route_context()
 	_clear_attic_context()
-	player.reparent(self, false)
-	var landing: Vector3 = ship.global_position if ship != null else player.global_position
-	player.global_transform = Transform3D(Basis.IDENTITY, landing + Vector3(0.0, 2.4, 0.0))
-	player.velocity = Vector3.ZERO
-	state = "walk"
+	if _attic_return.is_empty() or not is_instance_valid(_attic_return.get("parent")):
+		_reset_positions()
+		state = "walk"
+	else:
+		var saved := _attic_return.duplicate()
+		_attic_return.clear()
+		player.reparent(saved.parent, false)
+		player._apply_body_scale(saved.body_scale)
+		player.transform = saved.transform
+		player.velocity = saved.velocity
+		player.up_direction = saved.up
+		player.camera.transform = saved.camera
+		player.camera.fov = saved.fov
+		player.oxygen = saved.oxygen
+		player.fuel = saved.fuel
+		player.visible = saved.visible
+		state = saved.state
+		in_station = saved.in_station
+		active_station = saved.active_station
+		elapsed = saved.elapsed
+	paused = false
+	journal_open = false
+	map_open = false
+	get_active_camera().current = true
 	_set_mouse_capture()
+	hud.show_toast("已回到原来的航程 · 轮回时间与飞船状态已保留。", 4.0)
+
+
+func _capture_attic_return() -> void:
+	if not _attic_return.is_empty():
+		return
+	var resume_state := previous_state if state == "end" else state
+	_attic_return = {"parent": player.get_parent(), "transform": player.transform,
+		"velocity": player.velocity, "up": player.up_direction, "camera": player.camera.transform,
+		"fov": player.camera.fov, "oxygen": player.oxygen, "fuel": player.fuel,
+		"body_scale": player.body_scale, "visible": player.visible,
+		"state": resume_state if resume_state in ["walk", "ship"] else "walk",
+		"in_station": in_station, "active_station": active_station, "elapsed": elapsed}
+
+
+func can_visit_attic() -> bool:
+	if not route_link.unlocked(self) or supernova_active:
+		return false
+	if state == "menu" or in_attic:
+		return true
+	if state not in ["walk", "ship"]:
+		return false
+	if in_station or ship.docked:
+		return true
+	if state == "ship":
+		return ship.landed
+	# Prevent using the safe room to cancel a fall or a spacewalk.
+	return player.is_on_floor()
+
+
+func request_attic_visit() -> void:
+	if in_attic:
+		leave_attic()
+	elif can_visit_attic():
+		enter_attic()
+	else:
+		hud.show_toast("先扫描青岚风车塔；在地面站稳、飞船着陆或完成对接后，可回到阁楼。", 5.0)
+
+
+func near_route_record() -> bool:
+	if not in_attic or in_pocket() or attic == null:
+		return false
+	var anchor: Node3D = attic.anchors.get("AtticAnchor_Record")
+	if anchor == null:
+		return false
+	var distance := player.global_position.distance_to(anchor.global_position)
+	if distance >= 1.15:
+		return false
+	# In this small room the snow door overlaps the gramophone's reach.
+	# Prefer the closer interaction instead of letting the new panel intercept it.
+	for key in attic.anchors:
+		if not (String(key).begins_with("AtticAnchor_Door_") or key in [
+			"AtticAnchor_Mirror", "AtticAnchor_Booklet", "AtticAnchor_Kettle", "AtticAnchor_Dial"]):
+			continue
+		var other: Node3D = attic.anchors[key]
+		if player.global_position.distance_to(other.global_position) < distance:
+			return false
+	if attic.swallow_node != null and attic.swallow_node.visible \
+			and player.global_position.distance_to(attic.swallow_node.global_position) < distance:
+		return false
+	return true
+
+
+func open_route_board() -> void:
+	if state not in ["walk", "ship"] or demo_active or route_board_open:
+		return
+	_dev_clear_overlays()
+	_route_board_was_paused = paused
+	paused = true
+	map_open = false
+	journal_open = false
+	route_board_open = true
+	hud.rebuild_routes()
+	hud.routes.visible = true
+	_set_mouse_capture(false)
+
+
+func close_route_board() -> void:
+	if not route_board_open:
+		return
+	route_board_open = false
+	if hud != null:
+		hud.routes.visible = false
+	paused = _route_board_was_paused
+	_set_mouse_capture(not paused)
+
+
+func _close_route_context() -> void:
+	if route_board_open:
+		close_route_board()
+	scan_target = null
+	scan_progress = 0.0
 
 
 func attic_up_direction() -> Vector3:
@@ -4633,7 +4793,8 @@ func objective_text() -> String:
 func _save_knowledge() -> void:
 	var file := FileAccess.open(save_path, FileAccess.WRITE)
 	if file != null:
-		file.store_string(JSON.stringify({"logs": discovered, "loops": loop_count}, "\t"))
+		file.store_string(JSON.stringify({"logs": discovered, "loops": loop_count,
+			"attic_link": route_link.save_data()}, "\t"))
 
 
 func _load_knowledge() -> void:
@@ -4651,6 +4812,8 @@ func _load_knowledge() -> void:
 				# 改造前的存档键带着旧天体 id（home/ember/…），加载时迁到新命名，老进度不丢。
 				discovered[_migrate_legacy_knowledge_key(String(key))] = logs[key]
 		loop_count = maxi(1, int(data.get("loops", 1)))
+		route_link.load_data(data.get("attic_link", {}))
+		route_link.restore_target(self)
 
 
 const LEGACY_PLANET_IDS := {

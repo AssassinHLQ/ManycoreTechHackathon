@@ -722,6 +722,15 @@ func _build_furniture() -> void:
 	else:
 		_box(root, Vector3(0.28, 0.14, 0.32), record_at + Vector3(0, 0.73, -0.15), _wood_dark)
 	_anchor("AtticAnchor_Record", record_at + Vector3(0.45, 0.85, 0))
+	var record_label := Label3D.new()
+	record_label.name = "RouteRecordLabel"
+	record_label.text = "航海回声台\nE 对照宇宙记录 / 继续航行"
+	record_label.font = load("res://assets/ui_font.ttf")
+	record_label.font_size = 36
+	record_label.pixel_size = 0.003
+	record_label.position = record_at + Vector3(0.28, 1.35, 0)
+	record_label.rotation.y = PI * 0.5
+	root.add_child(record_label)
 	_anchor("AtticAnchor_HearthPerch", record_at + Vector3(0, 0.66, 0.25))
 
 

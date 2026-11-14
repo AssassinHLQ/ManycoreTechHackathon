@@ -160,6 +160,8 @@ func _draw_markers() -> void:
 				draw_string(font, station_screen + Vector2(16, -3), "归航站", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, station_color)
 				draw_string(font, station_screen + Vector2(16, 15), _distance(active_position.distance_to(station_point)), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(station_color, 0.7))
 	for anomaly in game.anomalies:
+		if not game.route_link.can_scan(anomaly.anomaly_id):
+			continue
 		var point: Vector3 = anomaly.global_position + anomaly.global_transform.basis.y * 5.8
 		var distance := active_position.distance_to(point)
 		if distance > (520.0 if game.state == "walk" else 1200.0) or camera.is_position_behind(point):
@@ -170,8 +172,13 @@ func _draw_markers() -> void:
 		if _is_occluded(camera, point, 3.0):
 			continue
 		var color: Color = anomaly.accent_color
+		var tracked: bool = game.route_link.tracked != "" and anomaly.anomaly_id == game.route_link.echo_id(game.route_link.tracked)
+		if tracked:
+			color = Color("ffe0a0")
 		var diamond := PackedVector2Array([screen + Vector2(0, -6), screen + Vector2(6, 0), screen + Vector2(0, 6), screen + Vector2(-6, 0), screen + Vector2(0, -6)])
 		draw_polyline(diamond, color, 1.4, true)
+		if tracked:
+			draw_string(font, screen + Vector2(12, -12), anomaly.title, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, color)
 		if distance < 75.0:
 			draw_string(font, screen + Vector2(12, 5), _distance(distance), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(color, 0.8))
 	if game.state == "walk":

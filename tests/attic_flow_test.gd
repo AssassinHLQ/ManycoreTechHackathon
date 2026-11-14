@@ -107,7 +107,7 @@ func _run() -> void:
 	_check(game.attic.swallow_node.visible, "alley keepsake restores the windowsill swallow")
 	_check(game.has_prism_heart and not game.attic_worlds.heart_node("mirror").visible,
 		"reload restores the shelf heart and hides the entire original")
-	_check(game.next_worth_doing().begins_with("主线已经完成"), "reload preserves the attic main-line completion")
+	_check(game.next_worth_doing().contains("航海回声台"), "reload directs completed keepsakes into the linked universe route")
 	game.start_game()
 	game.enter_attic()
 	# Check dispatch rather than entering pocket worlds by directly calling their API.

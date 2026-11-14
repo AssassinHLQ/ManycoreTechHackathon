@@ -47,7 +47,7 @@ func _run() -> void:
 	game.discovered.clear()
 	game.loop_count = 1
 	_check(game.planets.size() == 20, "twenty explorable bodies created (ten major + ten secondary)")
-	_check(game.anomalies.size() == 26, "twenty planetary signals plus six hidden echoes")
+	_check(game.anomalies.size() == 30, "twenty planetary signals, six hidden echoes and four linked attic echoes")
 	_check(game.state == "menu", "main menu is initial state")
 	_check(game.home.radius >= 400.0, "planets use the ten-times scale")
 	_check(game.planets.back().orbit_radius >= 4000.0, "orbits are expanded to the new scale")

@@ -119,6 +119,27 @@ func draw_journal(control: Control) -> void:
 		var title_color := Color(0.94, 0.90, 0.78) if seen else Color(0.42, 0.40, 0.36, 0.85)
 		var quote_color := Color(0.78, 0.75, 0.66, 0.9) if seen else Color(0.34, 0.33, 0.30, 0.7)
 		var glyph_color := Color(0.92, 0.80, 0.52) if seen else Color(0.38, 0.36, 0.32, 0.8)
+		var key := String(row[3])
+		var response := ""
+		var destination := "棱镜之心 · 归航记录"
+		if key != "":
+			destination = game.route_link.ROUTES[key].place + " · " + game.route_link.ROUTES[key].title
+			if game.route_link.verified(game, key):
+				response = "已验证 · 宇宙与纪念相互回应"
+			elif game.route_link.decoded.has(key):
+				response = "已解读 · 返航扫描第二段信号"
+			elif not game.discovered.has(game.route_link.ROUTES[key].planet):
+				response = "等待宇宙中的原始扫描记录"
+			elif not seen:
+				response = "已有宇宙记录 · 等待这件纪念"
+			else:
+				response = "可以解读 · 唱片柜旁按 E"
+		else:
+			response = "已合拢 · 家与远方相互回应" if game.route_link.completed else "四段回声 + 镜心 + 玄渊记录"
+		control.draw_string(font, Vector2(panel.position.x + 430, y), destination,
+			HORIZONTAL_ALIGNMENT_LEFT, 390, 17, Color("b7cfbf"))
+		control.draw_string(font, Vector2(panel.position.x + 430, y + 26), response,
+			HORIZONTAL_ALIGNMENT_LEFT, 390, 15, Color("a1af9c"))
 
 		control.draw_string(font, Vector2(panel.position.x + 44, y), glyph,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 26, glyph_color)
