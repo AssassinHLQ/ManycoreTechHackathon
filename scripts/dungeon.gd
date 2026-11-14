@@ -1,4 +1,5 @@
 extends Node3D
+const Precision = preload("res://scripts/procedural_dressing.gd")
 
 ## 镜牢回廊的战斗控制器（照同伴版原作）：
 ##   玩家：左键「凝光」近程光刃 / 右键「镜爆」环身爆发 / Space「武器绝技」（需蓄能）
@@ -207,7 +208,9 @@ func _spawn_enemy(room: int, offset: Vector3) -> void:
 	material.albedo_color = Color("8fa4b8")
 	material.emission_enabled = true
 	material.emission = Color("9fc0d8")
-	material.emission_energy_multiplier = 0.8
+	material.emission_energy_multiplier = 0.18
+	material.metallic = 0.46
+	material.roughness = 0.44
 	var mesh := MeshInstance3D.new()
 	var body := CylinderMesh.new()
 	body.top_radius = 0.28
@@ -233,6 +236,7 @@ func _spawn_enemy(room: int, offset: Vector3) -> void:
 	root.set_meta("touch_cd", 0.0)
 	root.set_meta("boss", false)
 	enemies.append(root)
+	Precision.enemy(root, false)
 
 
 func _spawn_boss(room: int) -> void:
@@ -248,7 +252,9 @@ func _spawn_boss(room: int) -> void:
 	material.albedo_color = Color("c8a0d8")
 	material.emission_enabled = true
 	material.emission = Color("d8b0f0")
-	material.emission_energy_multiplier = 1.4
+	material.emission_energy_multiplier = 0.32
+	material.metallic = 0.65
+	material.roughness = 0.28
 	var mesh := MeshInstance3D.new()
 	var core := SphereMesh.new()
 	core.radius = 0.85
@@ -274,6 +280,7 @@ func _spawn_boss(room: int) -> void:
 	root.set_meta("touch_cd", 0.0)
 	root.set_meta("boss", true)
 	boss = root
+	Precision.enemy(root, true)
 	boss_stage = 1
 	message = "镜心余影 · %s" % BOSS_PHASES[0]
 	message_timer = 3.0

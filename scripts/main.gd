@@ -1,4 +1,5 @@
 extends Node3D
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 const PlanetScript = preload("res://scripts/planet.gd")
 const PlayerScript = preload("res://scripts/player.gd")
@@ -866,8 +867,8 @@ func _build_sun_detail() -> void:
 
 func _prominence_mesh(normal: Vector3, tangent: Vector3, half_span: float, height: float, width: float) -> ArrayMesh:
 	var plane_normal := normal.cross(tangent).normalized()
-	var samples := 26
-	var sides := 6
+	var samples := 42
+	var sides := 12
 	var rings: Array = []
 	for s in range(samples + 1):
 		var t := float(s) / float(samples)
@@ -1457,6 +1458,7 @@ func _build_campfire() -> void:
 	collision.position.y = 0.7
 	body.add_child(collision)
 	campfire.add_child(body)
+	PrecisionGeometry.finish_tree(campfire, "stone")
 	for child in campfire.get_children():
 		if child is GeometryInstance3D:
 			child.visibility_range_end = 600.0
@@ -1629,8 +1631,8 @@ func _build_comet() -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = 16.0
 	sphere.height = 32.0
-	sphere.radial_segments = 20
-	sphere.rings = 10
+	sphere.radial_segments = 48
+	sphere.rings = 24
 	core.mesh = sphere
 	core.material_override = core_material
 	comet.add_child(core)
@@ -1671,7 +1673,8 @@ func _add_comet_tail(parent: Node3D, length: float, radius: float, color: Color,
 	cone.top_radius = 0.0
 	cone.bottom_radius = radius
 	cone.height = length
-	cone.radial_segments = 12
+	cone.radial_segments = 40
+	cone.rings = 12
 	tail.mesh = cone
 	var material := ShaderMaterial.new()
 	material.shader = load("res://shaders/comet_tail.gdshader")

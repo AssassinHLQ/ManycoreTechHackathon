@@ -1,6 +1,7 @@
 extends Node3D
 
 const Placement := preload("res://scripts/prop_placement.gd")
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 const ArchitectureScript = preload("res://scripts/architecture.gd")
 const UndergroundScript = preload("res://scripts/underground.gd")
@@ -3511,7 +3512,9 @@ func _material(color: Color, emission := 0.0) -> StandardMaterial3D:
 
 func _mesh(mesh: Mesh, material: Material, at: Vector3) -> MeshInstance3D:
 	var instance := MeshInstance3D.new()
-	instance.mesh = mesh
+	instance.mesh = PrecisionGeometry.refine(mesh, true)
+	if material is StandardMaterial3D:
+		PrecisionGeometry.surface(material, "stone")
 	instance.material_override = material
 	instance.position = at
 	return instance

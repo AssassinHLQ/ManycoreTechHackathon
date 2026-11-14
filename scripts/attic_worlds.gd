@@ -7,6 +7,7 @@ extends Node3D
 ## 世界之间相距很远，也和太阳系（原点附近）完全分开，所以互不干扰。
 
 const Placement := preload("res://scripts/prop_placement.gd")
+const Precision = preload("res://scripts/procedural_dressing.gd")
 
 const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror", "dungeon"]
 
@@ -130,6 +131,7 @@ func build() -> void:
 					device_values[key] = [1, 2, 1]
 				_:
 					device_values[key] = [0, 0, 0]
+		Precision.pocket(content, key)
 
 
 # --- 公共构件 ---------------------------------------------------------------

@@ -15,6 +15,8 @@ var active_corridor := -1
 #
 # ⚠ 全部可回退：模型缺失时照旧用原来的程序化拼装。
 const Placement := preload("res://scripts/prop_placement.gd")
+const Precision = preload("res://scripts/procedural_dressing.gd")
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 const STATION_PROP_DIR := "res://assets/models/props/station/"
 var _prop_placer := Placement.new()
@@ -127,6 +129,7 @@ func _ready() -> void:
 	_build_interior()
 	_arrange_corridors()
 	_build_hub()
+	Precision.station_exterior(exterior_hub_shell, ring_root)
 	_merge_exterior_meshes()
 
 
@@ -353,6 +356,9 @@ func _build_materials() -> void:
 	_mat_blue = _mat(Color("3f6f9a"), 0.45, 0.45)
 	_mat_orange = _mat(Color("b96c3e"), 0.2, 0.55)
 	_mat_white = _mat(Color("d7d5c4"), 0.12, 0.6)
+	for material in [_mat_hull, _mat_dark, _mat_trim, _mat_floor, _mat_wall, _mat_screen,
+			_mat_lift, _mat_warm, _mat_teal, _mat_glass, _mat_green, _mat_blue, _mat_orange, _mat_white]:
+		PrecisionGeometry.surface(material, "metal")
 
 
 func _mat(color: Color, metallic := 0.4, roughness := 0.5) -> StandardMaterial3D:
@@ -378,6 +384,9 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, material: Material, rot :
 	mesh.size = size
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
+	# Keep long panels as primitives so spatial merging can still split them for lighting.
+	if maxf(size.x, maxf(size.y, size.z)) <= MERGE_CHUNK:
+		instance.mesh = PrecisionGeometry.refine(mesh, true)
 	instance.material_override = material
 	instance.position = pos
 	instance.rotation = rot
@@ -396,6 +405,8 @@ func _cylinder(parent: Node3D, radius_top: float, radius_bottom: float, height: 
 	mesh.radial_segments = segments
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
+	if height <= MERGE_CHUNK and maxf(radius_top, radius_bottom) * 2.0 <= MERGE_CHUNK:
+		instance.mesh = PrecisionGeometry.refine(mesh)
 	instance.material_override = material
 	instance.position = pos
 	instance.rotation = rot
@@ -408,8 +419,8 @@ func _sphere(parent: Node3D, radius: float, pos: Vector3, material: Material, sc
 	var mesh := SphereMesh.new()
 	mesh.radius = radius
 	mesh.height = radius * 2.0
-	mesh.radial_segments = 18
-	mesh.rings = 9
+	mesh.radial_segments = 32
+	mesh.rings = 16
 	var instance := MeshInstance3D.new()
 	instance.mesh = mesh
 	instance.material_override = material
@@ -1325,6 +1336,7 @@ func _build_hub() -> void:
 		hub_skip.append(leaf)
 	_merge_static_meshes(hub_root, hub_skip, "HubMerged")
 	_build_hub_detail()
+	Precision.station_hub(hub_root)
 	_build_home_door()
 	# 外塔和能源核心的碰撞挂在 hub_body 上，飞船靠近时不会穿模。
 	_add_hub_cylinder_collider(22.0, 64.0, Vector3(0.0, 60.0, 0.0))
@@ -1560,7 +1572,10 @@ func _material_signature(material: Material) -> String:
 		return "null"
 	if material is StandardMaterial3D:
 		var m: StandardMaterial3D = material
-		return "std|" + m.albedo_color.to_html() + "|" + str(m.metallic) + "|" + str(m.roughness) + "|" + str(m.emission_enabled) + "|" + m.emission.to_html() + "|" + str(m.emission_energy_multiplier) + "|" + str(m.shading_mode) + "|" + str(m.transparency) + "|" + str(m.cull_mode)
+		var textures := ""
+		for texture in [m.albedo_texture, m.roughness_texture, m.metallic_texture, m.normal_texture, m.emission_texture]:
+			textures += "|" + str(texture.get_instance_id() if texture != null else 0)
+		return "std|" + m.albedo_color.to_html() + "|" + str(m.metallic) + "|" + str(m.roughness) + "|" + str(m.emission_enabled) + "|" + m.emission.to_html() + "|" + str(m.emission_energy_multiplier) + "|" + str(m.shading_mode) + "|" + str(m.transparency) + "|" + str(m.cull_mode) + textures + "|" + str(m.uv1_triplanar) + "|" + str(m.uv1_scale)
 	return "other|" + str(material.get_instance_id())
 
 
@@ -1609,7 +1624,7 @@ func _merge_static_meshes(root: Node3D, skip: Array, merged_name: String, chunk 
 				var key_base := _material_signature(material)
 				if fits_chunk:
 					expected_triangles += _surface_triangles(mesh, s)
-					_merge_bucket(buckets, key_base, material, _merge_chunk_key(local_aabb.get_center(), chunk)).append_from(mesh, s, xform)
+					_merge_append(_merge_bucket(buckets, key_base, material, _merge_chunk_key(local_aabb.get_center(), chunk)), mesh, s, xform)
 				else:
 					expected_triangles += _append_mesh_chunked(buckets, key_base, material, mesh, s, xform, local_aabb, chunk)
 			victims.append(instance)
@@ -1663,6 +1678,21 @@ func _merge_chunk_key(position: Vector3, chunk: float) -> String:
 	return "%d,%d,%d" % [floori(position.x / chunk), floori(position.y / chunk), floori(position.z / chunk)]
 
 
+func _merge_append(tool: SurfaceTool, mesh: Mesh, surface: int, xform: Transform3D) -> void:
+	# SurfaceTool.append_from does not add indices for an unindexed input. Mixing
+	# the two representations leaves the latter vertices unreachable on commit.
+	var arrays := mesh.surface_get_arrays(surface)
+	var indices: Variant = arrays[Mesh.ARRAY_INDEX]
+	if indices is PackedInt32Array and not indices.is_empty():
+		tool.append_from(mesh, surface, xform)
+		return
+	var indexed := SurfaceTool.new()
+	indexed.begin(Mesh.PRIMITIVE_TRIANGLES)
+	indexed.append_from(mesh, surface, Transform3D.IDENTITY)
+	indexed.index()
+	tool.append_from(indexed.commit(), 0, xform)
+
+
 func _merge_bucket(buckets: Dictionary, key_base: String, material: Material, chunk_key: String) -> SurfaceTool:
 	var full := key_base + "|" + chunk_key
 	if not buckets.has(full):
@@ -1701,7 +1731,7 @@ func _append_mesh_chunked(buckets: Dictionary, key_base: String, material: Mater
 						box_size.z * (float(iz) + 0.5) / float(steps_z))
 					var piece_xform := xform * Transform3D(Basis(), offset)
 					expected += _surface_triangles(piece, 0)
-					_merge_bucket(buckets, key_base, material, _merge_chunk_key(piece_xform.origin, chunk)).append_from(piece, 0, piece_xform)
+					_merge_append(_merge_bucket(buckets, key_base, material, _merge_chunk_key(piece_xform.origin, chunk)), piece, 0, piece_xform)
 		return expected
 	if mesh is CylinderMesh:
 		var cylinder: CylinderMesh = mesh
@@ -1715,10 +1745,10 @@ func _append_mesh_chunked(buckets: Dictionary, key_base: String, material: Mater
 			var offset := Vector3(0.0, low + cylinder.height * (float(iy) + 0.5) / float(steps_y), 0.0)
 			var piece_xform := xform * Transform3D(Basis(), offset)
 			expected += _surface_triangles(piece, 0)
-			_merge_bucket(buckets, key_base, material, _merge_chunk_key(piece_xform.origin, chunk)).append_from(piece, 0, piece_xform)
+			_merge_append(_merge_bucket(buckets, key_base, material, _merge_chunk_key(piece_xform.origin, chunk)), piece, 0, piece_xform)
 		return expected
 	expected += _surface_triangles(mesh, surface)
-	_merge_bucket(buckets, key_base, material, _merge_chunk_key(local_aabb.get_center(), chunk)).append_from(mesh, surface, xform)
+	_merge_append(_merge_bucket(buckets, key_base, material, _merge_chunk_key(local_aabb.get_center(), chunk)), mesh, surface, xform)
 	return expected
 
 

@@ -8,6 +8,8 @@ extends RefCounted
 ## _surface_parent() 返回的局部空间中，Y 轴为地表法线。
 
 const UndergroundScript = preload("res://scripts/underground.gd")
+const Precision = preload("res://scripts/procedural_dressing.gd")
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 
 static func build(planet, kind: String) -> void:
@@ -52,6 +54,7 @@ static func build(planet, kind: String) -> void:
 			_build_jianmo(root, planet)
 	_add_collision(root, kind, planet)
 	_detail_pass(root, kind, planet)
+	Precision.landmark(root, kind, planet.accent_color)
 	_limit_range(root, 1500.0)
 
 
@@ -655,7 +658,10 @@ static func _build_liuwu(root: Node3D, planet) -> void:
 		for side in [-1.0, 1.0]:
 			_cyl(root, 0.9, 1.3, 15.0, Vector3(side * 10.0, 8.7, z), iron, 8)
 			_box(root, Vector3(1.6, 1.2, 1.6), Vector3(side * 10.0, 16.4, z), rust)
-		_beam(root, Vector3(-10.0, 16.4, z), Vector3(10.0, 16.4, z), 0.75, rust, 8)
+		# Open truss chords expose the diagonal webs and carry the hoist trolley.
+		for level in [15.8, 17.0]:
+			for side in [-1.0, 1.0]:
+				_beam(root, Vector3(-10.0, level, z + side * 0.55), Vector3(10.0, level, z + side * 0.55), 0.12, rust, 16)
 		for side in [-1.0, 1.0]:
 			_beam(root, Vector3(side * 10.0, 14.0, z), Vector3(side * 5.2, 16.4, z), 0.28, iron, 6)
 
@@ -748,6 +754,7 @@ static func _detail_reset() -> void:
 
 
 static func _detail_add(mesh: Mesh, material: Material, xform: Transform3D) -> void:
+	mesh = PrecisionGeometry.refine(mesh)
 	var key: int = material.get_instance_id()
 	if not _detail_batch.has(key):
 		var tool := SurfaceTool.new()
@@ -761,7 +768,6 @@ static func _detail_flush(parent: Node3D) -> void:
 	for key in _detail_batch:
 		var entry: Dictionary = _detail_batch[key]
 		var tool: SurfaceTool = entry["tool"]
-		tool.generate_normals()
 		var instance := MeshInstance3D.new()
 		instance.name = "DetailBatch"
 		instance.mesh = tool.commit()
@@ -969,7 +975,9 @@ static func _detail_liuwu(root: Node3D, planet, accent: Color) -> void:
 	# 龙门吊柱脚螺栓
 	for z in [-8.0, 8.0]:
 		for side in [-1.0, 1.0]:
-			_bolt_ring(1.05, 1.62, 10, iron, 0.07)
+			for i in range(10):
+				var a := TAU * float(i) / 10.0
+				_d_cyl(0.07, 0.06, iron, Vector3(side * 10.0 + cos(a) * 1.05, 1.62, z + sin(a) * 1.05))
 
 
 static func _detail_jianmo(root: Node3D, planet, accent: Color) -> void:
@@ -989,7 +997,7 @@ static func _detail_jianmo(root: Node3D, planet, accent: Color) -> void:
 			_d_box(Vector3(1.25, 0.10, 0.10), violet, p + Vector3(0, 11.9, 0), yaw)
 		# 门楣上的三道刻纹
 		for k in range(3):
-			_d_box(Vector3(6.2, 0.09, 0.10), violet, center + Vector3(0, 12.4, 0), yaw)
+			_d_box(Vector3(6.2, 0.09, 0.10), violet, center + Vector3(0, 12.2 + float(k) * 0.18, 0), yaw)
 	# 中央台座的阶梯与地纹
 	for i in range(3):
 		_d_cyl(3.4 - float(i) * 0.55, 0.18, flint, Vector3(0, 1.75 + i * 0.18, 0))
@@ -1308,6 +1316,9 @@ static func _beam(parent: Node3D, a: Vector3, b: Vector3, radius: float, materia
 
 static func _crystal(parent: Node3D, pos: Vector3, radius: float, height: float, material: Material, lean: Vector3) -> MeshInstance3D:
 	var crystal := _cyl(parent, 0.0, radius, height, pos, material, 6)
+	crystal.mesh = PrecisionGeometry.crystal(radius, height)
+	if material is StandardMaterial3D:
+		material.vertex_color_use_as_albedo = true
 	if lean.length_squared() > 0.0001:
 		crystal.quaternion = Quaternion(Vector3.UP, (Vector3.UP + lean).normalized())
 	return crystal

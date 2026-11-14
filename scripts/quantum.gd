@@ -1,4 +1,6 @@
 extends Node3D
+const Precision = preload("res://scripts/procedural_dressing.gd")
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 ## 量子碎岩：未被观测时会在若干坐标间迁移；被持续注视时会保持静止。
 ## 它同时实现扫描目标的接口，因此可以直接加入 game.anomalies。
@@ -42,6 +44,7 @@ func _build_visual() -> void:
 	crystal_material.emission = Color(0.46, 0.2, 1.0)
 	crystal_material.emission_energy_multiplier = 1.7
 	crystal_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	crystal_material.vertex_color_use_as_albedo = true
 
 	crystal = MeshInstance3D.new()
 	var shard := CylinderMesh.new()
@@ -49,7 +52,7 @@ func _build_visual() -> void:
 	shard.bottom_radius = 0.92
 	shard.height = 3.4
 	shard.radial_segments = 4
-	crystal.mesh = shard
+	crystal.mesh = PrecisionGeometry.crystal(shard.bottom_radius, shard.height, shard.radial_segments)
 	crystal.material_override = crystal_material
 	crystal.position.y = 2.9
 	add_child(crystal)
@@ -60,7 +63,7 @@ func _build_visual() -> void:
 	inner_shard.bottom_radius = 0.44
 	inner_shard.height = 4.6
 	inner_shard.radial_segments = 4
-	inner.mesh = inner_shard
+	inner.mesh = PrecisionGeometry.crystal(inner_shard.bottom_radius, inner_shard.height, inner_shard.radial_segments)
 	inner.material_override = crystal_material
 	inner.position.y = 2.1
 	inner.rotation.y = PI * 0.25
@@ -155,6 +158,7 @@ func _build_visual() -> void:
 	flash.scale = Vector3.ONE * 0.01
 	flash.visible = false
 	add_child(flash)
+	Precision.scanner(self, accent_color, "quantum")
 	for child in get_children():
 		if child is GeometryInstance3D:
 			child.visibility_range_end = 900.0

@@ -8,6 +8,8 @@ extends Node3D
 ## 比例与按键一律按本项目的尺度与操作约定重做，不照搬网页版。
 
 const Placement := preload("res://scripts/prop_placement.gd")
+const Precision = preload("res://scripts/procedural_dressing.gd")
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 const ROOM_HALF_X := 3.4
 const ROOM_HALF_Z := 2.9
@@ -179,6 +181,12 @@ func build() -> void:
 	_cloth = _material(Color("8d5b4c"))
 	_glow = _material(Color("ffca7a"), 1.35)
 	_mirror = _material(Color("cfe0e6"), 0.35)
+	PrecisionGeometry.surface(_cloth, "cloth")
+	PrecisionGeometry.surface(_paper, "paper")
+	PrecisionGeometry.surface(_plaster, "plaster")
+	_brass.metallic = 0.68
+	_brass.roughness = 0.36
+	PrecisionGeometry.surface(_brass, "metal")
 
 	_build_shell()
 	_build_window()
@@ -190,6 +198,7 @@ func build() -> void:
 	_build_shelf()
 	_build_furniture()
 	_build_lighting()
+	Precision.attic(root)
 
 
 # --- 壳体：地板、四壁、斜顶与椽条 -------------------------------------------------

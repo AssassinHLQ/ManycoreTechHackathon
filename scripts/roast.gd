@@ -1,4 +1,5 @@
 extends Node3D
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 ## 第一人称烤棉花糖：签子挂在相机上，火候随时间增长，按 E 取回。
 
@@ -106,6 +107,7 @@ func _ready() -> void:
 	glow.light_energy = 0.0
 	glow.omni_range = 0.9
 	marshmallow.add_child(glow)
+	PrecisionGeometry.finish_tree(self, "wood")
 
 
 func start() -> void:

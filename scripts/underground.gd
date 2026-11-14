@@ -4,6 +4,8 @@ extends RefCounted
 ## 洞穴挂在星球自身的 cave_direction 上，建筑内部挂在 Architecture_* 根节点上。
 
 const Placement := preload("res://scripts/prop_placement.gd")
+const Precision = preload("res://scripts/procedural_dressing.gd")
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 const HOME_WALL_SEGMENTS := 16
 const HOME_WALL_RADIUS := 6.55
@@ -36,7 +38,7 @@ static func build(planet, kind: String) -> void:
 	body.collision_mask = 0
 	root.add_child(body)
 	_build_rim(root, planet, kind, shaft_radius, palette, body)
-	_build_shaft(root, body, shaft_radius, floor_y, palette)
+	_build_shaft(root, body, shaft_radius, ceiling_y, palette)
 	_build_ramp(root, body, shaft_radius, floor_y, palette)
 	_build_chamber(root, body, shaft_radius, chamber_radius, floor_y, ceiling_y, palette, planet, kind)
 	var anchor := Node3D.new()
@@ -47,6 +49,7 @@ static func build(planet, kind: String) -> void:
 	_build_cave_interactives(root, planet, chamber_radius, floor_y, ceiling_y, shaft_radius)
 	anchor.position = Vector3(0, floor_y + 0.1, -chamber_radius * 0.26)
 	root.add_child(anchor)
+	Precision.cave(root, chamber_radius, floor_y, kind)
 	_limit_range(root, 900.0)
 
 
@@ -317,7 +320,7 @@ static func _build_rim(root: Node3D, _planet, _kind: String, shaft_radius: float
 # -----------------------------------------------------------------------------
 # 竖井：14 面石壁，门洞一侧只保留地表以下部分。
 # -----------------------------------------------------------------------------
-static func _build_shaft(root: Node3D, body: StaticBody3D, shaft_radius: float, floor_y: float, palette: Dictionary) -> void:
+static func _build_shaft(root: Node3D, body: StaticBody3D, shaft_radius: float, ceiling_y: float, palette: Dictionary) -> void:
 	var segments := 14
 	var chord := 2.0 * shaft_radius * PI / float(segments) + 0.8
 	for i in range(segments):
@@ -326,15 +329,16 @@ static func _build_shaft(root: Node3D, body: StaticBody3D, shaft_radius: float, 
 		var is_door := _angle_distance(angle, HOME_DOOR_ANGLE) < 0.46
 		var material: Material = palette.rock if i % 2 == 0 else palette.dark
 		if is_door:
-			var lower_height := -floor_y + 0.2
-			var lower_center := (floor_y - 0.2) * 0.5
+			var lower_height := -ceiling_y + 0.2
+			var lower_center := (ceiling_y - 0.2) * 0.5
 			var lower_position := Vector3(cos(angle) * shaft_radius, lower_center, sin(angle) * shaft_radius)
 			var panel := _box(root, Vector3(1.4, lower_height, chord), lower_position, material)
 			panel.basis = basis
 			_box_collider(body, Vector3(1.4, lower_height, chord), lower_position, basis)
 		else:
-			var height := -floor_y + 2.7
-			var center := (floor_y + 2.7) * 0.5
+			# Below the chamber ceiling the shaft opens into the furnished room.
+			var height := -ceiling_y + 2.7
+			var center := (ceiling_y + 2.7) * 0.5
 			var position := Vector3(cos(angle) * shaft_radius, center, sin(angle) * shaft_radius)
 			var panel := _box(root, Vector3(1.4, height, chord), position, material)
 			panel.basis = basis
@@ -424,16 +428,12 @@ static func _build_chamber(root: Node3D, body: StaticBody3D, shaft_radius: float
 			var rib := _box(root, Vector3(0.5, wall_height * 0.9, 1.0), Vector3(cos(angle) * (chamber_radius - 0.5), floor_y + wall_height * 0.4, sin(angle) * (chamber_radius - 0.5)), palette.dark)
 			rib.basis = basis
 
-	var wall_mesh := CylinderMesh.new()
-	wall_mesh.top_radius = chamber_radius
-	wall_mesh.bottom_radius = chamber_radius
-	wall_mesh.height = wall_height + 0.8
-	wall_mesh.radial_segments = 40
-	wall_mesh.cap_top = false
-	wall_mesh.cap_bottom = false
 	var wall_visual := MeshInstance3D.new()
-	wall_visual.mesh = wall_mesh
-	wall_visual.material_override = palette.inner
+	wall_visual.name = "StratifiedChamberWall"
+	wall_visual.mesh = PrecisionGeometry.rock_shell(chamber_radius, wall_height + 0.8)
+	var wall_material: StandardMaterial3D = palette.inner.duplicate()
+	wall_material.cull_mode = BaseMaterial3D.CULL_BACK
+	wall_visual.material_override = wall_material
 	wall_visual.position.y = floor_y + wall_height * 0.5
 	root.add_child(wall_visual)
 
@@ -738,6 +738,10 @@ static func _box(parent: Node3D, size: Vector3, position: Vector3, material: Mat
 
 
 static func _cyl(parent: Node3D, top: float, bottom: float, height: float, position: Vector3, material: Material, segments: int = 16) -> MeshInstance3D:
+	if is_zero_approx(top) and segments <= 6:
+		if material is StandardMaterial3D:
+			material.vertex_color_use_as_albedo = true
+		return _mesh(parent, PrecisionGeometry.crystal(bottom, height, segments), position, material)
 	var mesh := CylinderMesh.new()
 	mesh.top_radius = top
 	mesh.bottom_radius = bottom
@@ -776,7 +780,10 @@ static func _light(parent: Node3D, position: Vector3, color: Color, energy: floa
 	light.position = position
 	light.light_color = color
 	light.light_energy = energy
-	light.omni_range = distance
+	# Prop roots are enlarged with their planet. Light range is expressed in world metres.
+	var light_scale := parent.global_basis.get_scale().abs()
+	light.omni_range = distance * maxf(light_scale.x, maxf(light_scale.y, light_scale.z))
+	light.light_energy *= pow(maxf(light_scale.x, maxf(light_scale.y, light_scale.z)), 1.2)
 	parent.add_child(light)
 	return light
 

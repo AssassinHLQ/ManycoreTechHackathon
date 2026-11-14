@@ -1,4 +1,5 @@
 extends Node3D
+const Precision = preload("res://scripts/procedural_dressing.gd")
 
 ## A decoded attic record projects a second, independently scannable signal.
 var anomaly_id := ""
@@ -42,3 +43,4 @@ func _ready() -> void:
 	label.position.y = 5.5
 	label.modulate = accent_color
 	add_child(label)
+	Precision.scanner(self, accent_color, "echo")

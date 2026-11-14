@@ -14,6 +14,7 @@
   · 出口：中央地面一个气闸口，走上去按 E 回飞船
 """
 extends Node3D
+const Precision = preload("res://scripts/procedural_dressing.gd")
 
 ## 舱半径（由 main.gd 按站体大小注入）
 var hall_radius := 26.0
@@ -48,6 +49,8 @@ func build(radius: float, color: Color) -> void:
 	_build_benches()
 	_build_pillars()
 	_build_exit_marker()
+	Precision.distant_hall(self, hall_radius, ceiling_height)
+	_build_lighting()
 
 
 func _make_materials() -> void:
@@ -129,6 +132,7 @@ func _box(size: Vector3, mat: Material, pos: Vector3, parent: Node3D = null) -> 
 func _build_floor() -> void:
 	# 地板：一个薄圆柱，分段多到边缘看不出多边形
 	_cylinder(hall_radius, 0.35, 96, _mats["floor"], Vector3(0.0, -0.175, 0.0))
+	_disc_collision(-0.175, 0.35)
 	# 地面环形嵌线（两圈发光带，暗示这是座「站」而不是空房间）
 	for r in [hall_radius * 0.42, hall_radius * 0.78]:
 		var ring := TorusMesh.new()
@@ -138,12 +142,12 @@ func _build_floor() -> void:
 		ring.ring_segments = 8
 		var mi := _mesh_instance(ring, _mats["trim"])
 		mi.position = Vector3(0.0, 0.02, 0.0)
-		mi.rotation.x = PI * 0.5
 
 
 func _build_ceiling() -> void:
 	_cylinder(hall_radius, 0.3, 96, _mats["wall"],
 		Vector3(0.0, ceiling_height + 0.15, 0.0))
+	_disc_collision(ceiling_height + 0.15, 0.3)
 	# 顶部灯环
 	var ring := TorusMesh.new()
 	ring.inner_radius = hall_radius * 0.55
@@ -152,7 +156,6 @@ func _build_ceiling() -> void:
 	ring.ring_segments = 10
 	var mi := _mesh_instance(ring, _mats["trim"])
 	mi.position = Vector3(0.0, ceiling_height - 0.12, 0.0)
-	mi.rotation.x = PI * 0.5
 
 
 func _build_outer_wall() -> void:
@@ -163,6 +166,7 @@ func _build_outer_wall() -> void:
 
 	_wall_band(0.0, lower_h, seg)
 	_wall_band(window_top, upper_h, seg)
+	_wall_collision(seg)
 
 	# 舷窗带：真透明，不造网格（直接留空），只加一圈窗框立柱
 	var frames := 32
@@ -181,7 +185,6 @@ func _build_outer_wall() -> void:
 		rail.ring_segments = 6
 		var mi := _mesh_instance(rail, _mats["trim"])
 		mi.position = Vector3(0.0, y, 0.0)
-		mi.rotation.x = PI * 0.5
 
 
 ## 造一圈实墙（用一段圆柱环，压扁成薄壳）
@@ -194,22 +197,42 @@ func _wall_band(y_base: float, height: float, segments: int) -> void:
 	mesh.height = height
 	mesh.radial_segments = segments
 	mesh.rings = 1
-	# CylinderMesh 没有 cap_top/cap_bottom 属性（那是 CylinderShape3D 的），
-	# 墙体只要侧壁，所以这里靠「负缩放 X 翻法线」+ 材质双面兜底。
+	# A wall band is an open shell; caps would span the entire room at eye level.
+	mesh.cap_top = false
+	mesh.cap_bottom = false
 	var mi := _mesh_instance(mesh, _mats["wall"])
 	mi.position = Vector3(0.0, y_base + height * 0.5, 0.0)
 	# 翻转 X 让法线朝内（从舱内看得见墙、从舱外看不见）
 	mi.scale = Vector3(-1.0, 1.0, 1.0)
-	# 碰撞：一圈圆柱壳，用 CylinderShape 近似（内壁挡人，不让走出去）
+
+
+func _wall_collision(segments: int) -> void:
+	# Tangential box segments leave the interior empty while sealing the perimeter.
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
 	body.collision_mask = 0
+	for i in range(segments):
+		var a := TAU * float(i) / float(segments)
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(0.28, ceiling_height, 2.0 * hall_radius * tan(PI / float(segments)) + 0.04)
+		var collider := CollisionShape3D.new()
+		collider.shape = shape
+		collider.position = Vector3(cos(a) * hall_radius, ceiling_height * 0.5, sin(a) * hall_radius)
+		collider.rotation.y = -a
+		body.add_child(collider)
+	add_child(body)
+
+
+func _disc_collision(y: float, height: float) -> void:
+	var body := StaticBody3D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var collider := CollisionShape3D.new()
 	var shape := CylinderShape3D.new()
 	shape.radius = hall_radius
 	shape.height = height
-	var collider := CollisionShape3D.new()
 	collider.shape = shape
-	collider.position = mi.position
+	collider.position.y = y
 	body.add_child(collider)
 	add_child(body)
 
@@ -227,23 +250,38 @@ func _build_window_stars() -> void:
 	mat.emission_energy_multiplier = 2.2
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.billboard_keep_scale = true
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var image := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for y in range(32):
+		for x in range(32):
+			var p := (Vector2(x, y) + Vector2.ONE * 0.5) / 16.0 - Vector2.ONE
+			image.set_pixel(x, y, Color(1, 1, 1, pow(maxf(0.0, 1.0 - p.length()), 2.0)))
+	image.generate_mipmaps()
+	mat.albedo_texture = ImageTexture.create_from_image(image)
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261110
 	var count := 420
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.mesh = quad
+	multimesh.instance_count = count
 	for i in range(count):
 		var a := rng.randf() * TAU
 		# 星点分布在舷窗高度带附近，略微上下散开
 		var y := rng.randf_range(window_bottom - 0.4, window_top + 0.4)
 		var dist := hall_radius * rng.randf_range(1.08, 1.55)
-		var quad := QuadMesh.new()
-		var size := rng.randf_range(0.10, 0.34)
-		quad.size = Vector2(size, size)
-		var mi := MeshInstance3D.new()
-		mi.mesh = quad
-		mi.material_override = mat
-		mi.position = Vector3(cos(a) * dist, y, sin(a) * dist)
-		add_child(mi)
+		var size := rng.randf_range(0.08, 0.24)
+		multimesh.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * size), Vector3(cos(a) * dist, y, sin(a) * dist)))
+	var stars := MultiMeshInstance3D.new()
+	stars.name = "WindowStars"
+	stars.multimesh = multimesh
+	stars.material_override = mat
+	stars.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(stars)
 
 
 func _build_console() -> void:
@@ -261,10 +299,17 @@ func _build_console() -> void:
 		# 第一版放在 3.05 米、倾 16°，结果是一圈悬空的大黑板 ——
 		# 因为控制台半径只有 3.4，屏幕却做成 1.5 米宽，绕一圈就互相挤成墙了。
 		var inr: float = cr * 0.75
-		var screen := _box(Vector3(cr * 0.27, 0.42, 0.05), _mats["screen"],
-			Vector3(cos(a) * inr, 1.02, sin(a) * inr))
-		screen.rotation.y = -a + PI * 0.5
-		screen.rotation.x = deg_to_rad(-62.0)
+		var pos := Vector3(cos(a) * inr, 1.28, sin(a) * inr)
+		var basis := Basis(Vector3.UP, -a - PI * 0.5) * Basis(Vector3.RIGHT, deg_to_rad(-62.0))
+		_box(Vector3(0.12, 0.20, 0.12), _mats["console"], pos - Vector3.UP * 0.1)
+		var bezel := _box(Vector3(cr * 0.27 + 0.10, 0.50, 0.06), _mats["console"], pos)
+		bezel.basis = basis
+		var screen := _box(Vector3(cr * 0.27, 0.40, 0.014), _mats["screen"], pos + basis.z * 0.037)
+		screen.basis = basis
+		for line in range(4):
+			var readout := _box(Vector3(cr * (0.15 + float(line % 2) * 0.05), 0.018, 0.008), _mats["console"],
+				pos + basis * Vector3(0, -0.12 + float(line) * 0.075, 0.049))
+			readout.basis = basis
 	# 控制台碰撞
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
@@ -286,10 +331,16 @@ func _build_benches() -> void:
 		var dist := hall_radius * 0.72
 		var pos := Vector3(cos(a) * dist, 0.0, sin(a) * dist)
 		var seat := _box(Vector3(2.4, 0.32, 0.9), _mats["console"], pos + Vector3(0.0, 0.42, 0.0))
-		seat.rotation.y = -a
+		seat.rotation.y = -a + PI * 0.5
 		var back := _box(Vector3(2.4, 0.55, 0.14), _mats["console"],
 			pos + Vector3(0.0, 0.72, 0.0) + Vector3(cos(a), 0.0, sin(a)) * 0.40)
-		back.rotation.y = -a
+		back.rotation.y = -a + PI * 0.5
+		var basis := Basis(Vector3.UP, -a + PI * 0.5)
+		for side in [-1.0, 1.0]:
+			var foot := _box(Vector3(0.14, 0.3, 0.72), _mats["trim"], pos + basis * Vector3(side * 0.85, 0.15, 0))
+			foot.basis = basis
+			var arm := _box(Vector3(0.10, 0.09, 0.75), _mats["trim"], pos + basis * Vector3(side * 1.1, 0.69, 0))
+			arm.basis = basis
 
 
 func _build_pillars() -> void:
@@ -310,7 +361,18 @@ func _build_exit_marker() -> void:
 	ring.ring_segments = 6
 	var mi := _mesh_instance(ring, _mats["trim"])
 	mi.position = Vector3(0.0, 0.03, 0.0)
-	mi.rotation.x = PI * 0.5
+
+
+func _build_lighting() -> void:
+	for i in range(6):
+		var a := TAU * float(i) / 6.0
+		var lamp := OmniLight3D.new()
+		lamp.position = Vector3(cos(a) * hall_radius * 0.55, ceiling_height - 0.65, sin(a) * hall_radius * 0.55)
+		lamp.light_color = tint.lightened(0.5)
+		lamp.light_energy = 1.6
+		lamp.omni_range = hall_radius * 1.3
+		lamp.shadow_enabled = false
+		add_child(lamp)
 
 
 # ── 对外接口（与 station.gd 同名同义）────────────────────────────────

@@ -1,4 +1,5 @@
 extends Node3D
+const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 var game
 var camera: Camera3D
@@ -3039,7 +3040,7 @@ func _batch_box(size: Vector3, material: Material, xform: Transform3D) -> void:
 		_batch[key] = {"tool": created, "material": material}
 	var entry: Dictionary = _batch[key]
 	var tool: SurfaceTool = entry["tool"]
-	tool.append_from(_box(size), 0, xform)
+	tool.append_from(PrecisionGeometry.box(size), 0, xform)
 
 
 ## 把批次合并成少量 MeshInstance3D，减少 draw call（网页版单线程，draw call 很贵）。
@@ -3047,7 +3048,6 @@ func _batch_flush() -> void:
 	for key in _batch:
 		var entry: Dictionary = _batch[key]
 		var tool: SurfaceTool = entry["tool"]
-		tool.generate_normals()
 		var instance := MeshInstance3D.new()
 		instance.mesh = tool.commit()
 		instance.material_override = entry["material"]
@@ -3077,7 +3077,9 @@ func _material(color: Color, emission := 0.0) -> StandardMaterial3D:
 
 func _mesh(mesh: Mesh, material: Material, at: Vector3) -> MeshInstance3D:
 	var instance := MeshInstance3D.new()
-	instance.mesh = mesh
+	instance.mesh = PrecisionGeometry.refine(mesh, true)
+	if material is StandardMaterial3D:
+		PrecisionGeometry.surface(material, "metal")
 	instance.material_override = material
 	instance.position = at
 	return instance

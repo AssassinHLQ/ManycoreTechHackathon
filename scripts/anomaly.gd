@@ -1,4 +1,5 @@
 extends Node3D
+const Precision = preload("res://scripts/procedural_dressing.gd")
 
 var game: Node3D
 var anomaly_id := ""
@@ -81,6 +82,7 @@ func _ready() -> void:
 	light.omni_range = 16.0
 	light.position.y = 4.2
 	add_child(light)
+	Precision.scanner(self, accent_color)
 	for child in get_children():
 		if child is GeometryInstance3D:
 			child.visibility_range_end = 1100.0
