@@ -35,7 +35,7 @@ func _run() -> void:
 	await game.await_world_ready()
 	await _frames(20)
 	game.hud.visible = false
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await _frames(16)
 
 	var camera := Camera3D.new()

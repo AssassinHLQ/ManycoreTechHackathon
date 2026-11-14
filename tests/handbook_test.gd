@@ -78,7 +78,7 @@ func _run() -> void:
 	await process_frame
 
 	# ---------- 下一件值得做的事 ----------
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	game.progress.reset()
 	game.keepsakes.clear()

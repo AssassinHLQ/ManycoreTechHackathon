@@ -49,9 +49,9 @@ func _run() -> void:
 	_check(game.state == "end", "final universe discovery opens the ending")
 	var entry: Button
 	for node in game.hud.ending.find_children("*", "Button", true, false):
-		if node.text.begins_with("回到阁楼"):
+		if node.text.begins_with("继续航行 · 前往归航站"):
 			entry = node
-	_check(entry != null, "universe ending exposes the playable attic entry")
+	_check(entry != null, "universe ending guides the player to the station")
 	if entry == null:
 		game.queue_free()
 		await process_frame
@@ -59,8 +59,10 @@ func _run() -> void:
 		quit(1)
 		return
 	entry.pressed.emit()
+	_check(not game.in_attic and game.state == "walk", "ending resumes the universe without teleporting")
+	preload("res://tests/home_fixture.gd").enter(game)
 	_check(game.in_attic and game.state == "walk" and game.player.get_parent() == game.attic,
-		"actual ending button enters the attic")
+		"station door interaction enters the attic after the ending")
 	var before: float = game.elapsed
 	await process_frame
 	_check(is_equal_approx(before, game.elapsed), "universe timer pauses in the attic")
@@ -109,7 +111,7 @@ func _run() -> void:
 		"reload restores the shelf heart and hides the entire original")
 	_check(game.next_worth_doing().contains("航海回声台"), "reload directs completed keepsakes into the linked universe route")
 	game.start_game()
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	# Check dispatch rather than entering pocket worlds by directly calling their API.
 	for door in game.attic.doors:
 		var key: String = door["key"]
@@ -138,7 +140,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_check(game.elapsed > clock, "universe timer resumes after title restart")
-	# The public demo is another reachable route: Esc hands control back in the attic.
+	# A title preview returns to title; it does not grant playable home access.
 	game.return_to_menu()
 	for node in game.hud.menu.find_children("*", "Button", true, false):
 		if node.text.begins_with("自动演示"):
@@ -149,8 +151,8 @@ func _run() -> void:
 	cancel.action = "ui_cancel"
 	cancel.pressed = true
 	game._unhandled_input(cancel)
-	_check(not game.demo_active and game.in_attic and game.state == "walk",
-		"Esc exits the demo into a playable attic")
+	_check(not game.demo_active and not game.in_attic and game.state == "menu",
+		"Esc exits the title preview back to title without granting home access")
 	_check(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED, "all transitions respect --no-capture")
 	game.queue_free()
 	await process_frame

@@ -28,7 +28,7 @@ func _run() -> void:
 	root.add_child(game)
 	await game.await_world_ready()
 	await process_frame
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 
 	# ---- 茶席三步 ----

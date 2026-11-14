@@ -33,7 +33,7 @@ func _run() -> void:
 	if game.minigames == null:
 		quit(1)
 		return
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await process_frame
 
 	# --- 三个入口 ---

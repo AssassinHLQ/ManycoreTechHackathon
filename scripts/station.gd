@@ -8,7 +8,7 @@ var active_corridor := -1
 
 # ── Lux3D 站内家具加载（2026-11-12 接入）────────────────────────────
 #
-# station.gd 有 355 个程序化图元，是剩下最大的程序化模块。
+# 站体由大量程序化构件搭建，静态合并后的网格数不等于独立模型数。
 # 这批只换**玩家走进去会看到的家具**（座椅/控制台/花箱/望远镜/舱门/长凳…），
 # **壳体、走廊、隔墙、房间轮廓一律保持程序化** —— 那些要和碰撞、门洞、
 # 地板高度精确对齐，AI 模型尺寸不可控，硬套会穿模、会走空。
@@ -1325,6 +1325,7 @@ func _build_hub() -> void:
 		hub_skip.append(leaf)
 	_merge_static_meshes(hub_root, hub_skip, "HubMerged")
 	_build_hub_detail()
+	_build_home_door()
 	# 外塔和能源核心的碰撞挂在 hub_body 上，飞船靠近时不会穿模。
 	_add_hub_cylinder_collider(22.0, 64.0, Vector3(0.0, 60.0, 0.0))
 	_add_hub_cylinder_collider(11.5, 152.0, Vector3(0.0, 167.0, 0.0))
@@ -2228,6 +2229,38 @@ func dock_up_direction() -> Vector3:
 
 func up_direction() -> Vector3:
 	return global_transform.basis.y.normalized()
+
+
+func _build_home_door() -> void:
+	# Freestanding cabin at the hub's rear, clear of all six corridors and airlock.
+	var cabin := Node3D.new()
+	cabin.name = "HomeDoor"
+	cabin.position = Vector3(-10.0, FLOOR_TOP, 15.0)
+	hub_root.add_child(cabin)
+	for side: float in [-1.0, 1.0]:
+		_box(cabin, Vector3(0.22, 3.4, 0.7), Vector3(side * 1.45, 1.7, 0.0), _mat_trim)
+	_box(cabin, Vector3(3.12, 0.22, 0.7), Vector3(0.0, 3.4, 0.0), _mat_trim)
+	_box(cabin, Vector3(2.68, 3.3, 0.24), Vector3(0.0, 1.65, 0.0), _mat_warm)
+	_box(cabin, Vector3(0.12, 0.12, 0.18), Vector3(0.95, 1.4, -0.2), _mat_glow)
+	_add_hub_box_collider(Vector3(3.12, 3.6, 0.7), cabin.position + Vector3(0.0, 1.8, 0.0))
+	_label("回家 · 阁楼", Vector3(0.0, 3.95, -0.4), 44, 0.009, PI, Color("ffe4b4"), cabin)
+	_label("靠近舱门按 E", Vector3(0.0, 2.7, -0.15), 30, 0.007, PI, Color("fff0d0"), cabin)
+	_light(cabin.position + Vector3(0.0, 2.5, -1.5), Color("ffd8ac"), 1.2, 7.0, hub_root)
+	# Floor guides lead from the airlock side toward the door without crossing the core.
+	for i in range(6):
+		_box(hub_root, Vector3(0.35, 0.02, 0.9),
+			Vector3(-10.0, FLOOR_TOP + 0.055, 4.5 + i * 1.3), _mat_warm)
+
+
+func home_door_position() -> Vector3:
+	return to_global(Vector3(-10.0, FLOOR_TOP + 0.02, 13.5))
+
+
+func near_home_door(world_position: Vector3) -> bool:
+	var local := to_local(world_position)
+	# Only the front approach reaches the interaction; no use through the cabin back.
+	return absf(local.x + 10.0) < 1.8 and local.z > 11.5 and local.z < 14.6 \
+		and local.y > FLOOR_TOP - 0.1 and local.y < FLOOR_TOP + 2.3
 
 
 func airlock_position() -> Vector3:

@@ -205,7 +205,7 @@ func _run() -> void:
 	worlds.boat_active = false
 	worlds.boat_pos = Vector2(1.0, -6.0)
 	worlds.update_boat(0.0, 0.0, 0.016)
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	game.enter_pocket("cloud")
 	await physics_frame

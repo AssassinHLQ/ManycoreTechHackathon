@@ -49,7 +49,7 @@ func _run() -> void:
 		game.progress.unlock(id)
 	game.progress.record_game("chime", 132)
 	game.progress.record_game("rain", 96)
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await _frames(10)
 	game.hud.visible = false
 	game.toggle_bag()

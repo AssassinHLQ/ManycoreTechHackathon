@@ -36,7 +36,7 @@ func _run() -> void:
 	game.hud.visible = false
 	game.hud.menu.visible = false
 	game.state = "capture"
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await _frames(10)
 
 	var camera := Camera3D.new()

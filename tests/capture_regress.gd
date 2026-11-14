@@ -109,7 +109,7 @@ func _run() -> void:
 	game.set_process(true)
 
 	# --- 2 阁楼 ---
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await _frames(24)
 	await _capture("02_attic")
 

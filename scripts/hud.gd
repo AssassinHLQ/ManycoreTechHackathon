@@ -91,6 +91,7 @@ var route_finish: Button
 var end_heading: Label
 var end_continue: Button
 var end_return: Button
+var end_home: Button
 var settings_panel: Control
 var setting_buttons: Dictionary = {}
 var volume_slider: HSlider
@@ -476,7 +477,8 @@ func _build_menu() -> void:
 	features.custom_minimum_size.y = 142
 	menu_start = _button(box, "开始探索", func(): game.start_game())
 	menu_start.custom_minimum_size.y = 54
-	menu_attic = _button(box, "回到阁楼 · 航海回声台", func(): game.request_attic_visit())
+	menu_attic = _button(box, "回家入口位于归航站中央枢纽", func(): game.request_attic_visit())
+	menu_attic.disabled = true
 	menu_attic.custom_minimum_size.y = 44
 	menu_attic.visible = false
 	_button(box, "自动演示 · 约 2 分半", func(): game.start_demo()).custom_minimum_size.y = 44
@@ -651,7 +653,7 @@ func rebuild_journal() -> void:
 		journal_entries.add_child(spacer)
 	journal_objective.text = game.objective_text()
 	if game.route_link.unlocked(game):
-		journal_objective.text += "\n\n阁楼回声 %d/4\nEsc → 航海回声台查看条件与回应；在地面或对接后可回阁楼，原航程暂停保留。" % game.route_link.verified_count(game)
+		journal_objective.text += "\n\n阁楼回声 %d/4\nEsc → 航海回声台查看条件与回应；回家需在归航站对接并进入枢纽的暖色舱门，原航程暂停保留。" % game.route_link.verified_count(game)
 
 
 func _build_help() -> void:
@@ -699,7 +701,8 @@ func _build_ending() -> void:
 	end_stats = _text(box, "", 14, Color("78aaa6"))
 	end_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	end_stats.custom_minimum_size.y = 40
-	_button(box, "回到阁楼，把这段慢时间还给自己", func(): game.enter_attic()).custom_minimum_size.y = 52
+	end_home = _button(box, "继续航行 · 前往归航站回家", func(): game.resume_home_voyage())
+	end_home.custom_minimum_size.y = 52
 	end_continue = _button(box, "留在这个太阳系，继续自由探索", func(): game.continue_after_end())
 	end_continue.custom_minimum_size.y = 52
 	end_return = _button(box, "返回原来的航程", func(): game.leave_attic())
@@ -983,9 +986,9 @@ func _process(delta: float) -> void:
 	hud_root.visible = playing and not game.map_open
 	menu.visible = game.state == "menu"
 	pause_menu.visible = game.paused and not game.journal_open and not game.route_board_open and playing
-	menu_attic.visible = game.route_link.unlocked(game)
+	menu_attic.visible = true
 	pause_attic.text = "继续航行 · 返回原来的位置" if game.in_attic else (
-		"回到阁楼" if game.can_visit_attic() else "回到阁楼 · 需扫描风车塔并落地 / 对接")
+		"回家 · 进入阁楼" if game.can_visit_attic() else "回家 · 请到归航站枢纽的舱门")
 	pause_attic.disabled = not game.in_attic and not game.can_visit_attic()
 	journal.visible = game.journal_open
 	ending.visible = game.state == "end"
@@ -1012,6 +1015,7 @@ func _process(delta: float) -> void:
 		end_heading.text = "归航 · 同一个世界" if game.in_attic and game.route_link.completed else "黑洞前奏"
 		end_continue.text = "留在阁楼，继续慢慢探索" if game.in_attic else "留在这个太阳系，继续自由探索"
 		end_return.visible = game.in_attic
+		end_home.visible = not game.in_attic
 		end_body.text = game.end_text
 		end_stats.text = "记录 %d / %d　·　经历 %d 次轮回　·　旅程仍在继续" % [game.discovered.size(), game.anomalies.size(), game.loop_count]
 	if game.state == "menu":

@@ -139,7 +139,7 @@ func _run() -> void:
 	_check(not game.bag.open and not game.bag_open, "再按 B 收起行囊")
 
 	# --- 真实交互：钓鱼进图鉴 + 解锁成就 ---
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	game.enter_pocket("snow")
 	await physics_frame

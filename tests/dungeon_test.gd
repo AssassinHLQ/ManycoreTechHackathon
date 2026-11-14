@@ -47,7 +47,7 @@ func _run() -> void:
 	_check(game.attic_worlds.dungeon_room_kind(1) == "boon", "第 2 间是静镜室")
 	_check(game.attic_worlds.dungeon_room_kind(5) == "boss", "第 6 间是镜心内厅")
 
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	game.enter_pocket("mirror")
 	await physics_frame

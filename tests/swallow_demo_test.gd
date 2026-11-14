@@ -35,7 +35,7 @@ func _run() -> void:
 	_check(not game.attic.swallow_node.visible, "燕子初始藏着（雨没停）")
 	_check(not game.attic.swallow_on_sill(), "初始窗台上没有燕子")
 
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	# 雨巷纪念归架 → 燕子出现
 	game.keepsakes["alley"] = true

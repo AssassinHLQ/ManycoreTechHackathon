@@ -31,7 +31,7 @@ func _run() -> void:
 	await process_frame
 
 	# ---------- 一、鱼类详情页 ----------
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	game.progress.reset()
 	game.toggle_bag()

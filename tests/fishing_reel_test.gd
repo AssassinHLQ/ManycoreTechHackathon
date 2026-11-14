@@ -31,7 +31,7 @@ func _run() -> void:
 	await process_frame
 
 	# 进阁楼 → 雪世界，站到第一处冰洞旁
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	game.enter_pocket("snow")
 	await physics_frame

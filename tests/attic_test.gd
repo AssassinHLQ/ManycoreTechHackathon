@@ -75,6 +75,7 @@ func _run() -> void:
 	# ---- 第二段：接入游戏状态机 ----
 	var game = load("res://scenes/main.tscn").instantiate()
 	game.save_path = "user://attic_test_save.json"
+	game.progress_path = "user://attic_test_progress.json"
 	root.add_child(game)
 	await game.await_world_ready()
 	await process_frame
@@ -82,7 +83,7 @@ func _run() -> void:
 	game.start_game()
 	await physics_frame
 
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await process_frame
 	_check(game.in_attic and game.state == "walk", "enter_attic switches to attic walk state")
 	_check(game.player.get_parent() == game.attic, "player is reparented into the attic")
@@ -101,7 +102,8 @@ func _run() -> void:
 
 	game.leave_attic()
 	await process_frame
-	_check(not game.in_attic and game.player.get_parent() == game, "leave_attic returns to the solar system")
+	_check(not game.in_attic and game.in_station and game.player.get_parent() == game.station,
+		"leave_attic returns to the homecoming station interior")
 
 	print("ATTIC TEST COMPLETE: %d checks, %d failure(s)" % [checks, failures])
 	game.queue_free()

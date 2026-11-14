@@ -22,6 +22,7 @@ func _run() -> void:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save))
 	game = load("res://scenes/main.tscn").instantiate()
 	game.save_path = test_save
+	game.progress_path = "user://starward_station_test_progress.json"
 	root.add_child(game)
 	await game.await_world_ready()
 	await process_frame

@@ -48,7 +48,7 @@ func _run() -> void:
 		_check(door_keys.has(key), "门定义包含 %s" % key)
 
 	# 进入阁楼
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	await physics_frame
 	_check(game.in_attic and not game.in_pocket(), "已进入阁楼本体")

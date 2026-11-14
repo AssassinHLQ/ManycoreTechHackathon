@@ -2716,7 +2716,11 @@ func _interact() -> void:
 				return
 			# 茶席：站在茶壶前按 E，一步一步泡
 			var tea_anchor: Node3D = attic.tea_anchor()
-			if tea_anchor != null and player.global_position.distance_to(tea_anchor.global_position) < 2.0:
+			var dial_anchor: Node3D = attic.dial_anchor()
+			var dial_distance := player.global_position.distance_to(dial_anchor.global_position) if dial_anchor != null else INF
+			var tea_distance := player.global_position.distance_to(tea_anchor.global_position) if tea_anchor != null else INF
+			# The small room puts both in reach; the dial must remain usable beside the table.
+			if tea_distance < 2.0 and (dial_distance >= 2.2 or tea_distance <= dial_distance):
 				var tea_result: Dictionary = attic.advance_tea()
 				if bool(tea_result.get("changed", false)):
 					audio.play_ui(520.0 + float(int(tea_result["step"])) * 60.0)
@@ -2727,8 +2731,7 @@ func _interact() -> void:
 					progress.save()
 				return
 			# 天气旋钮：站在旋钮前按 E 轮换窗外天气
-			var dial_anchor: Node3D = attic.dial_anchor()
-			if dial_anchor != null and player.global_position.distance_to(dial_anchor.global_position) < 2.2:
+			if dial_distance < 2.2:
 				guide_turned_dial = true
 				var weather: Dictionary = attic.cycle_dial()
 				audio.play_ui(480.0 + float(int(weather["index"])) * 60.0)
@@ -2743,10 +2746,12 @@ func _interact() -> void:
 			hud.show_toast("走到门（或镜面）前再按 E", 2.2)
 			return
 		if in_station:
-			if active_station != null and player.global_position.distance_to(active_station.airlock_position()) < 4.0:
+			if can_visit_attic():
+				enter_attic()
+			elif active_station != null and player.global_position.distance_to(active_station.airlock_position()) < 4.0:
 				exit_station_to_ship()
 			else:
-				hud.show_toast("气闸在舱室中央 · 站到地面发光环上再按 E", 2.2)
+				hud.show_toast("返回飞船请到中央气闸；回家请到归航站中央枢纽的暖色舱门。", 3.0)
 			return
 		if near_ship_to_board():
 			if roast != null:
@@ -2853,7 +2858,7 @@ func enter_station() -> void:
 	if target_station.has_method("is_distant_station"):
 		hud.show_toast("已进入%s · 环形观景舱 · 站上地面发光环按 E 返回飞船" % target_station.display_name, 5.0)
 	else:
-		hud.show_toast("已进入归航站中央枢纽 · 六条放射走廊 A–F · 气闸控制台旁按 E 返回飞船", 5.0)
+		hud.show_toast("归航站中央枢纽 · 暖色「回家」舱门按 E 进入阁楼；气闸控制台返回飞船。", 6.0)
 
 
 func _recover_from_station_void() -> void:
@@ -3011,13 +3016,15 @@ func get_prompt() -> String:
 			return "右侧按钮缩放 · 关闭按钮收起星图 · 拖动平移"
 		return "滚轮缩放 · 拖动平移 · 点击 / Q E 选择 · T 设为目标 · M / Esc 收起星图"
 	if in_station:
-		if player.global_position.distance_to(station.airlock_position()) < 4.0:
+		if can_visit_attic():
+			return "「互动」回家 · 进入阁楼" if touch_ui_active() else "E 回家 · 进入阁楼"
+		if active_station != null and player.global_position.distance_to(active_station.airlock_position()) < 4.0:
 			if touch_ui_active():
 				return "「互动」返回飞船 · 解除对接"
 			return "E 返回飞船 · 解除对接"
 		if touch_ui_active():
 			return "左摇杆移动 · 拖动右侧视角 · 六条放射走廊 · 气闸在中央"
-		return "WASD 移动 · 六条放射走廊 A–F · 气闸控制台在中央 · E 返回飞船 · 舷窗外是真实宇宙"
+		return "WASD 移动 · 六条放射走廊 A–F · 中央气闸返回飞船 · 归航站暖色舱门回家"
 	if scan_target != null:
 		if scan_target.anomaly_id == "xuanyuan" and not missing_clues().is_empty():
 			return "信号被三层坐标加密 · 尚缺 %d 枚棱镜" % missing_clues().size()
@@ -3155,7 +3162,7 @@ func discover(id: String) -> void:
 	if anomaly != null:
 		hud.show_toast("新条目 · " + anomaly.title, 4.0)
 	if id == "qinglan":
-		hud.show_toast("风车塔里传来阁楼的回声。已解锁 Esc → 回到阁楼；落地或对接后可进入。", 7.0)
+		hud.show_toast("风车塔里传来阁楼的回声。想回家，请飞往归航站，对接后到中央枢纽的「回家」舱门按 E。", 8.0)
 	if route_link.key_for(id) != "":
 		if route_link.tracked == route_link.key_for(id):
 			route_link.tracked = ""
@@ -3299,10 +3306,12 @@ func toggle_travel_journal() -> void:
 
 ## 开始演示：进阁楼、把相机交出去
 func start_demo() -> void:
-	if demo == null:
+	if demo == null or demo_active:
 		return
+	_demo_preview = not in_attic
+	_demo_return_menu = state == "menu"
 	if not in_attic:
-		enter_attic()
+		_enter_attic_space()
 	demo_active = true
 	if player != null:
 		player.set_physics_process(false)
@@ -3338,11 +3347,18 @@ func stop_demo() -> void:
 		player.velocity = Vector3.ZERO
 	if hud != null and hud.hud_root != null:
 		hud.hud_root.visible = true
+	# A preview grants no playable home access. Restore the launch context on exit.
+	if _demo_preview:
+		_demo_preview = false
+		leave_attic()
+		if _demo_return_menu:
+			return_to_menu()
+	_demo_return_menu = false
 
 
 func demo_finished() -> void:
 	stop_demo()
-	hud.show_toast("自动演示结束 · 想自己玩就从这里开始", 4.0)
+	hud.show_toast("自动演示结束 · 回家请前往归航站中央枢纽。", 4.0)
 
 
 ## 演示用的相机
@@ -3389,10 +3405,12 @@ func demo_enter_world(key: String) -> void:
 
 ## 演示：回阁楼
 func demo_leave_to_attic() -> void:
+	if not demo_active:
+		return
 	if in_pocket():
 		leave_pocket()
 	if not in_attic:
-		enter_attic()
+		_enter_attic_space()
 	if player != null:
 		player.set_physics_process(false)
 		player.set_process_input(false)
@@ -3826,6 +3844,8 @@ var run_summary: CanvasLayer
 ## 自动演示
 var demo: CanvasLayer
 var demo_active := false
+var _demo_preview := false
+var _demo_return_menu := false
 ## 是否坐在云舟上（相机与位置跟随船）
 var boat_seated := false
 ## 望远镜：是否在看 / 看之前的相机变换
@@ -3951,7 +3971,13 @@ func _clear_attic_context() -> void:
 
 
 func enter_attic() -> void:
-	# 地面线入口：把玩家放进阁楼，暂停太阳系那套重力与光照。
+	if not can_visit_attic():
+		return
+	_enter_attic_space()
+
+
+func _enter_attic_space() -> void:
+	# Shared scene transition for the physical home door and non-playable demo.
 	if attic == null or player == null:
 		return
 	if in_attic:
@@ -3961,8 +3987,6 @@ func enter_attic() -> void:
 		paused = false
 		_set_mouse_capture()
 		return
-	if state == "menu":
-		start_game()
 	_capture_attic_return()
 	_close_route_context()
 	_dev_clear_overlays()
@@ -4041,18 +4065,15 @@ func _capture_attic_return() -> void:
 
 
 func can_visit_attic() -> bool:
-	if not route_link.unlocked(self) or supernova_active:
+	if supernova_active or demo_active:
 		return false
-	if state == "menu" or in_attic:
+	if in_attic and state == "walk":
 		return true
-	if state not in ["walk", "ship"]:
+	if state != "walk" or not in_station or active_station != station:
 		return false
-	if in_station or ship.docked:
-		return true
-	if state == "ship":
-		return ship.landed
-	# Prevent using the safe room to cancel a fall or a spacewalk.
-	return player.is_on_floor()
+	if player.get_parent() != station:
+		return false
+	return station.near_home_door(player.global_position)
 
 
 func request_attic_visit() -> void:
@@ -4061,7 +4082,18 @@ func request_attic_visit() -> void:
 	elif can_visit_attic():
 		enter_attic()
 	else:
-		hud.show_toast("先扫描青岚风车塔；在地面站稳、飞船着陆或完成对接后，可回到阁楼。", 5.0)
+		hud.show_toast("回家请飞往归航站；对接进入中央枢纽，走到暖色「回家」舱门前按 E。", 6.0)
+
+
+func resume_home_voyage() -> void:
+	if in_attic:
+		continue_after_end()
+		return
+	if state == "end":
+		continue_after_end()
+	if state not in ["walk", "ship"]:
+		return
+	hud.show_toast("回家路线：飞往归航站 · 对接后进入中央枢纽的「回家」舱门。", 6.0)
 
 
 func near_route_record() -> bool:

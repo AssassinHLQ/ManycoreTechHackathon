@@ -39,6 +39,8 @@ func _boot() -> void:
 
 
 func _aim_at(echo: Node3D) -> void:
+	game.in_station = false
+	game.active_station = null
 	game.player.reparent(echo.get_parent(), false)
 	game.player.transform = Transform3D(echo.basis, echo.position + echo.basis * Vector3(0, 1, 9))
 	game.player.camera.position = Vector3(0, 2, 0)
@@ -63,11 +65,11 @@ func _run() -> void:
 	_cleanup()
 	await _boot()
 	_check(game.route_link.echoes.size() == 4, "four real surface echoes are built")
-	_check(not game.route_link.unlocked(game), "new save does not unlock the attic")
+	_check(not game.route_link.unlocked(game), "new save has no windmill route clue")
 	game.hud._process(0.0)
-	_check(not game.hud.menu_attic.visible, "locked title entry is hidden")
+	_check(game.hud.menu_attic.disabled, "title explains the physical home entrance without teleporting")
 	game.request_attic_visit()
-	_check(game.state == "menu" and not game.in_attic, "locked entry cannot bypass discovery")
+	_check(game.state == "menu" and not game.in_attic, "title request cannot bypass the physical station entrance")
 	game.start_game()
 	game.player.set_physics_process(false)
 	var cloud: Node3D = game.route_link.echoes.cloud
@@ -77,7 +79,7 @@ func _run() -> void:
 	game.discover(cloud.anomaly_id)
 	_check(not game.discovered.has(cloud.anomaly_id), "discovery guard rejects an undecoded echo")
 	game.discover("qinglan")
-	_check(game.route_link.unlocked(game), "windmill discovery unlocks the attic permanently")
+	_check(game.route_link.unlocked(game), "windmill discovery makes route clues available")
 	game.state = "ship"
 	game.ship.landed = false
 	game.ship.docked = false
@@ -90,9 +92,12 @@ func _run() -> void:
 	game.elapsed = 271.25
 	game.set_paused(true)
 	game.hud._process(0.0)
-	_check(not game.hud.pause_attic.disabled, "landed ship exposes an enabled pause-menu entry")
-	game.hud.pause_attic.pressed.emit()
-	_check(game.in_attic and game.state == "walk", "actual pause button enters the attic")
+	_check(game.hud.pause_attic.disabled, "landed ship cannot enter home through pause")
+	game.enter_attic()
+	_check(not game.in_attic, "direct public entry also rejects a landed ship")
+	game.set_paused(false)
+	preload("res://tests/home_fixture.gd").enter(game)
+	_check(game.in_attic and game.state == "walk", "E at the homecoming station door enters home")
 	var clock: float = game.elapsed
 	await process_frame
 	await process_frame
@@ -136,37 +141,51 @@ func _run() -> void:
 	game._unhandled_input(cancel)
 	_check(game.paused and not game.route_board_open, "Esc restores the pause menu when opened there")
 	game.leave_attic()
-	_check(game.state == "ship" and game.get_active_camera() == game.ship.camera and not game.paused, "return restores the landed cockpit and input mode")
+	_check(game.state == "walk" and game.in_station and game.player.get_parent() == game.station and not game.paused, "return restores the homecoming station interior and input")
 	_check(game.elapsed == clock and game.ship.fuel == 63.5 and game.ship.hull == 74.0, "return preserves loop time, ship fuel and damage")
 	await _scan("cloud")
 	_check(game.route_link.tracked == "", "completed scan clears the active surface objective")
 	var count: int = game.discovered.size()
 	game.discover(cloud.anomaly_id)
 	_check(game.discovered.size() == count, "repeated discovery grants no duplicate record")
-	# A moving planet reference, body scale, view, velocity and suit resources survive a visit.
+	# Planetary entry is rejected; a subsequent real station visit preserves suit resources.
 	var local_pose: Transform3D = game.player.transform
-	var local_view: Transform3D = game.player.camera.transform
 	game.player.velocity = Vector3(0.1, 0.2, 0.3)
 	game.player.oxygen = 49.0
 	game.player.fuel = 37.0
 	game.enter_attic()
+	_check(not game.in_attic, "planetary walking cannot bypass the station door")
+	_check(game.player.transform.is_equal_approx(local_pose), "rejected entry does not move the player")
+	preload("res://tests/home_fixture.gd").arrive(game)
+	game.player.oxygen = 49.0
+	game.player.fuel = 37.0
+	game._interact()
 	game.player.oxygen = 100.0
 	game.player.fuel = 100.0
 	game.leave_attic()
-	_check(game.player.get_parent() == game.home and game.player.transform.is_equal_approx(local_pose), "walking return restores planet-local position and orientation")
-	_check(game.player.camera.transform.is_equal_approx(local_view) and game.player.velocity == Vector3(0.1, 0.2, 0.3), "walking return restores camera and velocity")
+	_check(game.player.get_parent() == game.station, "walking return uses the station reference")
 	_check(game.player.oxygen == 49.0 and game.player.fuel == 37.0, "attic refill cannot leak into original suit resources")
 	# The public station path must preserve its interior reference and docked ship.
 	game.ship.docked = true
 	game.ship.docked_station = game.station
 	game.enter_station()
-	var station_pose: Transform3D = game.player.transform
 	game.request_attic_visit()
+	_check(not game.in_attic, "station arrival alone does not bypass its home door")
+	game.player.global_position = game.station.home_door_position()
+	var station_pose: Transform3D = game.player.transform
+	var station_view: Transform3D = game.player.camera.transform
+	game.player.velocity = Vector3(0.1, 0.2, 0.3)
+	game.set_paused(true)
+	game.hud._process(0.0)
+	_check(not game.hud.pause_attic.disabled, "pause entry is enabled only at the actual station door")
+	game.hud.pause_attic.pressed.emit()
 	game.leave_attic()
 	_check(game.in_station and game.active_station == game.station and game.player.get_parent() == game.station,
 		"station return restores interior and active station")
 	_check(game.player.transform.is_equal_approx(station_pose) and game.ship.docked and game.ship.docked_station == game.station,
 		"station return preserves local spawn and docking")
+	_check(game.player.camera.transform.is_equal_approx(station_view) and game.player.velocity == Vector3(0.1, 0.2, 0.3),
+		"station return restores view and velocity")
 	# Test the reverse order too: keepsakes acquired before their universe records.
 	game.enter_attic()
 	for key in ["snow", "alley", "firefly"]:
@@ -186,16 +205,16 @@ func _run() -> void:
 	_check(game.ship.target.planet_id == "baiyao" and game.planets[game.map_selected] == game.ship.target,
 		"progressive world loading restores the tracked ship and map destination")
 	game.hud._process(0.0)
-	_check(game.hud.menu_attic.visible, "old discovery exposes persistent title entry after reload")
+	_check(game.hud.menu_attic.disabled, "saved discovery does not enable title teleportation")
 	game.hud.menu_attic.pressed.emit()
-	_check(game.in_attic and not game._attic_return.is_empty(), "title entry prepares a safe return voyage")
-	game.leave_attic()
+	game.enter_attic()
+	_check(not game.in_attic and game.state == "menu" and game._attic_return.is_empty(), "title and direct calls cannot bypass the station")
+	game.start_game()
 	game.player.set_physics_process(false)
-	_check(game.player.get_parent() == game.home and game.state == "walk", "title visit returns to a valid planetary spawn")
 	for key in ["snow", "alley", "firefly"]:
 		await _scan(key)
 	_check(game.route_link.verified_count(game) == 4, "all four second signals have actually been scanned")
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	_check(not game.route_link.finish(game), "four echoes alone cannot substitute for the heart and universe ending")
 	game.enter_pocket("mirror")
 	game.player.global_position = game.attic_worlds.heart_anchor("mirror").global_position
@@ -209,6 +228,10 @@ func _run() -> void:
 	game.discover("xuanyuan")
 	_check(game.state == "end" and not game.in_attic, "original universe ending remains independently reachable")
 	game.enter_attic()
+	_check(not game.in_attic and game.state == "end", "universe ending cannot directly teleport home")
+	game.resume_home_voyage()
+	_check(not game.in_attic and game.state == "walk", "ending continues the voyage toward the station")
+	preload("res://tests/home_fixture.gd").enter(game)
 	game.open_route_board()
 	_check(not game.hud.route_finish.disabled, "both lines expose an enabled final action")
 	game.hud.route_finish.pressed.emit()
@@ -230,7 +253,7 @@ func _run() -> void:
 	legacy.store_string(JSON.stringify({"logs": {"home": true, "eye": true}, "loops": 3}))
 	legacy.close()
 	game._load_knowledge()
-	_check(game.route_link.unlocked(game) and game.discovered.has("qinglan") and game.loop_count == 3, "legacy universe IDs retain attic access")
+	_check(game.route_link.unlocked(game) and game.discovered.has("qinglan") and game.loop_count == 3, "legacy universe IDs retain route knowledge")
 	_check(game.route_link.decoded.is_empty() and not game.route_link.completed, "legacy save does not invent decoded clues or a final reward")
 	game.return_to_menu()
 	game.start_game()

@@ -148,7 +148,7 @@ func _run() -> void:
 
 	# ---------- 四、near_prop ----------
 	var cloud_anchor = worlds.prop_anchor("cloud_beacon")
-	game.enter_attic()
+	preload("res://tests/home_fixture.gd").enter(game)
 	await physics_frame
 	game.enter_pocket("cloud")
 	await physics_frame
