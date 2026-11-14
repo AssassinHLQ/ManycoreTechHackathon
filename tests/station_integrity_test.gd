@@ -221,11 +221,6 @@ func _run() -> void:
 	var shell := station.get_node_or_null("ExteriorHubShell") as Node3D
 	_check(shell != null and shell.is_visible_in_tree(), "returning to the ship restores the exterior hub shell")
 
-	# The production prop cache holds unparented template nodes; release test fixtures explicitly.
-	for cached in station._station_prop_cache.values():
-		if is_instance_valid(cached):
-			cached.free()
-	station._station_prop_cache.clear()
 	game.queue_free()
 	await process_frame
 	print("STATION INTEGRITY TEST COMPLETE: %d failure(s)" % failures)

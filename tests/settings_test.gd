@@ -50,6 +50,10 @@ func _run() -> void:
 	if scatter != null:
 		s.set_grass(0)
 		_check(scatter.multimesh.visible_instance_count < scatter.multimesh.instance_count, "grass density reduces visible instances")
+		s.set_lod(3)
+		_check(scatter.multimesh.visible_instance_count < scatter.multimesh.instance_count, "raising LOD keeps the reduced grass density")
+		s.set_grass(1)
+		_check(scatter.multimesh.visible_instance_count == -1, "full grass and high LOD restore all plant instances")
 	s.set_msaa(2)
 	_check(game.get_viewport().msaa_3d == Viewport.MSAA_4X, "MSAA applies to the viewport")
 	s.set_sky_detail(0)
@@ -77,6 +81,7 @@ func _run() -> void:
 	s.load_settings()
 	_check(int(s.values.view_distance) == saved_view, "settings persist to disk")
 	s.reset_defaults()
+	_check(int(s.values.get("lod", -1)) == 2, "restore defaults restores LOD without dropping its setting")
 	_check(int(s.values.view_distance) == 1 and int(s.values.msaa) == 1, "restore defaults works")
 	_check(int(s.values.sky_detail) == 3, "restore defaults restores the sky detail tier")
 	Engine.max_fps = 0

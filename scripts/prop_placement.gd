@@ -115,9 +115,9 @@ static func lay_flat(node: Node3D) -> void:
 			child.position -= offset
 
 
-## Find the actual shelf/table surface below a point, without adding physics bodies.
-static func support_y(node: Node3D, point: Vector2, ceiling: float) -> float:
-	var result := -INF
+## Find actual supporting faces. From below, sample undersides for support columns.
+static func support_y(node: Node3D, point: Vector2, ceiling: float, from_below := false) -> float:
+	var result := INF if from_below else -INF
 	var meshes: Array[Node] = node.find_children("*", "MeshInstance3D", true, false)
 	if node is MeshInstance3D:
 		meshes.push_front(node)
@@ -137,10 +137,47 @@ static func support_y(node: Node3D, point: Vector2, ceiling: float) -> float:
 			var b: Vector3 = xf * faces[i + 1]
 			var c: Vector3 = xf * faces[i + 2]
 			var normal := (b - a).cross(c - a)
-			if normal.length_squared() < 0.00000001 or absf(normal.normalized().y) < 0.8:
+			var minimum_y := 0.15 if from_below else 0.8
+			if normal.length_squared() < 0.00000001 or absf(normal.normalized().y) < minimum_y:
 				continue
 			var hit = Geometry3D.ray_intersects_triangle(Vector3(point.x, ceiling, point.y),
-				Vector3.DOWN, a, b, c)
+				Vector3.UP if from_below else Vector3.DOWN, a, b, c)
 			if hit is Vector3:
-				result = maxf(result, hit.y)
+				result = minf(result, hit.y) if from_below else maxf(result, hit.y)
 	return result
+
+
+## Representative real vertices near the feet, rather than empty AABB corners.
+static func contact_points(node: Node3D) -> Array[Vector3]:
+	var box := bounds(node)
+	var points: Array[Vector3] = []
+	var meshes: Array[Node] = node.find_children("*", "MeshInstance3D", true, false)
+	if node is MeshInstance3D:
+		meshes.push_front(node)
+	for item in meshes:
+		var mi := item as MeshInstance3D
+		if mi.mesh == null:
+			continue
+		var xf := Transform3D.IDENTITY
+		var walker: Node = mi
+		while walker != node:
+			if walker is Node3D:
+				xf = walker.transform * xf
+			walker = walker.get_parent()
+		for vertex in mi.mesh.get_faces():
+			var p: Vector3 = xf * vertex
+			if p.y > box.position.y + maxf(0.005, box.size.y * 0.015):
+				continue
+			if points.is_empty():
+				points.assign([p, p, p, p, p])
+			if p.x < points[0].x:
+				points[0] = p
+			if p.x > points[1].x:
+				points[1] = p
+			if p.z < points[2].z:
+				points[2] = p
+			if p.z > points[3].z:
+				points[3] = p
+			if p.y < points[4].y:
+				points[4] = p
+	return points

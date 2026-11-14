@@ -14,65 +14,15 @@ var active_corridor := -1
 # 地板高度精确对齐，AI 模型尺寸不可控，硬套会穿模、会走空。
 #
 # ⚠ 全部可回退：模型缺失时照旧用原来的程序化拼装。
+const Placement := preload("res://scripts/prop_placement.gd")
+
 const STATION_PROP_DIR := "res://assets/models/props/station/"
-var _station_prop_cache: Dictionary = {}
+var _prop_placer := Placement.new()
 
 
-## 取一个站内家具实例，失败返回 null（调用方回退程序化）。
 func _prop(name: String, target_height: float) -> Node3D:
-	if _station_prop_cache.has(name):
-		var cached = _station_prop_cache[name]
-		if cached == null:
-			return null
-		return (cached as Node3D).duplicate() as Node3D
-	var dir: String = STATION_PROP_DIR + name + "/"
-	var glb_path := ""
-	for candidate in ["model.glb", "model_glb.glb"]:
-		if ResourceLoader.exists(dir + candidate):
-			glb_path = dir + candidate
-			break
-	if glb_path == "":
-		_station_prop_cache[name] = null
-		return null
-	var packed := load(glb_path) as PackedScene
-	if packed == null:
-		_station_prop_cache[name] = null
-		return null
-	var instance := packed.instantiate() as Node3D
-	if instance == null:
-		_station_prop_cache[name] = null
-		return null
-	var aabb := AABB()
-	var first := true
-	for node in instance.find_children("*", "MeshInstance3D", true, false):
-		var mi := node as MeshInstance3D
-		if mi.mesh == null:
-			continue
-		var xf := Transform3D.IDENTITY
-		var walker: Node = mi
-		while walker != null and walker != instance:
-			if walker is Node3D:
-				xf = (walker as Node3D).transform * xf
-			walker = walker.get_parent()
-		var box: AABB = xf * mi.get_aabb()
-		aabb = box if first else aabb.merge(box)
-		first = false
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	if first or aabb.size.y < 0.0001:
-		instance.queue_free()
-		_station_prop_cache[name] = null
-		return null
-	var holder := Node3D.new()
-	holder.name = "Prop_" + name
-	holder.add_child(instance)
-	var scale_k: float = target_height / aabb.size.y
-	instance.scale = Vector3.ONE * scale_k
-	instance.position = Vector3(
-		-aabb.get_center().x * scale_k,
-		-aabb.position.y * scale_k,
-		-aabb.get_center().z * scale_k)
-	_station_prop_cache[name] = holder
-	return (holder as Node3D).duplicate() as Node3D
+	return _prop_placer.instantiate(name, target_height, [STATION_PROP_DIR])
+
 
 const SPINE_LENGTH := 300.0
 const RING_RADIUS := 280.0

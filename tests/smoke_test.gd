@@ -252,6 +252,8 @@ func _run() -> void:
 	for i in range(8):
 		await physics_frame
 	_check(game.state == "walk", "start enters on-foot mode")
+	if "--no-capture" in OS.get_cmdline_user_args():
+		_check(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED, "background startup leaves the mouse free")
 	_check(game.player.camera.current, "player camera active")
 	game.player.camera.current = true
 	game._update_sky_pixel_angle()
@@ -476,6 +478,8 @@ func _run() -> void:
 	_check(not game.hud.dev_panel.visible, "closing developer mode hides the panel")
 	var expected_loops: int = game.loop_count + 1
 	game.reset_loop("test")
+	if "--no-capture" in OS.get_cmdline_user_args():
+		_check(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED, "background loop reset leaves the mouse free")
 	_check(game.loop_count == expected_loops and game.state == "walk", "loop reset preserves knowledge and restores player")
 	game._trigger_supernova()
 	_check(game.state == "supernova", "supernova sequence starts")

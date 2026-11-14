@@ -79,6 +79,9 @@ func apply_all() -> void:
 func _apply_resolution() -> void:
 	if OS.has_feature("web"):
 		return
+	# Capture probes manage their own offscreen window geometry.
+	if "--no-capture" in OS.get_cmdline_user_args():
+		return
 	if DisplayServer.get_name() == "headless":
 		return
 	if int(values.resolution) == 3:
@@ -137,26 +140,30 @@ const LOD_DENSITY := [0.45, 0.7, 1.0, 1.0]
 func _apply_lod() -> void:
 	if game == null or game.planets == null:
 		return
-	var level: int = clampi(int(values.lod), 0, 3)
-	var distance: float = LOD_DISTANCE[level]
-	var density: float = LOD_DENSITY[level]
 	for planet in game.planets:
 		if planet == null or not is_instance_valid(planet):
 			continue
 		for node in planet.find_children("Prop_*", "MultiMeshInstance3D", true, false):
-			var mmi := node as MultiMeshInstance3D
-			if mmi == null or mmi.multimesh == null:
-				continue
-			var n: String = String(mmi.name)
-			# 地标/地貌件：只有距离档位，不削密度
-			if n.contains("lm-") or n.contains("lf-"):
-				mmi.visibility_range_end = distance * 1.6
-				mmi.multimesh.visible_instance_count = -1
-				continue
-			mmi.visibility_range_end = distance
-			var total: int = mmi.multimesh.instance_count
-			mmi.multimesh.visible_instance_count = (
-				-1 if density >= 0.999 else maxi(1, int(float(total) * density)))
+			apply_prop_lod(node as MultiMeshInstance3D)
+
+
+## Also called as progressive planet loading adds or extends a prop batch.
+func apply_prop_lod(mmi: MultiMeshInstance3D) -> void:
+	if mmi == null or mmi.multimesh == null:
+		return
+	var level: int = clampi(int(values.get("lod", 2)), 0, 3)
+	var distance: float = LOD_DISTANCE[level]
+	var n := String(mmi.name)
+	if n.contains("lm-") or n.contains("lm2-") or n.contains("lf-"):
+		mmi.visibility_range_end = distance * 1.6
+		mmi.multimesh.visible_instance_count = -1
+		return
+	var density: float = LOD_DENSITY[level]
+	if mmi.is_in_group("ground_scatter") and int(values.grass) == 0:
+		density *= 0.45
+	mmi.visibility_range_end = distance
+	var total: int = mmi.multimesh.instance_count
+	mmi.multimesh.visible_instance_count = -1 if density >= 0.999 else maxi(1, int(float(total) * density))
 
 
 func _apply_grass() -> void:
@@ -168,6 +175,7 @@ func _apply_grass() -> void:
 		if is_instance_valid(node) and node.multimesh != null:
 			var total: int = node.multimesh.instance_count
 			node.multimesh.visible_instance_count = int(total * fraction)
+	_apply_lod()
 
 
 ## 星空精细度交给 main.gd 推给天空着色器 —— 那里是唯一知道 sky_material 的地方。
@@ -313,7 +321,8 @@ func reset_defaults() -> void:
 		"grass": 1,
 		"sky_detail": 3,
 		"volume": 80,
-		"sensitivity": 1.0
+		"sensitivity": 1.0,
+		"lod": 2
 	}
 	apply_all()
 	save_settings()

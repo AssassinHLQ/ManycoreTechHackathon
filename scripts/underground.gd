@@ -3,6 +3,8 @@ extends RefCounted
 ## 地下洞穴与可进入建筑内部。所有构件都使用地表局部坐标：+Y 为地表法线。
 ## 洞穴挂在星球自身的 cave_direction 上，建筑内部挂在 Architecture_* 根节点上。
 
+const Placement := preload("res://scripts/prop_placement.gd")
+
 const HOME_WALL_SEGMENTS := 16
 const HOME_WALL_RADIUS := 6.55
 const HOME_WALL_HEIGHT := 4.4
@@ -76,6 +78,16 @@ static func _build_cave_props(root: Node3D, planet, chamber_radius: float,
 		["cave-rail", 2, 1.2, 1.8, "floor"],
 		["cave-elevator", 1, 1.4, 2.0, "wall"],
 	]
+	var loader := Placement.new()
+	for row in [
+		["cave-crate", 1.0, Vector3(outer - 1.0, floor_y + 0.08, 1.5)],
+		["cave-lamp", 0.65, Vector3(outer - 1.0, floor_y + 1.08, 1.5)],
+		["cave-strut", ceiling_y - floor_y - 0.48, Vector3(-outer, floor_y + 0.08, 0)],
+	]:
+		var prop := loader.instantiate(row[0], row[1], ["res://assets/models/props/station/"])
+		if prop != null:
+			prop.position = row[2]
+			root.add_child(prop)
 	var placed := 0
 	for entry in table:
 		var pid: String = entry[0]
@@ -118,6 +130,28 @@ static func _build_cave_props(root: Node3D, planet, chamber_radius: float,
 			mi.transform = Transform3D(basis, Vector3(cos(ang) * rad, y, sin(ang) * rad))
 			root.add_child(mi)
 			placed += 1
+	var bridge := loader.instantiate("cave-bridge", 0.5, ["res://assets/models/props/"])
+	if bridge != null:
+		Placement.fit(bridge, Vector3(3.6, 0.5, 1.4))
+		bridge.position = Vector3(0, floor_y + 0.08, -outer + 1.8)
+		root.add_child(bridge)
+		var water := _box(root, Vector3(2.1, 0.015, 2.0),
+			bridge.position + Vector3(0, 0.01, 0), planet._material(Color("456e7b"), 0.12))
+		water.name = "CavePool"
+		var bridge_body := StaticBody3D.new()
+		root.add_child(bridge_body)
+		for item in bridge.find_children("*", "MeshInstance3D", true, false):
+			var mi := item as MeshInstance3D
+			var xf := Transform3D.IDENTITY
+			var walker: Node = mi
+			while walker != root:
+				if walker is Node3D:
+					xf = walker.transform * xf
+				walker = walker.get_parent()
+			var shape := CollisionShape3D.new()
+			shape.shape = planet._prop_collision_shape("cave_footbridge", mi.mesh)
+			shape.transform = xf
+			bridge_body.add_child(shape)
 	if placed > 0:
 		print("[CAVE] %s：摆入 %d 件陈设" % [planet.planet_id, placed])
 

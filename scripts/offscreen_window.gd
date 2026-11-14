@@ -22,6 +22,8 @@ class_name OffscreenWindow
 ##
 ## `tree` 传 `self`（SceneTree）。改完之后等几帧，让 DisplayServer 真正应用。
 static func apply(tree: SceneTree, size := Vector2i(960, 540)) -> void:
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 	DisplayServer.window_set_size(size)
 	DisplayServer.window_set_position(Vector2i(-4000, -4000))

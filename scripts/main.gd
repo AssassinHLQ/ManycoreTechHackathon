@@ -2125,7 +2125,7 @@ func reset_loop(reason := "") -> void:
 	journal_open = false
 	map_open = false
 	player.camera.current = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture()
 	_save_knowledge()
 	if reason != "":
 		hud.show_toast(reason, 4.5)
@@ -2154,6 +2154,11 @@ func begin_death(reason: String, duration := 3.0) -> void:
 	audio.play_supernova()
 
 
+func _set_mouse_capture(requested := true) -> void:
+	var allowed := DisplayServer.get_name() != "headless" and not "--no-capture" in OS.get_cmdline_user_args()
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if requested and allowed else Input.MOUSE_MODE_VISIBLE
+
+
 func start_game() -> void:
 	if state != "menu":
 		return
@@ -2166,7 +2171,7 @@ func start_game() -> void:
 	journal_open = false
 	map_open = false
 	player.camera.current = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture()
 	if DisplayServer.get_name() != "headless" and not OS.has_feature("web"):
 		DisplayServer.window_set_ime_active(false)
 	hud.show_toast("先扫描风车塔，再去看看宇宙。", 5.0)
@@ -2194,7 +2199,7 @@ func set_paused(value: bool) -> void:
 	paused = value
 	journal_open = false
 	map_open = false
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if paused else Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture(not paused)
 
 
 func toggle_journal() -> void:
@@ -2203,7 +2208,7 @@ func toggle_journal() -> void:
 	journal_open = not journal_open
 	paused = journal_open
 	map_open = false
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if journal_open else Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture(not journal_open)
 	if journal_open:
 		hud.rebuild_journal()
 
@@ -2822,7 +2827,7 @@ func enter_station() -> void:
 	player.oxygen = 100.0
 	player.visible = true
 	player.camera.current = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture()
 	audio.play_ui(430.0)
 	if target_station.has_method("is_distant_station"):
 		hud.show_toast("已进入%s · 环形观景舱 · 站上地面发光环按 E 返回飞船" % target_station.display_name, 5.0)
@@ -2847,7 +2852,7 @@ func exit_station_to_ship() -> void:
 	player.visible = false
 	state = "ship"
 	ship.camera.current = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture()
 	audio.play_ui(360.0)
 	hud.show_toast("已返回飞船 · Space 脱离对接", 3.0)
 
@@ -3249,7 +3254,7 @@ func toggle_travel_journal() -> void:
 			codex_open = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_set_mouse_capture()
 
 
 ## ---------------------------------------------------------------------------
@@ -3598,7 +3603,7 @@ func toggle_handbook() -> void:
 			bag_open = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_set_mouse_capture()
 
 
 ## 星图图鉴（G 键）。跟手册一样：打开时收鼠标、盖住其它面板；关掉时把鼠标还给镜头。
@@ -3619,7 +3624,7 @@ func toggle_codex() -> void:
 			bag_open = false
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_set_mouse_capture()
 
 
 ## 「下一件值得做的事」：照原作判定顺序给出当前该做什么。
@@ -3683,7 +3688,7 @@ func toggle_bag() -> void:
 		return
 	bag.toggle()
 	bag_open = bag.open
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if bag_open else Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture(not bag_open)
 	if bag_open:
 		audio.play_ui(520.0)
 
@@ -3837,7 +3842,7 @@ func replay_guide() -> void:
 	if handbook != null and handbook.open:
 		handbook.close()
 		handbook_open = false
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_set_mouse_capture()
 	guide_card.begin()
 
 
@@ -3884,7 +3889,7 @@ func enter_attic() -> void:
 	player.velocity = Vector3.ZERO
 	player.visible = true
 	player.camera.current = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture()
 	audio.set_jetpack(false)
 	apply_sky("attic")
 	# 新手引导：第一次进阁楼时排上，0.9 秒后开始（照原作）
@@ -3907,7 +3912,7 @@ func leave_attic() -> void:
 	player.global_transform = Transform3D(Basis.IDENTITY, landing + Vector3(0.0, 2.4, 0.0))
 	player.velocity = Vector3.ZERO
 	state = "walk"
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture()
 
 
 func attic_up_direction() -> Vector3:
@@ -3940,7 +3945,7 @@ func enter_pocket(key: String) -> void:
 	player.velocity = Vector3.ZERO
 	player.visible = true
 	player.camera.current = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture()
 	audio.set_jetpack(false)
 	audio.play_ui(560.0)
 	var title: String = attic_worlds.worlds[key].get("title", key) if attic_worlds.worlds.has(key) else key
@@ -4558,7 +4563,7 @@ func take_prism_heart() -> void:
 
 func continue_after_end() -> void:
 	state = previous_state if previous_state in ["walk", "ship"] else "walk"
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_mouse_capture()
 	get_active_camera().current = true
 
 

@@ -1,5 +1,7 @@
 extends Node3D
 
+const Placement := preload("res://scripts/prop_placement.gd")
+
 const ArchitectureScript = preload("res://scripts/architecture.gd")
 const UndergroundScript = preload("res://scripts/underground.gd")
 const PlanetShader = preload("res://shaders/planet.gdshader")
@@ -289,17 +291,17 @@ const PLANET_PROPS := {
 const LANDFORM_PROPS := {
 	"qinglan": [["rock-cluster", 1, 26, 34, false], ["lf-ridge-spine", 1, 26, 40, false],
 		["lf-boulder-field", 1, 26, 40, false]],
-	"zheya": [["rock-spire", 2, 28, 42, false], ["lf-canyon-wall", 1, 28, 46, false],
+	"zheya": [["rock-spire", 2, 28, 42, false], ["lf-mesa-spire", 1, 28, 42, false], ["lf-canyon-wall", 1, 28, 46, false],
 		["lf-lava-flow", 1, 28, 46, false], ["stone-bridge", 1, 14, 26, false]],
 	"cangbo": [["floating-rock", 2, 26, 38, false], ["lf-mesa-plateau", 1, 28, 44, false],
 		["lf-glacier-wall", 1, 28, 46, false]],
-	"xuanjing": [["floating-rock", 3, 26, 42, false], ["lf-ridge-spine", 1, 26, 40, false],
+	"xuanjing": [["floating-rock", 3, 26, 42, false], ["lf-crystal-forest", 1, 24, 38, false], ["lf-ridge-spine", 1, 26, 40, false],
 		["lf-sinkhole", 1, 28, 44, false]],
 	"xuanyuan": [["rock-spire", 2, 30, 46, false], ["lf-crater-rim", 1, 26, 42, false],
 		["stone-bridge", 1, 14, 26, false]],
 	"baiyao": [["rock-spire", 2, 28, 44, false], ["lf-canyon-wall", 1, 28, 46, false],
 		["lf-glacier-wall", 1, 28, 46, false]],
-	"pansha": [["rock-spire", 3, 30, 48, false], ["lf-natural-arch", 1, 26, 40, false],
+	"pansha": [["rock-spire", 3, 30, 48, false], ["lf-dune-sea", 1, 18, 28, false], ["lf-natural-arch", 1, 26, 40, false],
 		["lf-dry-riverbed", 1, 26, 42, false]],
 	"taiyuan": [["rock-cluster", 2, 26, 36, false], ["lf-ridge-spine", 1, 26, 40, false],
 		["lf-crater-rim", 1, 26, 40, false]],
@@ -478,9 +480,9 @@ const DETAIL_PROPS_EXTRA := {
 const SCATTER_MIX := {
 	"qinglan": [["alien-tree-lo", 45, 4, 8], ["alien-mushroom-lo", 30, 3, 6],
 		["thorn-shrub-lo", 35, 2, 3], ["rock-cluster-lo", 35, 2, 5],
-		["dead-tree-lo", 20, 4, 9], ["fern-cluster", 30, 2, 4]],
+		["dead-tree-lo", 20, 4, 9], ["fern-cluster", 30, 2, 4], ["canopy-shrub", 16, 1, 3]],
 	"zheya": [["rock-cluster-lo", 40, 2, 6], ["lava-boulder-lo", 40, 2, 5],
-		["thorn-shrub-lo", 30, 2, 3], ["dune-arch-lo", 18, 7, 14], ["seed-head", 26, 1, 2], ["reed-stand", 20, 1, 2]],
+		["thorn-shrub-lo", 30, 2, 3], ["dune-arch-lo", 18, 7, 14], ["seed-head", 26, 1, 2]],
 	"cangbo": [["ice-spike-lo", 55, 3, 9], ["crystal-flora-lo", 45, 1, 3],
 		["rock-cluster-lo", 40, 2, 5], ["moss-mat", 30, 1, 2]],
 	"xuanjing": [["crystal-cluster-lo", 40, 3, 7], ["crystal-flora-lo", 45, 1, 3],
@@ -500,7 +502,8 @@ const SCATTER_MIX := {
 	"jiangxiao": [["rock-cluster-lo", 45, 2, 6], ["rock-spire-lo", 40, 3, 9],
 		["lava-boulder-lo", 40, 2, 5], ["seed-head", 24, 1, 2]],
 	"cangwu": [["alien-tree-lo", 55, 4, 9], ["alien-mushroom-lo", 30, 3, 6],
-		["thorn-shrub-lo", 40, 2, 3], ["rock-cluster-lo", 30, 2, 5], ["vine-drape", 24, 2, 4]],
+		["thorn-shrub-lo", 40, 2, 3], ["rock-cluster-lo", 30, 2, 5], ["vine-drape", 24, 2, 4],
+		["thorn-vine", 16, 1, 3], ["reed-stand", 18, 1, 2]],
 	"jinwu": [["rock-cluster-lo", 50, 2, 6], ["lava-boulder-lo", 45, 2, 5],
 		["dead-tree-lo", 20, 4, 9], ["dune-arch-lo", 15, 8, 15], ["grass-plume", 26, 1, 2]],
 	"yuheng": [["rock-cluster-lo", 50, 2, 6], ["crystal-flora-lo", 40, 1, 3],
@@ -739,13 +742,17 @@ static var _prop_in_use := {}
 ## 同一进程里所有星球复用 —— 形状的 BVH 只建一次。
 static var _prop_shape_cache := {}
 
-## 待落地的高模地标：prop_id -> Array[Dictionary]（见 _add_prop）
+## Low ground plants participate in the vegetation density setting.
+const GROUND_COVER_PROPS := [
+	"fern-cluster", "moss-mat", "grass-plume", "reed-stand", "bulb-plant",
+	"thorn-vine", "canopy-shrub", "seed-head", "dune-grass", "crystal-flora-lo",
+]
+
+## 待落地的地标和散布：prop_id -> Array[Dictionary]（见 _add_prop）
 var prop_queue: Dictionary = {}
 ## 待落地的低模散布：同上
 var scatter_prop_queue: Dictionary = {}
-## 已经 flush 过的 prop_id。_flush_props 可能被调用两次
-## （铺量在 _build_landscape 里 flush、地标在 _build_landmark_props 里再 flush），
-## 没有这个集合会把铺量那批重复实例化一遍。
+## Per-asset flushed instance counts. Later layout passes may append the same asset.
 var _flushed_prop_ids: Dictionary = {}
 
 
@@ -2640,70 +2647,219 @@ func _build_landmark_props() -> void:
 	_flush_props()
 
 
-## 基地附近拼一小片「工坊区」（模块化建筑件）。
-##
-## 这些是建筑**零件**（门框/栅杆/楼梯/平台…），单独摆一件很奇怪，
-## 所以按「小工坊」组合：平台做底座，周围围栅杆，一侧靠楼梯，
-## 再立一个门框与标识牌，附近放管线与梯子。
-##
-## 每颗星球拼 1 组，位置在平地外缘 (pad_angle × 1.05~1.5)。
-const WORKSHOP_LAYOUT := [
-	["mod-platform", 0.0, 0.0, 3.0],
-	["mod-railing", 0.0, 3.0, 2.4],
-	["mod-railing", 2.0, -2.2, 2.4],
-	["mod-stairs", -3.1, 0.0, 2.2],
-	["mod-doorframe", 2.6, 2.4, 2.6],
-	["mod-signage", -2.4, 2.6, 1.6],
-	["mod-pipe-run", 3.2, -2.6, 1.8],
-	["mod-ladder", -2.8, -2.4, 2.0],
-	["mod-window-panel", 1.2, 3.4, 2.2],
-	["mod-tower-top", 0.0, 0.0, 3.4],
-]
+## Each kit shares one tangent frame; modules join at measured deck edges.
+const WORKSHOP_THEMES := {
+	"qinglan": "field", "taiyuan": "field", "cangwu": "field", "xuanpu": "field",
+	"zheya": "mining", "pansha": "mining", "jiangxiao": "mining", "jinwu": "mining", "danxia": "mining",
+	"cangbo": "polar", "baiyao": "polar", "biluo": "polar", "youdu": "polar",
+	"xuanjing": "survey", "xuanyuan": "survey", "liuwu": "survey", "jianmo": "survey", "yuheng": "survey", "sue": "survey", "yaoguang": "survey",
+}
 
-## 独立的拱门通道（单独一组，不与工坊叠在一起）
-const ARCHWAY_LAYOUT := [
-	["mod-archway", 0.0, 0.0, 4.2],
-]
+## Purpose-specific equipment; keep each outpost sparse and readable.
+const OUTPOST_EQUIPMENT := {
+	"qinglan": ["oxygen-generator", "wind-turbine"],
+	"zheya": ["mining-rig", "fuel-tank"],
+	"cangbo": ["stasis-pod", "holo-terminal"],
+	"xuanjing": ["power-cell", "control-console"],
+	"xuanyuan": ["comm-dish", "databank"],
+	"baiyao": ["landing-beacon", "stasis-pod"],
+	"pansha": ["mining-rig", "fuel-tank"],
+	"taiyuan": ["oxygen-generator", "supply-crate"],
+	"liuwu": ["thermal-stack", "power-cell"],
+	"jianmo": ["holo-slab", "control-console"],
+	"jiangxiao": ["thermal-stack", "mining-rig"],
+	"cangwu": ["oxygen-generator", "plank-walkway"],
+	"jinwu": ["wind-turbine", "fuel-tank"],
+	"yuheng": ["comm-dish", "power-cell"],
+	"sue": ["databank", "holo-slab"],
+	"danxia": ["banner-pole", "supply-crate"],
+	"biluo": ["holo-terminal", "stasis-pod"],
+	"youdu": ["landing-beacon", "stasis-pod"],
+	"yaoguang": ["holo-slab", "databank"],
+	"xuanpu": ["oxygen-generator", "supply-crate"],
+}
 
 
 func _build_workshop() -> void:
-	var site: Vector3 = site_direction.normalized()
-	var perp: Vector3 = site.cross(Vector3.FORWARD)
-	if perp.length_squared() < 0.01:
-		perp = site.cross(Vector3.RIGHT)
-	perp = perp.normalized()
-	var pad_angle: float = site_pad_radius / maxf(radius, 1.0)
-	# 工坊中心：平地外缘
-	var center: Vector3 = site.rotated(
-		perp.rotated(site, rng.randf() * TAU),
-		pad_angle * rng.randf_range(1.05, 1.5)).normalized()
-	var t1: Vector3 = center.cross(Vector3.UP)
-	if t1.length_squared() < 0.01:
-		t1 = center.cross(Vector3.RIGHT)
-	t1 = t1.normalized()
-	var t2: Vector3 = center.cross(t1).normalized()
-	for entry in WORKSHOP_LAYOUT:
-		var pid: String = entry[0]
-		if _prop_mesh(pid) == null:
+	var center := _pick_prop_direction(true, 8.0 * prop_scale)
+	if center == Vector3.ZERO:
+		return
+	var outpost := _prop_parent(center, 0.0)
+	var theme: String = WORKSHOP_THEMES.get(kind, "survey")
+	outpost.name = "Workshop_" + theme
+	outpost.set_meta("theme", theme)
+	var loader := Placement.new()
+	var collision := StaticBody3D.new()
+	collision.name = "WorkshopCollision"
+	collision.collision_layer = 1
+	collision.collision_mask = 0
+	outpost.add_child(collision)
+	# The entire kit shares a tangent frame. Sample terrain under its feet.
+	var deck_base := -INF
+	var foot_heights: Array[float] = []
+	for x in [-2.8, 2.8]:
+		for z in [-2.3, 2.3]:
+			var point: Vector3 = outpost.transform * Vector3(x, 0, z)
+			var ground: Vector3 = outpost.transform.affine_inverse() * surface_position(point.normalized(), 0)
+			foot_heights.append(ground.y)
+			deck_base = maxf(deck_base, ground.y)
+	var front: Vector3 = outpost.transform * Vector3(0, 0, 4.35)
+	var front_y: float = (outpost.transform.affine_inverse() * surface_position(front.normalized(), 0)).y
+	deck_base = maxf(deck_base, front_y) + 0.08
+	var platform := loader.instantiate("mod-platform", 0.45, ["res://assets/models/props/"])
+	if platform == null:
+		outpost.queue_free()
+		return
+	Placement.fit(platform, Vector3(6, 0.45, 5))
+	platform.position.y = deck_base
+	outpost.add_child(platform)
+	_workshop_collision(platform, outpost, collision)
+	var deck_top := deck_base + Placement.support_y(platform, Vector2.ZERO, 1.0)
+	var deck_join := deck_base + Placement.support_y(platform, Vector2(0, 2.3), 1.0)
+	var layout := [
+		["mod-railing", Vector3(5.8, 1, 0.15), Vector3(0, deck_top, -2.35), 0.0],
+		["mod-signage", Vector3(0.8, 1.2, 0.18), Vector3(-2.4, deck_top, 1.9), 0.0],
+	]
+	var stair_height := maxf(0.20, deck_join - front_y)
+	layout.append(["mod-stairs", Vector3(1.8, stair_height, 2), Vector3(0, front_y, 3.35), 0.0])
+	if theme in ["field", "mining"]:
+		layout.append(["mod-pipe-run", Vector3(1.5, 0.8, 0.45), Vector3(2.1, deck_top, -1.2), 0.0])
+	if theme in ["polar", "survey"]:
+		layout.append(["mod-window-panel", Vector3(1.8, 1.8, 0.2), Vector3(-2.8, deck_top, -0.9), PI * 0.5])
+	if theme in ["mining", "survey"]:
+		layout.append(["mod-doorframe", Vector3(1.8, 2.3, 0.25), Vector3(0, deck_top, 2.0), 0.0])
+	if theme in ["polar", "mining"]:
+		layout.append(["mod-ladder", Vector3(0.6, 1.6, 0.18), Vector3(2.4, deck_top, -1.9), 0.0])
+	if theme == "survey":
+		# A crown on four supports, rather than a tower head standing on the ground.
+		layout.append(["mod-tower-top", Vector3(3.8, 0.8, 3.2), Vector3(0, deck_top + 2.3, 0), 0.0])
+	var foot := 0
+	for x in [-2.8, 2.8]:
+		for z in [-2.3, 2.3]:
+			var h := maxf(0.1, deck_base - foot_heights[foot] + 0.05)
+			var support := MeshInstance3D.new()
+			support.mesh = _cylinder(0.14, 0.2, h, 8)
+			support.position = Vector3(x, deck_base - h * 0.5, z)
+			support.material_override = _material(Color("77858b"))
+			outpost.add_child(support)
+			foot += 1
+	for row in layout:
+		var model := loader.instantiate(row[0], row[1].y, ["res://assets/models/props/"])
+		if model == null:
 			continue
-		# 局部平面坐标（米）换算成球面方向：除以 radius 得到弧度
-		var dx: float = float(entry[1]) * prop_scale
-		var dy: float = float(entry[2]) * prop_scale
-		var dir: Vector3 = (center + t1 * (dx / radius) + t2 * (dy / radius)).normalized()
-		if _near_cave(dir, 0.03):
+		Placement.fit(model, row[1])
+		model.position = row[2]
+		model.rotation.y = row[3]
+		outpost.add_child(model)
+		if row[0] == "mod-stairs":
+			var tread := Placement.support_y(model, Vector2(0, -0.85), stair_height + 1.0)
+			if is_finite(tread) and tread > 0.01:
+				Placement.fit(model, Vector3(1.8, stair_height * stair_height / tread, 2))
+		elif row[0] != "mod-tower-top":
+			_seat_workshop_model(model, platform)
+		_workshop_collision(model, outpost, collision)
+	var roof := outpost.get_node_or_null("Prop_mod-tower-top") as Node3D
+	if roof != null:
+		for x in [-1.1, 1.1]:
+			for z in [-0.8, 0.8]:
+				var bottom := deck_base + Placement.support_y(platform, Vector2(x, z), 1)
+				var top := roof.position.y + Placement.support_y(roof, Vector2(x, z), -1, true) + 0.015
+				if not is_finite(top):
+					continue
+				var mi := MeshInstance3D.new()
+				mi.name = "RoofSupport_%d" % outpost.get_child_count()
+				mi.mesh = _cylinder(0.08, 0.08, top - bottom, 8)
+				mi.position = Vector3(x, (top + bottom) * 0.5, z)
+				mi.material_override = _material(Color("77858b"))
+				outpost.add_child(mi)
+				_workshop_collision(mi, outpost, collision)
+	var equipment := "comm-antenna" if theme == "survey" else ("supply-tank" if theme in ["field", "mining"] else "beacon-post")
+	var device := loader.instantiate(equipment, 1.5, ["res://assets/models/props/station/"])
+	if device != null:
+		device.position = Vector3(2.1, deck_top, 1.1)
+		outpost.add_child(device)
+		_seat_workshop_model(device, platform)
+		_workshop_collision(device, outpost, collision)
+	var equipment_ids: Array = OUTPOST_EQUIPMENT.get(kind, [])
+	for i in range(equipment_ids.size()):
+		var id: String = equipment_ids[i]
+		var on_ground := id in ["wind-turbine", "mining-rig", "thermal-stack", "comm-dish", "landing-beacon", "plank-walkway"]
+		var height := 1.3
+		if on_ground:
+			height = 2.8 if id != "wind-turbine" else 4.0
+		var model := loader.instantiate(id, height, ["res://assets/models/props/"])
+		if model == null:
 			continue
-		var size: float = float(entry[3]) * prop_scale
-		_add_prop(pid, dir, size, -0.2 * prop_scale, _prop_tint(), false)
-	# 独立拱门通道：绕站点再偏一个角度，避免和工坊叠在一起
-	for entry in ARCHWAY_LAYOUT:
-		var ap: String = entry[0]
-		if _prop_mesh(ap) == null:
+		model.position = Vector3(-1.4 + float(i) * 2.5, deck_top, -0.4)
+		outpost.add_child(model)
+		if on_ground:
+			var at := Vector2(5.3, -2.3 + float(i) * 4.6)
+			if id == "plank-walkway":
+				Placement.fit(model, Vector3(1.8, 0.08, 2.0))
+				at = Vector2(0, 5.15)
+			_ground_workshop_equipment(model, outpost, at)
+		else:
+			_seat_workshop_model(model, platform)
+		_workshop_collision(model, outpost, collision)
+	# A separate landmark arch stands clear of the working platform.
+	var arch_dir := _pick_prop_direction(true, 5.0 * prop_scale)
+	if arch_dir != Vector3.ZERO:
+		_add_prop("mod-archway", arch_dir, 4.2 * prop_scale, -0.1 * prop_scale, _prop_tint(), false)
+
+
+func _seat_workshop_model(model: Node3D, platform: Node3D) -> void:
+	var resting_y := -INF
+	for point in Placement.contact_points(model):
+		var p: Vector3 = model.basis * point + Vector3(model.position.x, 0, model.position.z)
+		var floor_y := Placement.support_y(platform, Vector2(p.x, p.z), 1.0)
+		if is_finite(floor_y):
+			resting_y = maxf(resting_y, platform.position.y + floor_y - p.y)
+	if is_finite(resting_y):
+		model.position.y = resting_y
+
+
+func _ground_workshop_equipment(model: Node3D, outpost: Node3D, at: Vector2) -> void:
+	var box := Placement.bounds(model)
+	var ground_min := INF
+	var ground_max := -INF
+	for x in [box.position.x, box.end.x]:
+		for z in [box.position.z, box.end.z]:
+			var point: Vector3 = outpost.transform * Vector3(at.x + x, 0, at.y + z)
+			var y: float = (outpost.transform.affine_inverse() * surface_position(point.normalized(), 0)).y
+			ground_min = minf(ground_min, y)
+			ground_max = maxf(ground_max, y)
+	model.position = Vector3(at.x, ground_max + 0.03, at.y)
+	model.set_meta("surface_attachment", "ground")
+	var h := ground_max - ground_min + 0.08
+	var foundation := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(box.size.x + 0.04, h, box.size.z + 0.04)
+	foundation.mesh = mesh
+	foundation.position = Vector3(at.x, model.position.y - h * 0.5, at.y)
+	foundation.material_override = _material(Color("606b70"))
+	outpost.add_child(foundation)
+	var body: StaticBody3D = outpost.get_node("WorkshopCollision")
+	_workshop_collision(foundation, outpost, body)
+
+
+func _workshop_collision(model: Node3D, outpost: Node3D, body: StaticBody3D) -> void:
+	var meshes: Array[Node] = model.find_children("*", "MeshInstance3D", true, false)
+	if model is MeshInstance3D:
+		meshes.push_front(model)
+	for node in meshes:
+		var mi := node as MeshInstance3D
+		if mi.mesh == null:
 			continue
-		var adir: Vector3 = site.rotated(perp, pad_angle * rng.randf_range(1.8, 2.4)).normalized()
-		if _near_cave(adir, 0.03):
-			continue
-		_add_prop(ap, adir, float(entry[3]) * prop_scale, -0.2 * prop_scale,
-			_prop_tint(), false)
+		var xf := Transform3D.IDENTITY
+		var walker: Node = mi
+		while walker != outpost:
+			if walker is Node3D:
+				xf = walker.transform * xf
+			walker = walker.get_parent()
+		var shape := CollisionShape3D.new()
+		shape.shape = _prop_collision_shape("workshop_%s" % mi.mesh.get_rid().get_id(), mi.mesh)
+		shape.transform = xf
+		body.add_child(shape)
 
 
 ## 外星生物布置（见 CREATURE_PROPS）。
@@ -2988,9 +3144,8 @@ func _flush_props() -> void:
 		var entries: Array = prop_queue[prop_id]
 		if entries.is_empty():
 			continue
-		if _flushed_prop_ids.has(prop_id):
+		if int(_flushed_prop_ids.get(prop_id, 0)) == entries.size():
 			continue
-		_flushed_prop_ids[prop_id] = true
 		var mesh: Mesh = _prop_mesh_for_instancing(prop_id)
 		if mesh == null:
 			continue
@@ -3017,8 +3172,14 @@ func _flush_props() -> void:
 			# 交互点记下「实例下标」，等 instance 建好再绑定节点
 			if e.has("spot"):
 				pending_spots.append([int(e["spot"]), i])
-		var instance := MultiMeshInstance3D.new()
-		instance.name = "Prop_%s" % prop_id
+		var parent: Node3D = _prop_root if _prop_root != null else self
+		var instance := parent.get_node_or_null("Prop_%s" % prop_id) as MultiMeshInstance3D
+		var is_new := instance == null
+		if is_new:
+			instance = MultiMeshInstance3D.new()
+			instance.name = "Prop_%s" % prop_id
+			if prop_id in GROUND_COVER_PROPS:
+				instance.add_to_group("ground_scatter")
 		instance.multimesh = mm
 		# 单表面网格走「共享顶点 + 实例级材质」路线（见 _prop_mesh_for_instancing）：
 		# 网格本身仍是 GLB 里那一份，调色交给 material_override，
@@ -3026,7 +3187,8 @@ func _flush_props() -> void:
 		if mesh.get_surface_count() <= 1:
 			instance.material_override = _prop_tint_material(mesh.surface_get_material(0))
 		# 这个 mesh 从此被本星球的 MultiMesh 持有，不能再被 LRU 淘汰
-		_prop_mark_in_use(prop_id)
+		if is_new:
+			_prop_mark_in_use(prop_id)
 		# 把交互点绑到实例上（采空后需要单独调暗那一个）
 		for pair in pending_spots:
 			var si: int = int(pair[0])
@@ -3034,11 +3196,15 @@ func _flush_props() -> void:
 				(interactive_spots[si] as Dictionary)["node"] = instance
 				(interactive_spots[si] as Dictionary)["mi"] = int(pair[1])
 		instance.visibility_range_end = _lod_view_distance_for(prop_id)
-		if _prop_root != null:
-			_prop_root.add_child(instance)
-		else:
-			add_child(instance)
+		if is_new:
+			parent.add_child(instance)
+		if game != null and game.settings != null:
+			game.settings.apply_prop_lod(instance)
+		var previous_collision := get_node_or_null("PropCollision_%s" % prop_id)
+		if previous_collision != null:
+			previous_collision.free()
 		_add_prop_colliders(entries, prop_id, mesh, aabb)
+		_flushed_prop_ids[prop_id] = entries.size()
 
 
 ## 该类道具的绘制距离（米），跟随设置里的 LOD 档位。
@@ -3052,7 +3218,7 @@ func _lod_view_distance_for(prop_id: String) -> float:
 	if game != null and game.settings != null:
 		level = clampi(int(game.settings.values.lod), 0, 3)
 	var d: float = float(SettingsScript.LOD_DISTANCE[clampi(level, 0, 3)])
-	if prop_id.contains("lm-") or prop_id.contains("lf-"):
+	if prop_id.contains("lm-") or prop_id.contains("lm2-") or prop_id.contains("lf-"):
 		return d * 1.6
 	return d
 

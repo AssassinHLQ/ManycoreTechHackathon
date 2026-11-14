@@ -54,7 +54,15 @@ func _run() -> void:
 		_check(not node.visible, "%s：带回前隐藏" % key)
 		var geometry := _geometry_count(node)
 		counts[key] = geometry
-		_check(geometry >= 5, "%s：是多零件模型（%d 个几何体）" % [key, geometry])
+		var generated_path := ""
+		for child in node.find_children("*", "Node3D", true, false):
+			if child.has_meta("generated_asset"):
+				generated_path = child.get_meta("generated_asset")
+		if generated_path.is_empty():
+			_check(geometry >= 5, "%s：程序化回退模型包含多个零件" % key)
+		else:
+			_check(geometry > 0 and generated_path.contains("keepsake-" + key + "/"),
+				"%s：使用对应的生成模型" % key)
 		# 造型签名 = 盒/柱/球 各用了几件；四件应当各不相同
 		var signature := {"box": 0, "cylinder": 0, "sphere": 0, "other": 0}
 		for child in node.find_children("*", "GeometryInstance3D", true, false):
@@ -67,7 +75,7 @@ func _run() -> void:
 				signature["sphere"] += 1
 			else:
 				signature["other"] += 1
-		signatures[key] = signature
+		signatures[key] = signature if generated_path.is_empty() else generated_path
 		# 模型自己带光源吗？不要求，但至少要有自发光部件（云舟船灯/树屋萤火/雨巷钟铃/冰镜极光）
 		_check(node.get_child_count() > 0, "%s：模型有子节点" % key)
 
