@@ -8,6 +8,8 @@ extends Node3D
 
 const Placement := preload("res://scripts/prop_placement.gd")
 const Precision = preload("res://scripts/procedural_dressing.gd")
+const Authoring = preload("res://scripts/attic_world_authoring.gd")
+var use_authored_scenes := true
 
 const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror", "dungeon"]
 
@@ -132,6 +134,11 @@ func build() -> void:
 				_:
 					device_values[key] = [0, 0, 0]
 		Precision.pocket(content, key)
+		if ARENA_SCALE.has(key):
+			Authoring.add_story_sign(content, key)
+			Authoring.stable_names(content)
+			if use_authored_scenes:
+				Authoring.install(self, key)
 
 
 # --- 公共构件 ---------------------------------------------------------------
