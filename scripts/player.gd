@@ -193,8 +193,18 @@ func _physics_process(delta: float) -> void:
 		fuel = maxf(0.0, fuel - delta * (18.0 + gravity_strength * 0.22))
 		jetting = true
 	velocity = horizontal + normal * vertical_speed
+	# 站内玩家已经由父节点携带。大世界坐标下 move_and_slide 的全局坐标往返
+	# 会把毫米级舍入误差逐帧累积成侧向漂移；无水平移动且接地时保留局部 X/Z。
+	var hold_station_position: bool = in_station and get_parent() == game.station \
+		and horizontal.length_squared() < 0.000001 \
+		and vertical_speed <= 0.0 and not jetting
+	var was_grounded := is_on_floor()
+	var station_local_before := position
 	var before_move := global_position
 	move_and_slide()
+	if hold_station_position and (was_grounded or is_on_floor()):
+		position.x = station_local_before.x
+		position.z = station_local_before.z
 	var moved_distance := global_position.distance_to(before_move)
 	blocked_hint_cooldown = maxf(0.0, blocked_hint_cooldown - delta)
 	if wish.length_squared() > 0.01 and moved_distance < 0.012:

@@ -107,6 +107,9 @@ const DOOR_TRAVEL_TIME := 0.55
 const DOOR_TRIGGER_RANGE := 9.0
 const DOOR_HOLD_RANGE := 12.0
 const DOOR_SAFETY_RANGE := 4.2
+# 平墙连接相邻门框的端点；圆弧长度不能用于平墙的宽度或半径。
+const HUB_WALL_RADIUS := HUB_RADIUS * cos(PI / 6.0) + CORRIDOR_HALF_WIDTH * sin(PI / 6.0)
+const HUB_WALL_SPAN := 2.0 * (HUB_RADIUS * sin(PI / 6.0) - CORRIDOR_HALF_WIDTH * cos(PI / 6.0)) + 0.4
 # 静态网格合并：把成百上千个装饰盒子烘焙成少量多材质网格。关掉即回到逐盒子建节点的旧行为。
 const MERGE_STATIC_MESHES := true
 # 分块边长要小于灯间距，保证每块只用得上附近几盏灯（配合 project.godot 里的每对象灯上限 16）。
@@ -123,10 +126,12 @@ var interior_root: Node3D
 var hub_root: Node3D
 var hub_body: StaticBody3D
 var exterior_body: StaticBody3D
+var exterior_hub_shell: Node3D
 var orbit_planet: Node3D
 var orbit_phase := 0.0
 var orbit_radius := 2600.0
 var orbit_ready := false
+var _orbit_time := 0.0
 var corridor_roots: Array[Node3D] = []
 var corridor_shapes: Array = []
 var corridor_collision_state: Array[bool] = []
@@ -162,6 +167,9 @@ var _mat_white: StandardMaterial3D
 
 
 func _ready() -> void:
+	# 玩家先在已同步的碰撞世界中移动，随后再携带站体及子节点进入下一物理步。
+	# 提前移动父节点会让玩家相对物理服务器上一快照的地板反复升降。
+	process_physics_priority = 10
 	_font = load("res://assets/ui_font.ttf")
 	_build_materials()
 	merge_live_materials = [_beacon_material]
@@ -185,6 +193,8 @@ func _merge_exterior_meshes() -> void:
 		skip.append(station_body)
 	if exterior_body != null:
 		skip.append(exterior_body)
+	if exterior_hub_shell != null:
+		skip.append(exterior_hub_shell)
 	for corridor in corridor_roots:
 		var container := corridor.get_parent()
 		if container != null and not skip.has(container):
@@ -202,12 +212,6 @@ func _merge_exterior_meshes() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
-	if not orbit_ready:
-		_setup_orbit()
-	_update_orbit()
-	if game != null and game.ship != null and game.ship.docked and game.ship.docked_station == self:
-		game.ship.global_position = dock_ship_position()
-		game.ship.look_at(dock_look_target(), dock_up_direction())
 	if ring_root != null:
 		ring_root.rotate_y(delta * 0.03)
 	if hologram != null:
@@ -216,9 +220,28 @@ func _process(delta: float) -> void:
 		hub_hologram.rotate_y(delta * 0.32)
 	if _beacon_material != null:
 		_beacon_material.emission_energy_multiplier = 1.6 + sin(_time * 2.6) * 1.1
+
+
+func _physics_process(delta: float) -> void:
+	if not orbit_ready:
+		_setup_orbit()
+	if game != null:
+		var target_time: float = game.elapsed
+		# 游戏时钟在渲染帧推进。低帧率时把一次跨过的时间分摊到物理步，
+		# 避免站体交替停住/跳动；轮回重置和主动跳时则直接重新同步。
+		if target_time < _orbit_time or target_time - _orbit_time > 1.0:
+			_orbit_time = target_time
+		else:
+			_orbit_time = move_toward(_orbit_time, target_time, delta)
+	_update_orbit()
+	if game != null and game.ship != null and game.ship.docked and game.ship.docked_station == self:
+		game.ship.global_position = dock_ship_position()
+		game.ship.look_at(dock_look_target(), dock_up_direction())
 	if hub_root != null:
 		var in_station: bool = game != null and game.in_station
 		hub_root.visible = in_station
+		if exterior_hub_shell != null:
+			exterior_hub_shell.visible = not in_station
 		for pod in end_pods:
 			pod.visible = not in_station
 		var idx := -1
@@ -319,11 +342,13 @@ func _setup_orbit() -> void:
 	#   那会让归航站贴着放大后的行星表面（1200 米半径的星球只剩 1000 米余量）。
 	#   偏移量与下限都按「行星半径放大倍数」同步放宽。
 	orbit_radius = maxf(float(best.radius) + 2200.0 * 3.0, 2600.0 * 3.0)
+	_orbit_time = float(game.elapsed)
 	orbit_ready = true
 
 
-func _planet_orbit_position(planet: Node3D) -> Vector3:
-	var angle: float = float(planet.orbit_phase) + float(planet.orbit_speed) * float(game.elapsed)
+func _planet_orbit_position(planet: Node3D, time := -1.0) -> Vector3:
+	var t: float = float(game.elapsed) if time < 0.0 else time
+	var angle: float = float(planet.orbit_phase) + float(planet.orbit_speed) * t
 	return Vector3(cos(angle) * float(planet.orbit_radius),
 		float(planet.orbit_height) + sin(angle * 1.7) * 500.0,
 		sin(angle) * float(planet.orbit_radius))
@@ -332,14 +357,14 @@ func _planet_orbit_position(planet: Node3D) -> Vector3:
 func _update_orbit() -> void:
 	if not orbit_ready or orbit_planet == null or game == null:
 		return
-	var center := _planet_orbit_position(orbit_planet)
+	var center := _planet_orbit_position(orbit_planet, _orbit_time)
 	var radial := center.normalized()
 	var orbit_u := Vector3.UP.cross(radial)
 	if orbit_u.length_squared() < 0.01:
 		orbit_u = Vector3.RIGHT.cross(radial)
 	orbit_u = orbit_u.normalized()
 	var orbit_v := radial.cross(orbit_u).normalized()
-	var angle := orbit_phase + float(game.elapsed) * STATION_ORBIT_SPEED
+	var angle := orbit_phase + _orbit_time * STATION_ORBIT_SPEED
 	global_position = center + (orbit_u * cos(angle) + orbit_v * sin(angle)) * orbit_radius
 
 
@@ -509,12 +534,15 @@ func _build_exterior() -> void:
 	exterior_body.collision_mask = 0
 	add_child(exterior_body)
 	_add_exterior_sphere_collider(34.0, Vector3.ZERO)
-	# 中央枢纽与上方对接口
-	_sphere(self, 34.0, Vector3.ZERO, _mat_hull)
-	_torus(self, 34.0, 36.0, Vector3.ZERO, _mat_trim, Vector3.ZERO, 8, 48)
+	# 外部球壳会切过六个门后的通道；独立保留，进入站内时切换可见性。
+	exterior_hub_shell = Node3D.new()
+	exterior_hub_shell.name = "ExteriorHubShell"
+	add_child(exterior_hub_shell)
+	_sphere(exterior_hub_shell, 34.0, Vector3.ZERO, _mat_hull)
+	_torus(exterior_hub_shell, 34.0, 36.0, Vector3.ZERO, _mat_trim, Vector3.ZERO, 8, 48)
 	for i in range(18):
 		var hub_angle := TAU * float(i) / 18.0
-		_box(self, Vector3(1.0, 2.2, 0.5), Vector3(cos(hub_angle) * 34.2, 0.0, sin(hub_angle) * 34.2), _mat_glow, Vector3(0.0, -hub_angle, 0.0))
+		_box(exterior_hub_shell, Vector3(1.0, 2.2, 0.5), Vector3(cos(hub_angle) * 34.2, 0.0, sin(hub_angle) * 34.2), _mat_glow, Vector3(0.0, -hub_angle, 0.0))
 	_beacon_material = _glow_mat(Color("ff8a55"), 2.4)
 	# 贯通式中央主轴：下段能源核心，上段指挥塔，对接口升到塔顶
 	_cylinder(self, 7.0, 8.0, 48.0, Vector3(0.0, -58.0, 0.0), _mat_dark, 20)
@@ -1287,7 +1315,8 @@ func _build_hub() -> void:
 			half.set_meta("door_side", side)
 			half.position = Vector3(0.0, 0.0, side * DOOR_HALF_WIDTH)
 			leaf.add_child(half)
-			var panel := _box(half, Vector3(0.18, 4.8, DOOR_HALF_WIDTH * 2.0), Vector3(0.0, 0.4, 0.0), _mat_dark)
+			# 大世界坐标下两片门扇分别变换会出现毫米缝，闭合时留少量搭接。
+			var panel := _box(half, Vector3(0.18, 4.8, DOOR_HALF_WIDTH * 2.0 + 0.04), Vector3(0.0, 0.4, 0.0), _mat_dark)
 			panel.name = "DoorPanel"
 			_box(half, Vector3(0.12, 0.1, 2.6), Vector3(-0.16, 0.9, 0.0), _mat_glow)
 			_box(half, Vector3(0.12, 0.1, 2.6), Vector3(-0.16, -0.6, 0.0), _mat_teal)
@@ -1300,7 +1329,7 @@ func _build_hub() -> void:
 			panel_body.collision_mask = 0
 			half.add_child(panel_body)
 			var panel_shape := BoxShape3D.new()
-			panel_shape.size = Vector3(0.28, 4.8, DOOR_HALF_WIDTH * 2.0)
+			panel_shape.size = Vector3(0.28, 4.8, DOOR_HALF_WIDTH * 2.0 + 0.04)
 			_add_static_shape(panel_body, panel_shape, Vector3(0.0, 0.4, 0.0))
 		door_panels.append(leaf)
 		door_open.append(0.0)
@@ -1319,26 +1348,15 @@ func _build_hub() -> void:
 		_box(door, Vector3(26.0, 0.2, 0.3), Vector3(15.0, 7.7, 0.0), _mat_dark)
 		_box(door, Vector3(24.0, 0.025, 0.08), Vector3(15.0, FLOOR_TOP + 0.04, 0.0), _mat_glow)
 		_light(Vector3(cos(angle) * 25.5, 2.6, sin(angle) * 25.5), Color("ffd8ac"), 1.0, 12.0, hub_root)
-		# 注：门两侧原先在这里补过一小段侧墙，但间隔墙改到门洞同一半径、
-		# 并按「弧长 - 门洞宽」精确填满之后，缝隙已经不存在了 ——
-		# 侧墙反而会压到门洞上，所以去掉。
 		var mid_angle := angle + TAU / 12.0
 		var wall := Node3D.new()
-		wall.position = Vector3(cos(mid_angle) * HUB_RADIUS, 0.0, sin(mid_angle) * HUB_RADIUS)
+		wall.name = "HubWall%d" % i
+		wall.position = Vector3(cos(mid_angle) * HUB_WALL_RADIUS, 0.0, sin(mid_angle) * HUB_WALL_RADIUS)
 		wall.rotation.y = -mid_angle
 		hub_root.add_child(wall)
-		# 间隔墙改到**门洞所在的同一个半径**（HUB_RADIUS），并且按 30° 角距算出
-		# 正好填满两门之间的弧长。
-		#
-		# 原来这道墙在半径 28.5、宽 21 米：一是比门洞靠里 1.5 米，留下一条能斜穿
-		# 出去的径向缝；二是半径 28.5 处每扇门占弧长 29.85 米，21 米的墙两侧各漏
-		# 4.42 米。两者相加，玩家从枢纽里能直接看到站外虚空（实测截图确认）。
-		#
-		# 现在墙贴在门洞半径上，宽度取「弧长 - 门洞宽 + 一点重叠」，与门框咬合。
-		var arc_span: float = TAU * HUB_RADIUS / float(CORRIDOR_COUNT)
-		var wall_span: float = arc_span - DOOR_HALF_WIDTH * 2.0
-		_box(wall, Vector3(0.5, 10.0, wall_span), Vector3(0.0, 3.0, 0.0), _mat_wall)
-		_add_hub_box_collider(Vector3(0.5, 10.0, wall_span), wall.transform * Vector3(0.0, 3.0, 0.0), wall.rotation)
+		# 端点为两扇相邻门的侧边，另留 0.2 米搭接封住斜向缝隙。
+		_box(wall, Vector3(0.5, 10.0, HUB_WALL_SPAN), Vector3(0.0, 3.0, 0.0), _mat_wall)
+		_add_hub_box_collider(Vector3(0.5, 10.0, HUB_WALL_SPAN), wall.transform * Vector3(0.0, 3.0, 0.0), wall.rotation)
 		_build_hub_wall_detail(wall)
 		_light(Vector3(cos(mid_angle) * 20.0, 6.3, sin(mid_angle) * 20.0), Color("ffd8ac"), 1.3, 18.0, hub_root)
 	for i in range(12):
@@ -1461,7 +1479,7 @@ func _hub_detail_walls(buckets: Array) -> void:
 	var teal: Array = buckets[2]
 	for i in range(CORRIDOR_COUNT):
 		var a := TAU * float(i) / float(CORRIDOR_COUNT) + TAU / 12.0
-		var wall_r := 28.5
+		var wall_r := HUB_WALL_RADIUS
 		# 踢脚与压条
 		_detail_box(dark, Vector3(0.16, 0.36, 20.6), _hub_detail_frame(a, wall_r, FLOOR_TOP + 0.18, -0.31, 0.0), -a)
 		_detail_box(trim, Vector3(0.08, 0.07, 20.6), _hub_detail_frame(a, wall_r, FLOOR_TOP + 0.39, -0.38, 0.0), -a)
