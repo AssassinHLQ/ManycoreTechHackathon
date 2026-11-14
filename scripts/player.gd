@@ -127,7 +127,7 @@ func _physics_process(delta: float) -> void:
 		gravity_strength = game.station.artificial_gravity
 	else:
 		planet = game.nearest_planet(global_position)
-		var offset: Vector3 = global_position - planet.global_position
+		var offset: Vector3 = position if get_parent() == planet else global_position - planet.global_position
 		normal = offset.normalized()
 		if normal.length_squared() < 0.5:
 			normal = global_transform.basis.y
@@ -140,6 +140,9 @@ func _physics_process(delta: float) -> void:
 	if not in_station and not game.in_attic and planet != null:
 		wanted_scale = planet.prop_scale if planet.prop_scale > 0.0 else 1.0
 	_apply_body_scale(wanted_scale)
+	# 行星父节点已携带角色；再继承 StaticBody 的平台速度会在离开三角面时
+	# 重复叠加公转位移。未挂在行星下的独立移动平台仍使用引擎默认跟随。
+	platform_floor_layers = 0 if planet != null and get_parent() == planet else 0xffffffff
 
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var wish: Vector3 = global_transform.basis * Vector3(input.x, 0.0, input.y)
@@ -157,7 +160,7 @@ func _physics_process(delta: float) -> void:
 		delta * (34.0 if is_on_floor() else 12.0) * body_scale)
 
 	if is_on_floor():
-		if vertical_speed < 0.0:
+		if vertical_speed < 0.0 or (planet != null and vertical_speed < 0.01):
 			vertical_speed = -0.8
 		if Input.is_action_just_pressed("jump"):
 			# ⚠ 起跳也跟喷气保持一致：乘 sqrt(body_scale) 而不是 body_scale。
@@ -199,12 +202,26 @@ func _physics_process(delta: float) -> void:
 		and horizontal.length_squared() < 0.000001 \
 		and vertical_speed <= 0.0 and not jetting
 	var was_grounded := is_on_floor()
-	var station_local_before := position
+	var hold_planet_position: bool = planet != null and get_parent() == planet \
+		and horizontal.length_squared() < 0.000001 \
+		and vertical_speed <= 0.0 and not jetting
+	var local_before := position
 	var before_move := global_position
 	move_and_slide()
+	# 无输入接地时沿用控制器算出的减速速度，避免碰撞把竖直分量投影成
+	# 新的侧向/向上速度。正常松键减速继续生效，起跳和喷气不受影响。
+	if planet != null and get_parent() == planet and is_on_floor() \
+		and input.length_squared() < 0.000001 and not jetting \
+		and vertical_speed <= 0.0 and not Input.is_action_just_pressed("jump"):
+		velocity = horizontal
 	if hold_station_position and (was_grounded or is_on_floor()):
-		position.x = station_local_before.x
-		position.z = station_local_before.z
+		position.x = local_before.x
+		position.z = local_before.z
+	# 星球上的静止角色同样由父节点携带。只有前后都接地才保持局部站位，
+	# 避免远轨道凹面碰撞网格的世界坐标舍入导致恢复推挤；离地和起跳照常求解。
+	if hold_planet_position and was_grounded and is_on_floor():
+		position = local_before
+		velocity = Vector3.ZERO
 	var moved_distance := global_position.distance_to(before_move)
 	blocked_hint_cooldown = maxf(0.0, blocked_hint_cooldown - delta)
 	if wish.length_squared() > 0.01 and moved_distance < 0.012:
@@ -256,9 +273,10 @@ func _apply_body_scale(wanted: float) -> void:
 		_body_capsule.radius = 0.34 * body_scale
 		_body_capsule.height = 1.65 * body_scale
 		_body_collision.position.y = 0.82 * body_scale
-	# 贴地吸附、台阶余量也要跟着放大，否则大尺度下会被小台阶卡住。
+	# 贴地吸附随角色大小变化；碰撞恢复余量保持基准值。
+	# 放大 safe_margin 会让远轨道凹面地形提前恢复推挤，造成接地闪断和侧向跳动。
 	floor_snap_length = 0.55 * body_scale
-	safe_margin = 0.025 * body_scale
+	safe_margin = 0.025
 
 
 func _sensitivity_multiplier() -> float:

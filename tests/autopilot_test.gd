@@ -28,6 +28,8 @@ func _run() -> void:
 	game.start_game()
 	for i in range(10):
 		await physics_frame
+	while game.planets.size() < 20:
+		await process_frame
 
 	game.state = "ship"
 	game.player.visible = false
@@ -40,7 +42,8 @@ func _run() -> void:
 	var eye = game.planets[4]
 	game.ship.target = eye
 	var eye_direction: Vector3 = eye.global_position.normalized()
-	var start_position: Vector3 = -eye_direction * 2600.0
+	# The sun grows with SUN_SCALE; 2600 m is now its surface, not a safe launch point.
+	var start_position: Vector3 = -eye_direction * (game.sun_radius + 6000.0)
 	game.ship.global_position = start_position
 	game.ship.velocity = Vector3.ZERO
 	await physics_frame

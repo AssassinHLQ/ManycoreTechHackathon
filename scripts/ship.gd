@@ -1780,13 +1780,13 @@ func _physics_process(delta: float) -> void:
 	if landed:
 		velocity = Vector3.ZERO
 		thrust_level = 0.0
-		# ⚠ 2026-11-11 每帧重钉到地表：落地后飞船挂在行星下，但行星在
-		#   `_process` 里更新位置、飞船在 `_physics_process` 里读，两者不同步
-		#   会产生肉眼可见的微抖（实测世界坐标每帧 0.11~0.32 米）。
-		#   对接分支一直是这么做的，落地分支漏了。
+		# 已由行星父节点携带，直接保存局部停靠点，避免大世界坐标往返舍入。
 		if landed_planet != null and is_instance_valid(landed_planet):
-			global_position = landed_planet.global_position \
-				+ landed_planet.surface_position(landing_normal, LANDING_REST_ALT)
+			var resting_position: Vector3 = landed_planet.surface_position(landing_normal, LANDING_REST_ALT)
+			if get_parent() == landed_planet:
+				position = resting_position
+			else:
+				global_position = landed_planet.to_global(resting_position)
 		fuel = minf(100.0, fuel + delta * 12.0)
 		fuel_empty_time = 0.0
 		fuel_warning_cooldown = 0.0

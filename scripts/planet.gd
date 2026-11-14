@@ -18,6 +18,7 @@ var orbit_radius := 2000.0
 var orbit_phase := 0.0
 var orbit_speed := 0.0
 var orbit_height := 0.0
+var _orbit_time := 0.0
 var base_color := Color.GRAY
 var accent_color := Color.WHITE
 var surface: MeshInstance3D
@@ -749,6 +750,9 @@ var _flushed_prop_ids: Dictionary = {}
 
 
 func _ready() -> void:
+	# 先让角色使用已同步的碰撞世界，再携带整个行星进入下一物理步。
+	process_physics_priority = 10
+	_orbit_time = float(game.elapsed) if game != null else 0.0
 	rng.seed = abs(planet_id.hash()) + 9217
 	terrain_noise.seed = abs(planet_id.hash()) + 41
 	terrain_noise.frequency = 1.0
@@ -3266,9 +3270,20 @@ func _update_water() -> void:
 	water_shell.position = Vector3.ZERO
 
 
+func _physics_process(delta: float) -> void:
+	if game != null:
+		var target_time: float = game.elapsed
+		# 渲染时钟低帧率时会跨过多个物理步，分摊时间以保持碰撞和插值连续。
+		# 轮回重置或显式跳时则直接同步。
+		if target_time < _orbit_time or target_time - _orbit_time > 1.0:
+			_orbit_time = target_time
+		else:
+			_orbit_time = move_toward(_orbit_time, target_time, delta)
+		_update_orbit()
+
+
 func _process(_delta: float) -> void:
 	if game != null:
-		_update_orbit()
 		_update_water()
 		_refresh_interactive_charges()
 		_update_prop_culling()
@@ -3289,8 +3304,7 @@ const ORBIT_WOBBLE := 500.0
 
 
 func _update_orbit() -> void:
-	var t: float = game.elapsed if game != null else 0.0
-	var angle := orbit_phase + orbit_speed * t
+	var angle := orbit_phase + orbit_speed * _orbit_time
 	position = Vector3(cos(angle) * orbit_radius, orbit_height + sin(angle * 1.7) * ORBIT_WOBBLE, sin(angle) * orbit_radius)
 
 
@@ -3300,9 +3314,7 @@ func _update_orbit() -> void:
 ##   p = (cos a·R, h + sin(1.7a)·W, sin a·R)，  a = phase + speed·t，W = ORBIT_WOBBLE
 ##   v = (−sin a·R·ω, cos(1.7a)·W·1.7·ω, cos a·R·ω)
 ##
-## 为什么不直接拿两帧位置差去近似：`_process` 的 delta 会抖，
-## 而且行星每秒只走 10～50 米，差分出来的噪声比信号还大。
-## 解析式既准确又和 `elapsed` 严格同步。
+## 直接用轨道物理时钟的解析导数，避免位置差分引入舍入噪声。
 ##
 ## 飞船侧要用它的两个地方：
 ##   · 自动航行把「期望速度」加上它 —— 否则飞船是在追一个会跑的靶子，
@@ -3310,8 +3322,7 @@ func _update_orbit() -> void:
 ##   · 撞击判定用「相对地面」的速度 —— 一颗以 50 m/s 掠过你的行星
 ##     扫过一艘静止的飞船，那是真撞击，不能因为飞船自己没动就免责。
 func orbital_velocity() -> Vector3:
-	var t: float = game.elapsed if game != null else 0.0
-	var angle := orbit_phase + orbit_speed * t
+	var angle := orbit_phase + orbit_speed * _orbit_time
 	var w := orbit_speed
 	return Vector3(
 		-sin(angle) * orbit_radius * w,
