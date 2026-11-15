@@ -41,7 +41,8 @@ var display_name := "远景空间站"
 
 
 func _ready() -> void:
-	_build_collision()
+	# main assigns the measured model bounds after add_child triggers _ready.
+	call_deferred("_build_collision")
 
 
 ## 用几个盒子近似「圆盘 + 中心柱」。盒子数量克制在 5 个以内，
@@ -97,8 +98,8 @@ func docking_point() -> Vector3:
 
 
 func dock_ship_position() -> Vector3:
-	# 停在端口上方一点点，别和碰撞盒穿插
-	return to_global(dock_offset + Vector3(0.0, 6.0, 0.0))
+	# Keep the bow of the 70 m ship clear of the port collision slab.
+	return to_global(dock_offset + Vector3(0.0, 50.0, 0.0))
 
 
 func dock_look_target() -> Vector3:

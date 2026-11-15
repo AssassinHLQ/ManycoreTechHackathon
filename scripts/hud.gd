@@ -669,7 +669,7 @@ func _build_help() -> void:
 	left_scroll.custom_minimum_size.x = 400
 	left_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	columns.add_child(left_scroll)
-	var left := _text(left_scroll, "徒 步\n\nW A S D　移动\nCtrl　加速奔跑\nR　地形脱困\n鼠标　观察\nSpace　跳跃\nShift　喷气背包\nL　头灯\n右键　信号镜（滚轮 2.1×–16×）\nF　按住扫描符文\nE　登船 / 烤棉花糖\n\n飞 船\n\n鼠标　俯仰与转向\n滚轮　长焦观察 1×–16×（星点 / 彗星 / 太阳）\nW / S　前后推进\nA / D　横向推进\nSpace　上升 / 起飞\nCtrl 或 C　下降\nShift　加力\nX　制动\nTab　切换目的地\nT　自动航行 / 着陆\nE　低速着陆 / 离船\nF5　第三人称看飞船\n\n归 航 站\n\n低速靠近对接口自动对接\nE　进入空间站\nSpace　脱离对接\n中央枢纽气闸旁 E 返回飞船\n六条放射走廊 A–F\n\n触 屏\n\n左摇杆　移动 / 平移\n右侧空白　拖动视角\n圆钮　跳跃 / 喷气 / 互动 / 扫描\n飞船圆钮　起飞 / 离船 / 上升 / 下降 / 加力 / 制动\n星图　右侧关闭 / 缩放按钮", 15, Color("bed2cd"))
+	var left := _text(left_scroll, "徒 步\n\nW A S D　移动\nCtrl　加速奔跑\nR　地形脱困\n鼠标　观察\nSpace　跳跃\nShift　喷气背包\nL　头灯\n右键　信号镜（滚轮 2.1×–16×）\nF　按住扫描符文\nE　登船 / 烤棉花糖\n\n飞 船\n\n鼠标　俯仰与转向\n滚轮　长焦观察 1×–16×（星点 / 彗星 / 太阳）\nW / S　前后推进\nA / D　横向推进\nSpace　上升 / 起飞\nCtrl 或 C　下降\nShift　加力\nX　制动\nTab　切换目的地\nT　自动航行 / 着陆\nE　低速着陆 / 离船\nF5　第三人称看飞船\n\n归 航 站\n\n跟随青色标记到塔顶对接口\n140 米内按 E 对接 / 64 米内自动对接\nX　匹配站速（相对速度低于 22 m/s）\n对接后 E　进入空间站\nSpace　脱离对接\n中央枢纽气闸旁 E 返回飞船\n六条放射走廊 A–F\n\n触 屏\n\n左摇杆　移动 / 平移\n右侧空白　拖动视角\n圆钮　跳跃 / 喷气 / 互动 / 扫描\n飞船圆钮　起飞 / 离船 / 上升 / 下降 / 加力 / 制动\n星图　右侧关闭 / 缩放按钮", 15, Color("bed2cd"))
 	left.custom_minimum_size.x = 372
 	var right_scroll := ScrollContainer.new()
 	right_scroll.custom_minimum_size.x = 540
@@ -1105,7 +1105,7 @@ func _process(delta: float) -> void:
 		_row_icons[0].modulate = Color(0.55, 0.90, 0.95, 0.95) if game.ship.hull > 30.0 \
 				else Color(1.0, 0.45, 0.30, 1.0)
 		if game.ship.docked:
-			ship_stats.text = "速度  000.0 m/s\n对接　归航站\nE 进入归航站 / Space 脱离\n推进剂与船体补给中"
+			ship_stats.text = "速度  000.0 m/s\n对接　%s\nE 进入 / Space 脱离\n推进剂与船体补给中" % game.ship.docked_station.display_name
 		else:
 			var normal: Vector3 = (game.ship.global_position - planet.global_position).normalized()
 			var altitude: float = game.ship.global_position.distance_to(planet.global_position) - planet.terrain_height(normal)

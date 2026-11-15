@@ -2252,7 +2252,8 @@ func docking_point() -> Vector3:
 
 
 func dock_ship_position() -> Vector3:
-	return to_global(Vector3(0.0, 266.0, 0.0))
+	# The 70 m ship points its nose down: keep its bow above the tower pylons.
+	return to_global(Vector3(0.0, 310.0, 0.0))
 
 
 func dock_look_target() -> Vector3:

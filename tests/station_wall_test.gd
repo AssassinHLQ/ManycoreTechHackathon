@@ -45,6 +45,8 @@ func _run() -> void:
 	game.save_path = "user://starward_hole_probe.json"
 	root.add_child(game)
 	await game.await_world_ready()
+	# Finish async snapshot readers before this short geometry test tears down the tree.
+	while game.world_build_remaining or game.planets.size() < 20: await process_frame
 	await process_frame
 	game.start_game()
 	game.ship.dock_station(game.station)

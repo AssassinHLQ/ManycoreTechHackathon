@@ -180,6 +180,11 @@ var hull_body: StaticBody3D
 var hull_shape: Shape3D
 var station_velocity := Vector3.ZERO
 var last_station_port := Vector3.ZERO
+var _station_motion := {}
+const DOCK_HINT_RADIUS := 600.0
+const DOCK_INTERACT_RADIUS := 140.0
+const DOCK_SNAP_RADIUS := 64.0
+const DOCK_MAX_RELATIVE_SPEED := 22.0
 var dock_cooldown := 0.0
 var impact_cooldown := 0.0
 var fuel_empty_time := 0.0
@@ -1732,6 +1737,7 @@ func _reset_cockpit_camera() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_update_station_motion(delta)
 	if game.state != "ship" or game.paused or game.supernova_active or game.map_open:
 		thrust_level = 0.0
 		# ⚠ 2026-11-13：这里必须显式把引擎音关掉。
@@ -1748,12 +1754,6 @@ func _physics_process(delta: float) -> void:
 		turn_budget = Quaternion.IDENTITY
 		_turn_velocity = Vector3.ZERO
 		_roll_ramp = 0.0
-	if game.station != null:
-		var port_now: Vector3 = game.station.docking_point()
-		if last_station_port != Vector3.ZERO:
-			var measured := (port_now - last_station_port) / maxf(delta, 0.0001)
-			station_velocity = measured if measured.length() < 200.0 else Vector3.ZERO
-		last_station_port = port_now
 	var base_fov := 46.0 if focus else 72.0
 	var target_fov := maxf(base_fov / zoom, 3.0)
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 8.0))
@@ -1774,6 +1774,7 @@ func _physics_process(delta: float) -> void:
 		# 归航站是绕星公转（位置在变），同理。做法是每帧重贴到站的停靠点。
 		if docked_station != null and is_instance_valid(docked_station):
 			global_position = docked_station.dock_ship_position()
+			look_at(docked_station.dock_look_target(), docked_station.dock_up_direction())
 		if Input.is_action_just_pressed("jump"):
 			undock()
 		_update_engine(delta)
@@ -1932,7 +1933,11 @@ func _physics_process(delta: float) -> void:
 		# 制动：S 键（原来是 X）。沿速度反方向施加减速推力，按 Δv 烧燃料。
 		if Input.is_action_pressed("brake") and fuel > 0.0:
 			var before_brake := velocity
-			velocity = velocity.move_toward(Vector3.ZERO, delta * SHIP_BRAKE_DECEL)
+			var brake_target := Vector3.ZERO
+			var approach := nearby_docking_status()
+			if not approach.is_empty():
+				brake_target = station_port_velocity(approach.station)
+			velocity = velocity.move_toward(brake_target, delta * SHIP_BRAKE_DECEL)
 			var brake_dv := velocity.distance_to(before_brake)
 			if brake_dv > 0.0001:
 				fuel = maxf(0.0, fuel - brake_dv * MANUAL_FUEL_PER_DV * bh_fuel_multiplier)
@@ -1961,7 +1966,7 @@ func _physics_process(delta: float) -> void:
 		#     · 角差小 → 自然收敛，不会抖动
 		#     · 无论机头转多快，速度总有确定的追赶速率
 		var speed_aligned := velocity.length()
-		if speed_aligned > 0.5:
+		if speed_aligned > 0.5 and not Input.is_action_pressed("brake"):
 			var nose_dir := -global_transform.basis.z.normalized()
 			var vel_dir := velocity / speed_aligned
 			var cos_angle := clampf(vel_dir.dot(nose_dir), -1.0, 1.0)
@@ -1987,18 +1992,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	if not docked and not landed and dock_cooldown <= 0.0:
-		# 归航站与两座远景站统一处理：谁在范围内就对接谁。
-		# 远景站的端口在站顶（自家坐标里），判定半径按它们的体量放大到
-		# DOCK_APPROACH_RADIUS 量级，否则 900 米大的站要贴到 24 米才算数，玩家会以为没反应。
-		for candidate in _dockable_stations():
-			var station_port: Vector3 = candidate.docking_point()
-			var reach: float = 24.0
-			if candidate.has_method("is_distant_station"):
-				reach = candidate.DOCK_SNAP_RADIUS
-			if global_position.distance_to(station_port) < reach \
-					and (velocity - station_velocity).length() < (18.0 if not candidate.has_method("is_distant_station") else candidate.DOCK_SNAP_SPEED):
-				dock_station(candidate)
-				return
+		var approach := nearby_docking_status(DOCK_SNAP_RADIUS)
+		if not approach.is_empty() and approach.relative_speed <= DOCK_MAX_RELATIVE_SPEED and approach.above_port:
+			dock_station(approach.station)
+			return
 
 	planet = game.nearest_planet(global_position)
 	offset = global_position - planet.global_position
@@ -2280,9 +2277,18 @@ func _apply_black_hole_capture(delta: float) -> bool:
 
 
 func _move_with_station_collision(delta: float) -> void:
-	var station = game.station
+	var station: Node3D = null
+	var nearest := INF
+	for candidate in _dockable_stations():
+		var reach: float = STATION_COLLISION_RANGE
+		if candidate.has_method("is_distant_station"):
+			reach = maxf(reach, candidate.half_extent.length() + ship_model_length)
+		var distance := global_position.distance_to(candidate.global_position)
+		if distance < reach and distance < nearest:
+			station = candidate
+			nearest = distance
 	var motion := velocity * delta
-	if station == null or global_position.distance_to(station.global_position) > STATION_COLLISION_RANGE:
+	if station == null:
 		global_position += motion
 		return
 	if _station_blocked(global_position):
@@ -2311,7 +2317,7 @@ func _move_with_station_collision(delta: float) -> void:
 			continue
 		var hit := _station_rest(next)
 		var hit_normal: Vector3 = hit.get("normal", (global_position - station.global_position).normalized())
-		var relative_velocity := velocity - station_velocity
+		var relative_velocity := velocity - station_port_velocity(station)
 		if hit_normal.dot(relative_velocity) > 0.0:
 			hit_normal = -hit_normal
 		var impact_speed := relative_velocity.length()
@@ -2321,7 +2327,7 @@ func _move_with_station_collision(delta: float) -> void:
 		if autopilot:
 			autopilot = false
 			velocity = Vector3.ZERO
-			game.hud.show_toast("自动航行中止：前方是归航站", 3.0)
+			game.hud.show_toast("自动航行中止：前方是%s" % station.display_name, 3.0)
 		elif impact_speed > 14.0 and impact_cooldown <= 0.0:
 			hull = maxf(0.0, hull - (impact_speed - 10.0) * 0.55)
 			impact_cooldown = 1.2
@@ -2490,6 +2496,58 @@ func _dockable_stations() -> Array:
 	return out
 
 
+func _update_station_motion(delta: float) -> void:
+	for candidate in _dockable_stations():
+		var key: int = candidate.get_instance_id()
+		var port: Vector3 = candidate.docking_point()
+		var measured := Vector3.ZERO
+		if _station_motion.has(key):
+			measured = (port - _station_motion[key].position) / maxf(delta, 0.0001)
+			if measured.length() > 200.0: measured = Vector3.ZERO
+		_station_motion[key] = {"position": port, "velocity": measured}
+		if candidate == game.station:
+			station_velocity = measured
+			last_station_port = port
+
+
+func station_port_velocity(station_node: Node3D) -> Vector3:
+	return _station_motion.get(station_node.get_instance_id(), {}).get("velocity", Vector3.ZERO)
+
+
+## The HUD, E interaction and automatic latch use the same station and thresholds.
+func nearby_docking_status(max_range := DOCK_HINT_RADIUS) -> Dictionary:
+	var result := {}
+	var nearest: float = max_range
+	for candidate in _dockable_stations():
+		var offset: Vector3 = global_position - candidate.docking_point()
+		var distance := offset.length()
+		if distance > nearest: continue
+		nearest = distance
+		result = {"station": candidate, "distance": distance,
+			"relative_speed": velocity.distance_to(station_port_velocity(candidate)),
+			"above_port": offset.dot(candidate.up_direction()) >= 0.0}
+	return result
+
+
+## Return true whenever the station owns this interaction, including approach feedback.
+func try_dock_nearby() -> bool:
+	if landed or docked: return false
+	var approach := nearby_docking_status()
+	if approach.is_empty(): return false
+	var label: String = approach.station.display_name
+	if dock_cooldown > 0.0:
+		game.hud.show_toast("刚刚脱离%s · 请稍候再对接" % label, 2.0)
+	elif not approach.above_port:
+		game.hud.show_toast("%s对接口在塔顶上方 · 跟随青色对接标记" % label, 3.0)
+	elif approach.distance > DOCK_INTERACT_RADIUS:
+		game.hud.show_toast("%s · 靠近塔顶对接口至 140 米内 · X 匹配站速" % label, 3.0)
+	elif approach.relative_speed > DOCK_MAX_RELATIVE_SPEED:
+		game.hud.show_toast("对接相对速度 %.1f m/s · 按住 X 匹配站速至 22 m/s 内" % approach.relative_speed, 3.0)
+	else:
+		dock_station(approach.station)
+	return true
+
+
 func dock_station(station_node) -> void:
 	if docked or landed:
 		return
@@ -2502,12 +2560,7 @@ func dock_station(station_node) -> void:
 	global_position = station_node.dock_ship_position()
 	look_at(station_node.dock_look_target(), station_node.dock_up_direction())
 	game.audio.play_ui(300.0)
-	var label := "归航站"
-	if station_node.has_method("is_distant_station"):
-		label = station_node.display_name
-		# 远景站没有内部，所以文案不写「按 E 进入」
-		game.hud.show_toast("磁力对接完成 · %s · 按 Space 脱离" % label, 4.0)
-		return
+	var label: String = station_node.display_name
 	game.hud.show_toast("磁力对接完成 · 按 E 进入%s" % label, 4.0)
 
 
@@ -2516,12 +2569,13 @@ func undock() -> void:
 		return
 	var station_node = docked_station
 	var outward: Vector3 = station_node.up_direction()
+	var inherited_velocity := station_port_velocity(station_node)
 	docked = false
 	docked_station = null
 	autopilot = false
 	dock_cooldown = 3.0
 	global_position += outward * 7.0
-	velocity = outward * 20.0
+	velocity = inherited_velocity + outward * 20.0
 	game.audio.play_ui(340.0)
 	game.hud.show_toast("已脱离对接 · 手动驾驶", 3.0)
 
@@ -2550,6 +2604,8 @@ func takeoff() -> void:
 
 func try_land() -> void:
 	if landed or docked:
+		return
+	if try_dock_nearby():
 		return
 	var planet = game.nearest_planet(global_position)
 	var normal: Vector3 = (global_position - planet.global_position).normalized()

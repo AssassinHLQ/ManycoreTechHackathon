@@ -40,7 +40,7 @@ func _run() -> void:
 	var port_local: Vector3 = station.to_local(station.docking_point())
 	var dock_local: Vector3 = station.to_local(station.dock_ship_position())
 	_check(port_local.y > 80.0, "docking port sits on the central command tower")
-	_check(dock_local.y > port_local.y and dock_local.y - port_local.y < 20.0, "docked ship parks directly above the port")
+	_check(dock_local.y - port_local.y > game.ship.ship_model_length * 0.5 and dock_local.y - port_local.y < 70.0, "docked ship keeps its full bow clear above the port")
 	_check(station.station_body != null and station.station_body.get_child_count() > 80, "station interior is fully collided")
 	_check(station._mat_window.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED, "interior windows use transparent glass")
 	var exterior_shapes := 0
@@ -84,8 +84,9 @@ func _run() -> void:
 	game.ship.autopilot = false
 	game.ship.fuel = 60.0
 	game.ship.hull = 100.0
-	game.ship.global_position = station.docking_point() + station.up_direction() * 18.0
-	game.ship.velocity = Vector3.ZERO
+	# Match the orbiting port and approach before the full-sized bow touches the tower.
+	game.ship.global_position = station.docking_point() + station.up_direction() * 63.0
+	game.ship.velocity = game.ship.station_port_velocity(station)
 	for i in range(4):
 		await physics_frame
 	_check(game.ship.docked, "slow close approach docks automatically")

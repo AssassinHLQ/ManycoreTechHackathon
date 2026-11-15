@@ -3094,11 +3094,19 @@ func get_prompt() -> String:
 			return "左摇杆移动 · 拖动右侧视角 · 圆钮跳跃 / 喷气 / 互动 / 扫描"
 		return "WASD 移动 · Shift 喷气 · Ctrl 奔跑 · F 扫描 · R 脱困 · 右键信号镜 · 滚轮变焦"
 	if ship.docked:
+		var dock_name: String = ship.docked_station.display_name
 		if touch_ui_active():
-			return "「进入」进入归航站 ·「脱离」解除对接"
-		return "E 进入归航站 · Space 脱离对接 · 滚轮长焦"
-	if station != null and station.docking_point().distance_to(ship.global_position) < 140.0:
-		return "低速靠近对接口即可自动对接 · 距离 %d m · X 制动" % int(station.docking_point().distance_to(ship.global_position))
+			return "「进入」进入%s ·「脱离」解除对接" % dock_name
+		return "E 进入%s · Space 脱离对接 · 滚轮长焦" % dock_name
+	if not ship.landed:
+		var approach: Dictionary = ship.nearby_docking_status()
+		if not approach.is_empty():
+			var action := "跟随青色标记到塔顶上方"
+			if approach.above_port:
+				action = "E 对接" if approach.distance <= ship.DOCK_INTERACT_RADIUS else "靠近至 140 m 内按 E 对接"
+			if ship.dock_cooldown > 0.0: action = "脱离中 · 稍候可重新对接"
+			var key := action.replace("E 对接", "「互动」对接") if touch_ui_active() else action
+			return "%s · %s · %d m · 相对速度 %.1f / 22 m/s · X 匹配站速" % [approach.station.display_name, key, int(approach.distance), approach.relative_speed]
 	if ship.landed:
 		if touch_ui_active():
 			return "「起飞」按钮升空 · 摇杆平移 · 拖动转向 · 圆钮离船"

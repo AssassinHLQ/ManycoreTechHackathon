@@ -57,6 +57,7 @@ func _draw() -> void:
 		return
 	if game.state == "ship":
 		_draw_cockpit()
+		_draw_docking_marker()
 	_draw_markers()
 	_draw_crosshair()
 	if game.roast != null and game.roast.active:
@@ -68,6 +69,23 @@ func _draw() -> void:
 		var color: Color = game.scan_target.accent_color
 		draw_arc(center, 34.0, -PI * 0.5, -PI * 0.5 + TAU * game.scan_progress, 64, Color(color, 0.9), 3.0, true)
 		draw_arc(center, 40.0, 0, TAU, 64, Color(color, 0.18), 1.0, true)
+
+
+func _draw_docking_marker() -> void:
+	if game.ship.landed or game.ship.docked: return
+	var approach: Dictionary = game.ship.nearby_docking_status(2000.0)
+	if approach.is_empty(): return
+	var camera: Camera3D = game.get_active_camera()
+	var port: Vector3 = approach.station.docking_point()
+	if camera == null or camera.is_position_behind(port): return
+	var screen := camera.unproject_position(port)
+	screen = screen.clamp(Vector2(60, 100), size - Vector2(320, 180))
+	var color := Color("78dce8")
+	draw_arc(screen, 16.0, 0.0, TAU, 32, color, 2.0, true)
+	draw_line(screen + Vector2(-22, 0), screen + Vector2(22, 0), color, 1.0, true)
+	draw_line(screen + Vector2(0, -22), screen + Vector2(0, 22), color, 1.0, true)
+	draw_string(font, screen + Vector2(26, -8), "%s · 塔顶对接口" % approach.station.display_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, color)
+	draw_string(font, screen + Vector2(26, 15), "%d m · 140 m 内低速按 E 对接" % int(approach.distance), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, color)
 
 
 func _draw_crosshair() -> void:
