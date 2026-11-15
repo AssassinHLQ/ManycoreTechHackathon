@@ -85,6 +85,10 @@ func build_echo(game, planet, source: Node3D) -> void:
 		var direction := (up + source.basis.x * (38.0 / float(planet.radius))).normalized()
 		echo.position = planet.surface_position(direction, 0.4)
 		echo.basis = Basis(Quaternion(Vector3.UP, direction))
+		if planet.planet_id == "qinglan":
+			var tower := planet.get_node_or_null("Architecture_Qinglan") as Node3D
+			if tower != null:
+				echo.transform = tower.transform * Transform3D(Basis.from_scale(Vector3.ONE * 0.5), Vector3(3.2, 1.76, 9.4))
 		echo.visible = decoded.has(key)
 		planet.add_child(echo)
 		echoes[key] = echo

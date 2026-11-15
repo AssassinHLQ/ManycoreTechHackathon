@@ -14,6 +14,11 @@ var rune_material: StandardMaterial3D
 var base_orb_height := 6.1
 
 
+## Aim at the visible signal, rather than an arbitrary point inside the stone body.
+func scan_position() -> Vector3:
+	return orb.global_position if is_instance_valid(orb) else to_global(Vector3(0, base_orb_height, 0))
+
+
 func _ready() -> void:
 	var stone := StandardMaterial3D.new()
 	stone.albedo_color = Color("242d35")

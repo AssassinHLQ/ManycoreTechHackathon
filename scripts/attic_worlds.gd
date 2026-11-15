@@ -71,6 +71,8 @@ func build() -> void:
 		holder.name = "World_%s" % key.capitalize()
 		holder.position = origin
 		add_child(holder)
+		if use_authored_scenes and Authoring.load_world(self, key, holder):
+			continue
 		# 内容层：按原作尺度缩放并平移对齐。玩家挂在外层 holder（不缩放），
 		# 所以放大场地不会改到玩家的重力、步速与体积。
 		var content := Node3D.new()
@@ -139,6 +141,16 @@ func build() -> void:
 			Authoring.stable_names(content)
 			if use_authored_scenes:
 				Authoring.install(self, key)
+	set_active_world("")
+
+
+## Keep inactive particles and lights out of the shared viewport and simulation.
+func set_active_world(key: String) -> void:
+	for world_key in worlds:
+		var holder: Node3D = worlds[world_key]["node"]
+		var active: bool = world_key == key
+		holder.visible = active
+		holder.process_mode = Node.PROCESS_MODE_INHERIT if active else Node.PROCESS_MODE_DISABLED
 
 
 # --- 公共构件 ---------------------------------------------------------------
@@ -387,8 +399,13 @@ func _build_snow(holder: Node3D) -> Dictionary:
 	var moon := _sphere(holder, 26.0, Vector3(-90, 120, -160), _mat(Color("dfe9f6"), 0.9))
 	moon.name = "Moon"
 	_light(holder, Vector3(0, 24, 0), Color("c9dcf0"), 1.5, 60.0)
-	var snow := _build_motes(holder, int(round(900.0 * _scenery_density("snow"))), Color("ffffff"), PLATFORM_HALF * 0.9, 14.0, 0.8)
+	var snow := _build_motes(holder, int(round(420.0 * _scenery_density("snow"))), Color("b8c5d4"), PLATFORM_HALF * 0.9, 14.0, 0.8)
 	snow.name = "Snowfall"
+	snow.preprocess = 0.8
+	(snow.mesh as SphereMesh).radius = 0.025
+	(snow.mesh as SphereMesh).height = 0.05
+	snow.mesh.material.albedo_color = Color(0.72, 0.77, 0.83, 0.6)
+	snow.mesh.material.emission_enabled = false
 	snow.lifetime = 7.0
 	snow.initial_velocity_min = 1.0
 	snow.initial_velocity_max = 1.8
@@ -573,8 +590,15 @@ func _build_alley(holder: Node3D) -> Dictionary:
 		_box(holder, Vector3(1.6, 2.4, 0.12), Vector3(0, 1.2, -11.0), _mat(Color("3a2f28")))
 	_light(holder, Vector3(0, 14, 0), Color("8fa6c0"), 1.2, 40.0)
 	# 雨
-	var rain := _build_motes(holder, int(round(1200.0 * _scenery_density("alley"))), Color("cfe0ee"), PLATFORM_HALF * 0.8, 12.0, 0.5)
+	var rain := _build_motes(holder, int(round(400.0 * _scenery_density("alley"))), Color("cfe0ee"), PLATFORM_HALF * 0.8, 12.0, 0.5)
 	rain.name = "Rain"
+	rain.preprocess = 0.8
+	var rain_mesh := BoxMesh.new()
+	rain_mesh.size = Vector3(0.015, 0.45, 0.015)
+	rain_mesh.material = rain.mesh.material
+	rain_mesh.material.albedo_color = Color(0.5, 0.65, 0.75, 0.3)
+	rain_mesh.material.emission_enabled = false
+	rain.mesh = rain_mesh
 	rain.lifetime = 2.2
 	rain.initial_velocity_min = 9.0
 	rain.initial_velocity_max = 13.0

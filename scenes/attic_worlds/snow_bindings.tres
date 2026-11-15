@@ -1,0 +1,135 @@
+[gd_resource type="Resource" format=3]
+
+[resource]
+metadata/bindings = {
+"fields": {
+"fishing_holes": [{
+"anchor": {
+"$node": "FishingHole_0/FishAnchor_0"
+},
+"caught": false,
+"lamp": {
+"$node": "FishingHole_0/MeshInstance3D_0004"
+},
+"material": {
+"$material": "FishingHole_0/MeshInstance3D_0004"
+},
+"name": "冰纹鲫",
+"node": {
+"$node": "FishingHole_0"
+}
+}, {
+"anchor": {
+"$node": "FishingHole_1/FishAnchor_1"
+},
+"caught": false,
+"lamp": {
+"$node": "FishingHole_1/MeshInstance3D_0004"
+},
+"material": {
+"$material": "FishingHole_1/MeshInstance3D_0004"
+},
+"name": "星鳞鱼",
+"node": {
+"$node": "FishingHole_1"
+}
+}, {
+"anchor": {
+"$node": "FishingHole_2/FishAnchor_2"
+},
+"caught": false,
+"lamp": {
+"$node": "FishingHole_2/MeshInstance3D_0004"
+},
+"material": {
+"$material": "FishingHole_2/MeshInstance3D_0004"
+},
+"name": "极光鳟",
+"node": {
+"$node": "FishingHole_2"
+}
+}],
+"hearth_light": {
+"$node": "PropAnchor_hearth_snow/OmniLight3D_0003"
+},
+"hearth_node": {
+"$node": "PropAnchor_hearth_snow"
+}
+},
+"keyed": {
+"device_nodes": [{
+"anchor": {
+"$node": "Device_IceMirror_0/DeviceAnchor_0"
+},
+"kind": "mirror",
+"material": {
+"$material": "Device_IceMirror_0/MeshInstance3D_0002"
+},
+"mesh": {
+"$node": "Device_IceMirror_0/MeshInstance3D_0002"
+},
+"node": {
+"$node": "Device_IceMirror_0"
+}
+}, {
+"anchor": {
+"$node": "Device_IceMirror_1/DeviceAnchor_1"
+},
+"kind": "mirror",
+"material": {
+"$material": "Device_IceMirror_1/MeshInstance3D_0002"
+},
+"mesh": {
+"$node": "Device_IceMirror_1/MeshInstance3D_0002"
+},
+"node": {
+"$node": "Device_IceMirror_1"
+}
+}, {
+"anchor": {
+"$node": "Device_IceMirror_2/DeviceAnchor_2"
+},
+"kind": "mirror",
+"material": {
+"$material": "Device_IceMirror_2/MeshInstance3D_0002"
+},
+"mesh": {
+"$node": "Device_IceMirror_2/MeshInstance3D_0002"
+},
+"node": {
+"$node": "Device_IceMirror_2"
+}
+}],
+"device_states": [false, false, false],
+"device_values": [1, 2, 0],
+"world_done": false
+},
+"props": {
+"hearth_snow": {
+"$node": "PropAnchor_hearth_snow"
+},
+"lantern_snow": {
+"$node": "PropAnchor_lantern_snow"
+},
+"sign_snow": {
+"$node": "PropAnchor_sign_snow"
+},
+"sled": {
+"$node": "PropAnchor_sled"
+}
+},
+"world": {
+"content": {
+"$node": "."
+},
+"node": {
+"$holder": true
+},
+"origin": Vector3(0, -46000, 0),
+"return": {
+"$node": "ReturnPortal/WorldAnchor_Return"
+},
+"spawn": Vector3(0, 1.4651538, -13.229538),
+"title": "雪夜"
+}
+}

@@ -24,6 +24,7 @@ var _route_board_was_paused := false
 var _attic_return: Dictionary = {}
 
 const LOOP_DURATION := 1020.0
+const LOCAL_SCENE_FAR := 350.0 # Includes the snow world's moon, below the 400 m world spacing.
 ## 打印跨帧建场各阶段耗时（排查首屏卡顿时打开）
 const BUILD_TIMING := false
 var _stage_usec := 0
@@ -658,11 +659,11 @@ const SKY_PRESETS := {
 	},
 	"snow": {
 		"zenith": Vector3(0.008, 0.016, 0.042), "horizon": Vector3(0.05, 0.09, 0.16), "grad": 2.0,
-		"stars": 0.5, "nebula": 0.55, "haze": 0.3, "haze_color": Vector3(0.16, 0.24, 0.36),
-		"twinkle": 0.28, "meteor": 0.35, "flow": 0.7,
-		# 雪夜：稀薄的卷云，被高空风拉成长丝，星从云缝里透出来
+		"stars": 0.0, "nebula": 0.55, "haze": 0.3, "haze_color": Vector3(0.16, 0.24, 0.36),
+		"twinkle": 0.0, "meteor": 0.0, "flow": 0.7,
+		# 雪夜：低云被高空风拉成长丝，隔绝宇宙的星层。
 		"n_axis": Vector3(-0.30, 0.62, 0.72), "n_band": 2.6, "n_scale": 6.4,
-		"n_warp": 1.85, "n_thr": 0.44, "n_seed": Vector3(2.6, 8.8, 4.1), "n_struct": 0.12,
+		"n_warp": 1.85, "n_thr": 0.44, "n_seed": Vector3(2.6, 8.8, 4.1), "n_struct": 0.0,
 	},
 	"cloud": {
 		# 上蓝下金的黎明：天顶留一点蓝，地平线是暖金，中间自然过渡。
@@ -682,14 +683,13 @@ const SKY_PRESETS := {
 		"n_blend": 1.0,
 	},
 	"firefly": {
-		# 树冠会挡掉大部分天光：星要压到「几乎只剩萤火」的程度，
-		# 否则满天的亮星会和萤火虫混在一起，分不清哪些是虫、哪些是星。
+		# 只保留林下萤火与暗云，避免宇宙星层混进树冠。
 		"zenith": Vector3(0.005, 0.014, 0.011), "horizon": Vector3(0.03, 0.07, 0.05), "grad": 2.4,
-		"stars": 0.085, "nebula": 0.2, "haze": 0.18, "haze_color": Vector3(0.07, 0.13, 0.09),
-		"twinkle": 0.16, "meteor": 0.0, "flow": 0.6,
+		"stars": 0.0, "nebula": 0.2, "haze": 0.18, "haze_color": Vector3(0.07, 0.13, 0.09),
+		"twinkle": 0.0, "meteor": 0.0, "flow": 0.6,
 		# 萤火森林：只有头顶一小片天，云又少又碎，剩下全是树影与萤火
 		"n_axis": Vector3(-0.52, 0.74, -0.42), "n_band": 5.5, "n_scale": 5.4,
-		"n_warp": 1.45, "n_thr": 0.46, "n_seed": Vector3(7.7, 0.6, 6.2), "n_struct": 0.35,
+		"n_warp": 1.45, "n_thr": 0.46, "n_seed": Vector3(7.7, 0.6, 6.2), "n_struct": 0.0,
 	},
 	"alley": {
 		"zenith": Vector3(0.045, 0.052, 0.066), "horizon": Vector3(0.16, 0.18, 0.21), "grad": 2.0,
@@ -720,6 +720,14 @@ const SKY_PRESETS := {
 
 ## 按世界设天空。key 用 SKY_PRESETS 的键。
 func apply_sky(key: String) -> void:
+	# Local scenes share the viewport, so also exclude distant solar-system geometry.
+	if player != null and player.camera != null:
+		player.camera.far = 400000.0 if key == "space" else LOCAL_SCENE_FAR
+	if attic != null:
+		attic.visible = key == "attic"
+		attic.process_mode = Node.PROCESS_MODE_INHERIT if key == "attic" else Node.PROCESS_MODE_DISABLED
+	if attic_worlds != null:
+		attic_worlds.set_active_world(key)
 	if sky_material == null:
 		return
 	var preset: Dictionary = SKY_PRESETS.get(key, SKY_PRESETS["space"])
@@ -1121,6 +1129,10 @@ func _build_planets(home_only := false) -> void:
 		# 已经建过就跳过 —— 第二段（home_only=false）不能把母星再建一遍。
 		if built_planet_ids.has(definition.id):
 			continue
+		# A synchronous planet build can take several seconds. Do not start one while
+		# the player is inside a local world or has paused the game.
+		while not home_only and (in_attic or paused):
+			await _yield_frame()
 		var planet := PlanetScript.new()
 		planet.game = self
 		planet.planet_id = definition.id
@@ -1174,6 +1186,12 @@ func _build_planets(home_only := false) -> void:
 		var anomaly_direction := (direction + tangent * (22.0 / planet.radius)).normalized()
 		anomaly.position = planet.surface_position(anomaly_direction, -0.18)
 		anomaly.basis = Basis(Quaternion(Vector3.UP, anomaly_direction))
+		if planet.planet_id == "qinglan":
+			# The old signal sat inside the windmill's solid upper floor. Place the
+			# terminal beside its entrance, at the same scale as the walking player.
+			var tower := planet.get_node_or_null("Architecture_Qinglan") as Node3D
+			if tower != null:
+				anomaly.transform = tower.transform * Transform3D(Basis.from_scale(Vector3.ONE * 0.3), Vector3(-3.2, 1.76, 9.4))
 		anomalies.append(anomaly)
 		route_link.build_echo(self, planet, anomaly)
 		# 每颗星球建完让出一帧：地形与地标是最贵的一段，逐个分片才能避免长卡顿
@@ -1966,11 +1984,11 @@ func _process(delta: float) -> void:
 	visual_time += delta
 	_update_guide(delta)
 	_update_boat(delta)
-	if attic_worlds != null:
+	if attic_worlds != null and pocket_key == "cloud":
 		attic_worlds.update_bridge(delta)
 		attic_worlds.update_airship(delta)
 	_update_pocket_safety()
-	if attic != null:
+	if attic != null and in_attic and not in_pocket():
 		attic.update_swallow(delta)
 	_update_sky_pixel_angle()
 	_animate_fire()
@@ -3117,7 +3135,9 @@ func _find_scan_target() -> Node3D:
 	for anomaly in anomalies:
 		if not route_link.can_scan(anomaly.anomaly_id):
 			continue
-		var offset: Vector3 = anomaly.global_position + anomaly.global_transform.basis.y * 3.0 - origin
+		var target: Vector3 = anomaly.scan_position() if anomaly.has_method("scan_position") \
+			else anomaly.global_position + anomaly.global_transform.basis.y * 3.0
+		var offset: Vector3 = target - origin
 		var distance := offset.length()
 		var max_distance := 55.0 if state == "walk" else 190.0
 		if "scan_range" in anomaly:
@@ -3128,7 +3148,7 @@ func _find_scan_target() -> Node3D:
 		var minimum_facing := 0.62 if state == "walk" else 0.38
 		if facing < minimum_facing and distance > 5.0:
 			continue
-		if not _has_line_of_sight(origin, anomaly.global_position + anomaly.global_transform.basis.y * 3.0):
+		if not _has_line_of_sight(origin, target):
 			continue
 		var score := distance * (2.0 - facing)
 		if score < best_score:
@@ -3903,6 +3923,9 @@ func _build_attic() -> void:
 	attic_worlds.progress_ref = progress
 	add_child(attic_worlds)
 	attic_worlds.build()
+	attic.visible = false
+	attic.process_mode = Node.PROCESS_MODE_DISABLED
+	attic_worlds.set_active_world("")
 
 
 ## 手册里的「重播新手提示」
@@ -4210,6 +4233,7 @@ func leave_pocket() -> void:
 				player.reparent(mirror, false)
 				player.global_position = attic_worlds.spawn_position("mirror")
 				player.velocity = Vector3.ZERO
+				apply_sky("mirror")
 				audio.play_ui(420.0)
 				return
 		"mirror":

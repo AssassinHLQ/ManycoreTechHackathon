@@ -19,7 +19,12 @@ func _run() -> void:
 	var worlds = load("res://scripts/attic_worlds.gd").new()
 	root.add_child(worlds)
 	worlds.build()
+	var other = load("res://scripts/attic_worlds.gd").new()
+	root.add_child(other)
 	for key in ["cloud", "firefly", "alley", "snow"]:
+		var holder := Node3D.new()
+		other.add_child(holder)
+		_check(worlds.Authoring.load_world(other, key, holder), key + " second instance loads cached scene")
 		var content: Node3D = worlds.worlds[key]["content"]
 		_check(content.scene_file_path.ends_with(key + ".tscn"), key + " uses the editable scene")
 		_check(content.is_ancestor_of(worlds.return_anchor(key)), key + " return portal rebound")
@@ -30,7 +35,13 @@ func _run() -> void:
 			var device: Dictionary = worlds.device_nodes[key][index]
 			_check(content.is_ancestor_of(device["anchor"]), key + " device anchor")
 			_check(device["mesh"].material_override == device["material"], key + " device material rebound")
+			var fresh_material: StandardMaterial3D = other.device_nodes[key][index]["material"]
+			var fresh_color := fresh_material.albedo_color
+			var fresh_energy := fresh_material.emission_energy_multiplier
+			_check(device["material"] != fresh_material, key + " puzzle material is isolated per game")
 			worlds.activate_device(key, index)
+			_check(fresh_material.albedo_color == fresh_color and fresh_material.emission_energy_multiplier == fresh_energy,
+				key + " puzzle changes leave the other game untouched")
 	worlds.use_winch()
 	worlds.update_bridge(0.2)
 	_check(worlds.worlds.cloud.content.is_ancestor_of(worlds.bridge_node), "bridge animation uses editable node")
@@ -40,6 +51,8 @@ func _run() -> void:
 		worlds.light_court_lamp(index)
 		_check(worlds.court_lamps[index].lamp.material_override == worlds.court_lamps[index].material,
 			"rain court material rebound")
+		_check(worlds.court_lamps[index].material != other.court_lamps[index].material,
+			"rain court material is isolated per game")
 	worlds.board_boat(worlds.boat_node.global_position)
 	worlds.update_boat(1.0, 0.2, 0.1)
 	_check(worlds.worlds.cloud.content.is_ancestor_of(worlds.boat_node), "boat uses editable node")
@@ -50,6 +63,7 @@ func _run() -> void:
 	var scene: PackedScene = load(path)
 	var state := scene.get_state()
 	_check(state.get_node_count() > 100, "editable scene contains scenery, not just a preview")
+	other.free()
 	worlds.free()
 	print("ATTIC AUTHORING TEST: %d checks, %d failure(s)" % [checks, failures])
 	quit(1 if failures else 0)

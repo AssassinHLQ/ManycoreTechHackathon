@@ -1,0 +1,123 @@
+[gd_resource type="Resource" format=3]
+
+[resource]
+metadata/bindings = {
+"fields": {
+"airship_node": {
+"$node": "Airship"
+},
+"boat_node": {
+"$node": "CloudBoat"
+},
+"bridge_node": {
+"$node": "PropAnchor_cloud_winch/CloudBridge"
+},
+"buoy_nodes": [{
+"index": 0,
+"lamp": {
+"$node": "Buoy_0/MeshInstance3D_0004"
+},
+"node": {
+"$node": "Buoy_0"
+}
+}, {
+"index": 1,
+"lamp": {
+"$node": "Buoy_1/MeshInstance3D_0004"
+},
+"node": {
+"$node": "Buoy_1"
+}
+}, {
+"index": 2,
+"lamp": {
+"$node": "Buoy_2/MeshInstance3D_0004"
+},
+"node": {
+"$node": "Buoy_2"
+}
+}]
+},
+"keyed": {
+"device_nodes": [{
+"anchor": {
+"$node": "Device_Buoy_0/DeviceAnchor_0"
+},
+"kind": "buoy",
+"material": {
+"$material": "Device_Buoy_0/MeshInstance3D_0003"
+},
+"mesh": {
+"$node": "Device_Buoy_0/MeshInstance3D_0003"
+},
+"node": {
+"$node": "Device_Buoy_0"
+}
+}, {
+"anchor": {
+"$node": "Device_Buoy_1/DeviceAnchor_1"
+},
+"kind": "buoy",
+"material": {
+"$material": "Device_Buoy_1/MeshInstance3D_0003"
+},
+"mesh": {
+"$node": "Device_Buoy_1/MeshInstance3D_0003"
+},
+"node": {
+"$node": "Device_Buoy_1"
+}
+}, {
+"anchor": {
+"$node": "Device_Buoy_2/DeviceAnchor_2"
+},
+"kind": "buoy",
+"material": {
+"$material": "Device_Buoy_2/MeshInstance3D_0003"
+},
+"mesh": {
+"$node": "Device_Buoy_2/MeshInstance3D_0003"
+},
+"node": {
+"$node": "Device_Buoy_2"
+}
+}],
+"device_states": [false, false, false],
+"device_values": [0, 0, 0],
+"minigame_anchors": {
+"$node": "WindChimeReef/MiniAnchor_cloud"
+},
+"world_done": false
+},
+"props": {
+"cloud_beacon": {
+"$node": "PropAnchor_cloud_beacon"
+},
+"cloud_scope": {
+"$node": "PropAnchor_cloud_scope"
+},
+"cloud_winch": {
+"$node": "PropAnchor_cloud_winch"
+},
+"sign_cloud": {
+"$node": "PropAnchor_sign_cloud"
+},
+"wind_organ": {
+"$node": "PropAnchor_wind_organ"
+}
+},
+"world": {
+"content": {
+"$node": "."
+},
+"node": {
+"$holder": true
+},
+"origin": Vector3(0, -46400, 0),
+"return": {
+"$node": "ReturnPortal/WorldAnchor_Return"
+},
+"spawn": Vector3(0, 1.6662692, -8.999999),
+"title": "云海"
+}
+}

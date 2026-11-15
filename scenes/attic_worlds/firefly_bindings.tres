@@ -1,0 +1,88 @@
+[gd_resource type="Resource" format=3]
+
+[resource]
+metadata/bindings = {
+"fields": {},
+"keyed": {
+"device_nodes": [{
+"anchor": {
+"$node": "Device_Jar_0/DeviceAnchor_0"
+},
+"kind": "jar",
+"material": {
+"$material": "Device_Jar_0/MeshInstance3D_0003"
+},
+"mesh": {
+"$node": "Device_Jar_0/MeshInstance3D_0003"
+},
+"node": {
+"$node": "Device_Jar_0"
+}
+}, {
+"anchor": {
+"$node": "Device_Jar_1/DeviceAnchor_1"
+},
+"kind": "jar",
+"material": {
+"$material": "Device_Jar_1/MeshInstance3D_0003"
+},
+"mesh": {
+"$node": "Device_Jar_1/MeshInstance3D_0003"
+},
+"node": {
+"$node": "Device_Jar_1"
+}
+}, {
+"anchor": {
+"$node": "Device_Jar_2/DeviceAnchor_2"
+},
+"kind": "jar",
+"material": {
+"$material": "Device_Jar_2/MeshInstance3D_0003"
+},
+"mesh": {
+"$node": "Device_Jar_2/MeshInstance3D_0003"
+},
+"node": {
+"$node": "Device_Jar_2"
+}
+}],
+"device_states": [false, false, false],
+"device_values": [0, 0, 0],
+"minigame_anchors": {
+"$node": "RootPath/MiniAnchor_firefly"
+},
+"world_done": false
+},
+"props": {
+"mushroom": {
+"$node": "PropAnchor_mushroom"
+},
+"ranger_lamp": {
+"$node": "PropAnchor_ranger_lamp"
+},
+"sign_firefly": {
+"$node": "PropAnchor_sign_firefly"
+},
+"waterwheel": {
+"$node": "PropAnchor_waterwheel"
+},
+"wood_drum": {
+"$node": "PropAnchor_wood_drum"
+}
+},
+"world": {
+"content": {
+"$node": "."
+},
+"node": {
+"$holder": true
+},
+"origin": Vector3(0, -46800, 0),
+"return": {
+"$node": "ReturnPortal/WorldAnchor_Return"
+},
+"spawn": Vector3(0, 1.7438076, -14.981077),
+"title": "萤火"
+}
+}

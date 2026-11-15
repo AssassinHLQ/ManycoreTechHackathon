@@ -140,11 +140,12 @@ rings = 16
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_s7d8y"]
 transparency = 1
 shading_mode = 0
+albedo_color = Color(0.72, 0.77, 0.83, 0.6)
 
 [sub_resource type="SphereMesh" id="SphereMesh_x8p7f"]
 material = SubResource("StandardMaterial3D_s7d8y")
-radius = 0.06
-height = 0.12
+radius = 0.025
+height = 0.05
 radial_segments = 6
 rings = 3
 
@@ -1109,9 +1110,9 @@ omni_range = 60.0
 
 [node name="Snowfall" type="CPUParticles3D" parent="." unique_id=1382376948]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7, 0)
-amount = 1752
+amount = 818
 lifetime = 7.0
-preprocess = 4.0
+preprocess = 0.8
 use_fixed_seed = true
 seed = 20261106
 mesh = SubResource("SphereMesh_x8p7f")

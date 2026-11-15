@@ -1,0 +1,129 @@
+[gd_resource type="Resource" format=3]
+
+[resource]
+metadata/bindings = {
+"fields": {
+"court_bench": {
+"$node": "CourtBench/CourtAnchor_Bench"
+},
+"court_lamps": [{
+"anchor": {
+"$node": "CourtLamp_0/CourtAnchor_0"
+},
+"lamp": {
+"$node": "CourtLamp_0/MeshInstance3D_0003"
+},
+"material": {
+"$material": "CourtLamp_0/MeshInstance3D_0003"
+},
+"node": {
+"$node": "CourtLamp_0"
+}
+}, {
+"anchor": {
+"$node": "CourtLamp_1/CourtAnchor_1"
+},
+"lamp": {
+"$node": "CourtLamp_1/MeshInstance3D_0003"
+},
+"material": {
+"$material": "CourtLamp_1/MeshInstance3D_0003"
+},
+"node": {
+"$node": "CourtLamp_1"
+}
+}, {
+"anchor": {
+"$node": "CourtLamp_2/CourtAnchor_2"
+},
+"lamp": {
+"$node": "CourtLamp_2/MeshInstance3D_0003"
+},
+"material": {
+"$material": "CourtLamp_2/MeshInstance3D_0003"
+},
+"node": {
+"$node": "CourtLamp_2"
+}
+}]
+},
+"keyed": {
+"device_nodes": [{
+"anchor": {
+"$node": "Device_Spout_0/DeviceAnchor_0"
+},
+"kind": "valve",
+"material": {
+"$material": "Device_Spout_0/MeshInstance3D_0004"
+},
+"mesh": {
+"$node": "Device_Spout_0/MeshInstance3D_0004"
+},
+"node": {
+"$node": "Device_Spout_0"
+}
+}, {
+"anchor": {
+"$node": "Device_Spout_1/DeviceAnchor_1"
+},
+"kind": "valve",
+"material": {
+"$material": "Device_Spout_1/MeshInstance3D_0004"
+},
+"mesh": {
+"$node": "Device_Spout_1/MeshInstance3D_0004"
+},
+"node": {
+"$node": "Device_Spout_1"
+}
+}, {
+"anchor": {
+"$node": "Device_Spout_2/DeviceAnchor_2"
+},
+"kind": "valve",
+"material": {
+"$material": "Device_Spout_2/MeshInstance3D_0004"
+},
+"mesh": {
+"$node": "Device_Spout_2/MeshInstance3D_0004"
+},
+"node": {
+"$node": "Device_Spout_2"
+}
+}],
+"device_states": [false, false, false],
+"device_values": [1, 2, 1],
+"minigame_anchors": {
+"$node": "RainGutter/MiniAnchor_alley"
+},
+"world_done": false
+},
+"props": {
+"paper_boat": {
+"$node": "PropAnchor_paper_boat"
+},
+"sign_alley": {
+"$node": "PropAnchor_sign_alley"
+},
+"stone_cat": {
+"$node": "PropAnchor_stone_cat"
+},
+"umbrella": {
+"$node": "PropAnchor_umbrella"
+}
+},
+"world": {
+"content": {
+"$node": "."
+},
+"node": {
+"$holder": true
+},
+"origin": Vector3(0, -47200, 0),
+"return": {
+"$node": "ReturnPortal/WorldAnchor_Return"
+},
+"spawn": Vector3(0, 1.5822692, -12.45877),
+"title": "雨巷"
+}
+}

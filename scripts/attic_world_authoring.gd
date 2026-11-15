@@ -7,6 +7,131 @@ const LINES := {
 	"alley": "逝者如斯夫，不会回来",
 	"snow": "这里真的是家吗？",
 }
+const KEYED_FIELDS := ["device_states", "device_values", "device_nodes", "world_done", "minigame_anchors"]
+const WORLD_FIELDS := {
+	"snow": ["fishing_holes", "hearth_node", "hearth_light"],
+	"cloud": ["bridge_node", "boat_node", "buoy_nodes", "airship_node"],
+	"alley": ["court_lamps", "court_bench"],
+	"firefly": [],
+}
+
+
+## Load authored geometry once, without first regenerating a duplicate world.
+static func load_world(worlds: Node3D, key: String, holder: Node3D) -> bool:
+	var path := DIRECTORY + key
+	if not WORLD_FIELDS.has(key) or not ResourceLoader.exists(path + "_bindings.tres"):
+		return false
+	var scene := load(path + ".tscn") as PackedScene
+	var data := load(path + "_bindings.tres") as Resource
+	if scene == null or data == null:
+		return false
+	var content := scene.instantiate() as Node3D
+	if content == null:
+		return false
+	var status := {"valid": true, "materials": {}}
+	var decoded: Dictionary = _decode(data.get_meta("bindings"), content, holder, status)
+	if not status.valid:
+		content.free()
+		push_warning("Editable world %s has missing gameplay nodes; using generated content." % key)
+		return false
+	# PackedScene resources are cached; isolate mutable puzzle materials per game.
+	# Preserve aliases where multiple meshes intentionally share a puzzle material.
+	for node in content.find_children("*", "GeometryInstance3D", true, false):
+		if status.materials.has(node.material_override):
+			node.material_override = status.materials[node.material_override]
+	holder.add_child(content)
+	worlds.worlds[key] = decoded.world
+	for field in decoded.keyed:
+		worlds.get(field)[key] = decoded.keyed[field]
+	for id in decoded.props:
+		worlds.prop_anchors[id] = decoded.props[id]
+		worlds.prop_used[id] = false
+	for field in decoded.fields:
+		worlds.set(field, decoded.fields[field])
+	_sync_authored_positions(worlds, key, content)
+	return true
+
+
+static func _sync_authored_positions(worlds: Node3D, key: String, content: Node3D) -> void:
+	var spawn := content.get_node_or_null("PlayerSpawn") as Node3D
+	if spawn != null:
+		worlds.worlds[key]["spawn"] = content.transform * spawn.position
+	if key == "cloud" and is_instance_valid(worlds.boat_node):
+		worlds.boat_pos = Vector2(worlds.boat_node.position.x, worlds.boat_node.position.z)
+		worlds.airship_center = worlds.airship_node.position
+
+
+## Bindings contain paths into editable scenes, never copies of their geometry.
+static func save_bindings(worlds: Node3D, key: String) -> Error:
+	var content: Node3D = worlds.worlds[key].content
+	var keyed := {}
+	for field in KEYED_FIELDS:
+		if worlds.get(field).has(key):
+			keyed[field] = worlds.get(field)[key]
+	var props := {}
+	for id in worlds.prop_ids_in(key):
+		props[id] = worlds.prop_anchors[id]
+	var fields := {}
+	for field in WORLD_FIELDS[key]:
+		fields[field] = worlds.get(field)
+	var materials := {}
+	for node in content.find_children("*", "GeometryInstance3D", true, false):
+		if node.material_override != null:
+			materials[node.material_override] = String(content.get_path_to(node))
+	var source := {"world": worlds.worlds[key], "keyed": keyed, "props": props, "fields": fields}
+	var data := Resource.new()
+	data.set_meta("bindings", _encode(source, content, materials))
+	return ResourceSaver.save(data, DIRECTORY + key + "_bindings.tres")
+
+
+static func _encode(value, content: Node3D, materials: Dictionary):
+	if value is Node:
+		return {"$holder": true} if value == content.get_parent() \
+			else {"$node": String(content.get_path_to(value))}
+	if value is Material:
+		assert(materials.has(value), "Gameplay material has no editable mesh")
+		return {"$material": materials.get(value, "")}
+	if value is Array:
+		var result := []
+		for item in value:
+			result.append(_encode(item, content, materials))
+		return result
+	if value is Dictionary:
+		var result := {}
+		for key in value:
+			result[key] = _encode(value[key], content, materials)
+		return result
+	return value
+
+
+static func _decode(value, content: Node3D, holder: Node3D, status: Dictionary):
+	if value is Dictionary:
+		if value.has("$holder"):
+			return holder
+		if value.has("$node") or value.has("$material"):
+			var node := content.get_node_or_null(value.get("$node", value.get("$material", "")))
+			if node == null:
+				status.valid = false
+				return null
+			if value.has("$material"):
+				if not node is GeometryInstance3D or node.material_override == null:
+					status.valid = false
+					return null
+				var material: Material = node.material_override
+				if not status.materials.has(material):
+					status.materials[material] = material.duplicate()
+				return status.materials[material]
+			return node
+		var result := {}
+		for key in value:
+			result[key] = _decode(value[key], content, holder, status)
+		return result
+	if value is Array:
+		var result := []
+		for item in value:
+			result.append(_decode(item, content, holder, status))
+		return result
+	return value
 
 
 static func add_story_sign(content: Node3D, key: String) -> void:
@@ -121,12 +246,7 @@ static func install(worlds: Node3D, key: String) -> void:
 	for property in properties:
 		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
 			worlds.set(property.name, _rebind(worlds.get(property.name), nodes, resources))
-	var spawn := replacement.get_node_or_null("PlayerSpawn") as Node3D
-	if spawn != null:
-		worlds.worlds[key]["spawn"] = replacement.transform * spawn.position
-	if key == "cloud" and is_instance_valid(worlds.boat_node):
-		worlds.boat_pos = Vector2(worlds.boat_node.position.x, worlds.boat_node.position.z)
-		worlds.airship_center = worlds.airship_node.position
+	_sync_authored_positions(worlds, key, replacement)
 	old.free()
 
 
