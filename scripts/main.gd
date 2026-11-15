@@ -387,6 +387,10 @@ func _build_world_progressive() -> void:
 		DisplayServer.window_set_ime_active(false)
 	_stage_end("touch+knowledge")
 	world_ready = true
+	if "--profile-runtime" in OS.get_cmdline_user_args():
+		var probe: Node = load("res://scripts/performance_probe.gd").new()
+		probe.game = self
+		add_child(probe)
 	world_ready_finished.emit()
 
 	# ── 第二阶段：补建其余 19 颗行星 ────────────────────────────────
@@ -417,7 +421,7 @@ func _stage_begin() -> void:
 
 func _stage_end(label: String) -> void:
 	var now := Time.get_ticks_usec()
-	if BUILD_TIMING:
+	if BUILD_TIMING or "--profile-startup" in OS.get_cmdline_user_args():
 		print("BUILD STAGE  %-24s %8.1f ms" % [label, (now - _stage_usec) / 1000.0])
 	_stage_usec = now
 
@@ -659,11 +663,11 @@ const SKY_PRESETS := {
 	},
 	"snow": {
 		"zenith": Vector3(0.008, 0.016, 0.042), "horizon": Vector3(0.05, 0.09, 0.16), "grad": 2.0,
-		"stars": 0.0, "nebula": 0.55, "haze": 0.3, "haze_color": Vector3(0.16, 0.24, 0.36),
-		"twinkle": 0.0, "meteor": 0.0, "flow": 0.7,
-		# 雪夜：低云被高空风拉成长丝，隔绝宇宙的星层。
+		"stars": 0.5, "nebula": 0.55, "haze": 0.3, "haze_color": Vector3(0.16, 0.24, 0.36),
+		"twinkle": 0.28, "meteor": 0.35, "flow": 0.7,
+		# 雪夜：稀薄的卷云，被高空风拉成长丝，星从云缝里透出来。
 		"n_axis": Vector3(-0.30, 0.62, 0.72), "n_band": 2.6, "n_scale": 6.4,
-		"n_warp": 1.85, "n_thr": 0.44, "n_seed": Vector3(2.6, 8.8, 4.1), "n_struct": 0.0,
+		"n_warp": 1.85, "n_thr": 0.44, "n_seed": Vector3(2.6, 8.8, 4.1), "n_struct": 0.12,
 	},
 	"cloud": {
 		# 上蓝下金的黎明：天顶留一点蓝，地平线是暖金，中间自然过渡。
@@ -683,13 +687,13 @@ const SKY_PRESETS := {
 		"n_blend": 1.0,
 	},
 	"firefly": {
-		# 只保留林下萤火与暗云，避免宇宙星层混进树冠。
+		# 林下保留稀疏星光，避免与近处的萤火混淆。
 		"zenith": Vector3(0.005, 0.014, 0.011), "horizon": Vector3(0.03, 0.07, 0.05), "grad": 2.4,
-		"stars": 0.0, "nebula": 0.2, "haze": 0.18, "haze_color": Vector3(0.07, 0.13, 0.09),
-		"twinkle": 0.0, "meteor": 0.0, "flow": 0.6,
+		"stars": 0.085, "nebula": 0.2, "haze": 0.18, "haze_color": Vector3(0.07, 0.13, 0.09),
+		"twinkle": 0.16, "meteor": 0.0, "flow": 0.6,
 		# 萤火森林：只有头顶一小片天，云又少又碎，剩下全是树影与萤火
 		"n_axis": Vector3(-0.52, 0.74, -0.42), "n_band": 5.5, "n_scale": 5.4,
-		"n_warp": 1.45, "n_thr": 0.46, "n_seed": Vector3(7.7, 0.6, 6.2), "n_struct": 0.0,
+		"n_warp": 1.45, "n_thr": 0.46, "n_seed": Vector3(7.7, 0.6, 6.2), "n_struct": 0.35,
 	},
 	"alley": {
 		"zenith": Vector3(0.045, 0.052, 0.066), "horizon": Vector3(0.16, 0.18, 0.21), "grad": 2.0,
@@ -785,6 +789,12 @@ func _build_environment() -> void:
 	var sky := Sky.new()
 	sky_material = ShaderMaterial.new()
 	sky_material.shader = load("res://shaders/space_sky.gdshader")
+	if OS.has_feature("web"):
+		var web_shader := Shader.new()
+		web_shader.code = sky_material.shader.code.replace("shader_type sky;", "shader_type sky;\n#define WEB_SKY\n")
+		sky_material.shader = web_shader
+		sky.radiance_size = Sky.RADIANCE_SIZE_32
+	sky_material.set_shader_parameter("sky_detail", 1)
 	sky.sky_material = sky_material
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = sky
@@ -927,7 +937,7 @@ func _add_prominence_vertex(tool: SurfaceTool, point: Vector3, uv: Vector2) -> v
 func _update_sky_pixel_angle() -> void:
 	if sky_material == null:
 		return
-	var height := maxf(get_viewport().get_visible_rect().size.y, 1.0)
+	var height := maxf(float(get_window().size.y) * get_viewport().scaling_3d_scale, 1.0)
 	var fov := 72.0
 	var camera := get_viewport().get_camera_3d()
 	if camera != null:

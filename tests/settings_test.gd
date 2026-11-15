@@ -17,6 +17,12 @@ func _check(condition: bool, message: String) -> void:
 
 
 func _run() -> void:
+	var budget = preload("res://scripts/web_render_budget.gd")
+	_check(is_equal_approx(budget.scale_for(Vector2(1280, 720), "medium"), 1.0), "720p medium retains native 3D resolution")
+	_check(is_equal_approx(budget.scale_for(Vector2(2560, 1440), "medium"), 0.5), "medium Web caps 1440p windows at a 720p 3D pixel budget")
+	_check(is_equal_approx(budget.scale_for(Vector2(3840, 2160), "high"), 0.5), "high Web retains a 1080p 3D pixel budget on 4K screens")
+	_check(is_equal_approx(budget.scale_for(Vector2(1280, 720), "low"), 0.75), "low Web reduces only 3D resolution")
+	_check(is_equal_approx(budget.scale_for(Vector2(0, 0), "medium"), 1.0), "minimized viewport cannot create an invalid scale")
 	var test_save := "user://starward_settings_test.json"
 	if FileAccess.file_exists(test_save):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(test_save))
@@ -83,7 +89,7 @@ func _run() -> void:
 	s.reset_defaults()
 	_check(int(s.values.get("lod", -1)) == 2, "restore defaults restores LOD without dropping its setting")
 	_check(int(s.values.view_distance) == 1 and int(s.values.msaa) == 1, "restore defaults works")
-	_check(int(s.values.sky_detail) == 3, "restore defaults restores the sky detail tier")
+	_check(int(s.values.sky_detail) == 1, "medium defaults use the medium sky tier")
 	Engine.max_fps = 0
 	game.queue_free()
 	await process_frame

@@ -272,7 +272,7 @@ func _run() -> void:
 		if node.mesh == null:
 			continue
 		for s in range(node.mesh.get_surface_count()):
-			if node.material_override == station._beacon_material or node.mesh.surface_get_material(s) == station._beacon_material:
+			if node.get_active_material(s) == station._beacon_material:
 				beacon_surfaces += 1
 			break
 	_check(beacon_surfaces > 0, "docking beacons keep the pulsing material after merging")

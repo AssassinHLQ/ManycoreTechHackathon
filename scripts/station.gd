@@ -17,6 +17,7 @@ var active_corridor := -1
 const Placement := preload("res://scripts/prop_placement.gd")
 const Precision = preload("res://scripts/procedural_dressing.gd")
 const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
+const RuntimeBake = preload("res://scripts/runtime_bake.gd")
 
 const STATION_PROP_DIR := "res://assets/models/props/station/"
 var _prop_placer := Placement.new()
@@ -122,15 +123,18 @@ func _ready() -> void:
 	# 玩家先在已同步的碰撞世界中移动，随后再携带站体及子节点进入下一物理步。
 	# 提前移动父节点会让玩家相对物理服务器上一快照的地板反复升降。
 	process_physics_priority = 10
+	if not "--rebake-runtime" in OS.get_cmdline_user_args() and RuntimeBake.load_generated(self, "station"):
+		return
 	_font = load("res://assets/ui_font.ttf")
 	_build_materials()
-	merge_live_materials = [_beacon_material]
 	_build_exterior()
+	merge_live_materials = [_beacon_material]
 	_build_interior()
 	_arrange_corridors()
 	_build_hub()
 	Precision.station_exterior(exterior_hub_shell, ring_root)
 	_merge_exterior_meshes()
+	set_meta("bake_children", get_children())
 
 
 func _merge_exterior_meshes() -> void:
@@ -318,7 +322,9 @@ func _update_orbit() -> void:
 	orbit_u = orbit_u.normalized()
 	var orbit_v := radial.cross(orbit_u).normalized()
 	var angle := orbit_phase + _orbit_time * STATION_ORBIT_SPEED
-	global_position = center + (orbit_u * cos(angle) + orbit_v * sin(angle)) * orbit_radius
+	var next_position := center + (orbit_u * cos(angle) + orbit_v * sin(angle)) * orbit_radius
+	if global_position != next_position:
+		global_position = next_position
 
 
 func _build_materials() -> void:

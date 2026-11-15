@@ -9,6 +9,13 @@ if not exist "%GODOT%" (
   exit /b 1
 )
 cd /d "%~dp0"
+echo 正在预计算站体和行星静态资源……
+"%GODOT%" --headless --path . --script res://tools/bake_runtime_assets.gd -- --no-capture --rebake-runtime
+if errorlevel 1 (
+  echo 静态资源预计算失败，已停止导出。
+  pause
+  exit /b 1
+)
 if not exist "build\windows" mkdir "build\windows"
 rem 工作区目录可能继承低完整性标签；先抬到 Medium，避免导出的 exe 被沙箱限制。
 icacls "%~dp0build\windows" /setintegritylevel "(OI)(CI)Medium" >nul 2>&1

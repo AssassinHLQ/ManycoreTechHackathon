@@ -13,7 +13,7 @@ var values := {
 	"shadows": 2,
 	"view_distance": 1,
 	"grass": 1,
-	"sky_detail": 3,
+	"sky_detail": 1,
 	"volume": 80,
 	"sensitivity": 1.0,
 	"lod": 2
@@ -54,6 +54,10 @@ func load_settings() -> void:
 	values["sensitivity"] = clampf(float(values["sensitivity"]), 0.4, 2.5)
 	values["lod"] = clampi(int(values["lod"]), 0, 3)
 	values["vsync"] = bool(values["vsync"])
+	# Earlier medium defaults accidentally saved the most expensive sky tier.
+	# Explicit sky changes are tagged custom and keep the player's selection.
+	if values.quality == "medium" and int(values.sky_detail) == 3:
+		values.sky_detail = 1
 
 
 func save_settings() -> void:
@@ -78,6 +82,10 @@ func apply_all() -> void:
 
 func _apply_resolution() -> void:
 	if OS.has_feature("web"):
+		var viewport: Viewport = game.get_viewport()
+		if not viewport.size_changed.is_connected(_apply_web_render_scale):
+			viewport.size_changed.connect(_apply_web_render_scale)
+		_apply_web_render_scale()
 		return
 	# Capture probes manage their own offscreen window geometry.
 	if "--no-capture" in OS.get_cmdline_user_args():
@@ -92,6 +100,15 @@ func _apply_resolution() -> void:
 	DisplayServer.window_set_size(size)
 	var screen := DisplayServer.screen_get_size()
 	DisplayServer.window_set_position((screen - size) / 2)
+
+
+func _apply_web_render_scale() -> void:
+	if game == null or not is_instance_valid(game) or not OS.has_feature("web"):
+		return
+	var viewport: Viewport = game.get_viewport()
+	# canvas_items keeps get_visible_rect() at the logical design resolution.
+	# The Window size tracks the actual Web canvas, including high-DPI/fullscreen.
+	viewport.scaling_3d_scale = preload("res://scripts/web_render_budget.gd").scale_for(Vector2(game.get_window().size), str(values.quality))
 
 
 func _apply_msaa() -> void:
@@ -113,6 +130,9 @@ func _apply_shadows() -> void:
 	light.shadow_enabled = level > 0
 	light.directional_shadow_max_distance = 220.0 if level == 1 else 380.0
 	RenderingServer.directional_shadow_atlas_set_size(1024 if level == 1 else 2048, true)
+	if OS.has_feature("web") and values.quality == "medium" and level == 2:
+		light.directional_shadow_max_distance = 180.0
+		RenderingServer.directional_shadow_atlas_set_size(1024, true)
 
 
 func _apply_distance() -> void:
@@ -191,6 +211,7 @@ func _apply_volume() -> void:
 
 
 func _collect_runtime_nodes() -> void:
+	preload("res://scripts/scene_visibility.gd").apply(game)
 	collected = true
 	ranged_nodes.clear()
 	ground_scatters.clear()
@@ -319,7 +340,7 @@ func reset_defaults() -> void:
 		"shadows": 2,
 		"view_distance": 1,
 		"grass": 1,
-		"sky_detail": 3,
+		"sky_detail": 1,
 		"volume": 80,
 		"sensitivity": 1.0,
 		"lod": 2

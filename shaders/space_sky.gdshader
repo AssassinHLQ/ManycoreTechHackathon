@@ -134,10 +134,8 @@ float fbm(vec3 p, int octaves) {
 	float v = 0.0;
 	float a = 0.55;
 	float norm = 0.0;
-	for (int i = 0; i < 6; i++) {
-		if (i >= octaves) {
-			break;
-		}
+	// A uniform loop bound avoids ANGLE expanding every noise octave.
+	for (int i = 0; i < octaves; i++) {
 		v += noise3(p) * a;
 		norm += a;
 		p = p * 2.07 + vec3(4.2, 7.1, 2.8);
@@ -406,6 +404,11 @@ void sky() {
 
 	// 星：低档单采样，高档在像素内做旋转网格超采样，把亚像素星积成平滑亮度
 	if (star_density > 0.001) {
+#ifdef WEB_SKY
+		// Analytic star discs retain their antialiasing. Avoid compiling nine
+		// inlined copies of the full star field in ANGLE's HLSL backend.
+		color += star_field(d, vec2(0.0));
+#else
 		float n = 1.0;
 		if (sky_detail >= 2) {
 			n = 2.0;
@@ -419,20 +422,15 @@ void sky() {
 		float sn = sin(rot);
 		vec3 sum = vec3(0.0);
 		int ni = int(n);
-		for (int ix = 0; ix < 3; ix++) {
-			if (ix >= ni) {
-				break;
-			}
-			for (int iy = 0; iy < 3; iy++) {
-				if (iy >= ni) {
-					break;
-				}
+		for (int ix = 0; ix < ni; ix++) {
+			for (int iy = 0; iy < ni; iy++) {
 				vec2 grid = (vec2(float(ix), float(iy)) + 0.5) / n - 0.5;
 				vec2 jitter = vec2(grid.x * cs - grid.y * sn, grid.x * sn + grid.y * cs) * 0.9;
 				sum += star_field(d, jitter);
 			}
 		}
 		color += sum / (n * n);
+#endif
 	}
 
 	// 流星加在星之后、雾之前

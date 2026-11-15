@@ -9,6 +9,13 @@ if not exist "%GODOT%" (
   exit /b 1
 )
 cd /d "%~dp0"
+echo 正在预计算站体和行星静态资源……
+"%GODOT%" --headless --path . --script res://tools/bake_runtime_assets.gd -- --no-capture --rebake-runtime
+if errorlevel 1 (
+  echo 静态资源预计算失败，已停止导出。
+  pause
+  exit /b 1
+)
 if not exist "build\web" mkdir "build\web"
 echo 正在导出 Web 版……
 "%GODOT%" --headless --path . --export-release "Web" "build\web\index.html"

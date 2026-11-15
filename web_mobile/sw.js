@@ -28,6 +28,12 @@ self.addEventListener('activate', (event) => {
     const keys = await caches.keys();
     await Promise.all(keys.filter((key) => key.startsWith('starward-') && key !== CACHE).map((key) => caches.delete(key)));
     await self.clients.claim();
+    // Large game packs belong in the browser HTTP cache. Keeping a second
+    // copy here blocks startup on cache.put and can exhaust storage quotas.
+    const currentCache = await caches.open(CACHE);
+    const requests = await currentCache.keys();
+    await Promise.all(requests.filter((request) => /\/index\.pck$/.test(new URL(request.url).pathname))
+      .map((request) => currentCache.delete(request)));
     // 首次访问时 wasm 通常还在浏览器 HTTP 缓存里，只读取、不重复下载。
     try {
       const cache = await caches.open(CACHE);
@@ -60,12 +66,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (/\/index\.(pck|js|html)$/.test(url.pathname)) {
+  if (/\/index\.(js|html)$/.test(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       try {
         const response = await fetch(request);
-        await store(cache, request, response.clone());
+        event.waitUntil(store(cache, request, response.clone()).catch(() => {}));
         return response;
       } catch (error) {
         const cached = await cache.match(request, { ignoreSearch: true });

@@ -18,6 +18,9 @@ apk-release/
 # ── Godot 导出产物（由《借一扇晴天》的 导出网页版.bat / 导出exe.bat 重新生成）──
 build/
 
+# Generated runtime snapshots, rebuilt by tools/bake_runtime_assets.gd before export.
+assets/runtime_bakes/
+
 # ── 截图产物 ─────────────────────────────────────────────────────
 #   regress_*.png  视觉回归的输出（真正的基线在 tests/visual_baseline/，那个要入库）
 #   probe_*.png    各种探针的临时输出（约 90 MB）

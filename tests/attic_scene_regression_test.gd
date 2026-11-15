@@ -72,9 +72,9 @@ func _run() -> void:
 			print("ENTER_US ", key, " ", Time.get_ticks_usec() - start)
 			_check(game.player.can_process(), key + " player inherits an enabled world")
 			_check(camera.far == game.LOCAL_SCENE_FAR, key + " cannot render distant universe geometry")
-			_check(float(game.sky_material.get_shader_parameter("star_density")) == 0.0, key + " has no sky stars")
-			_check(float(game.sky_material.get_shader_parameter("meteor_rate")) == 0.0, key + " has no meteors")
-			_check(float(game.sky_material.get_shader_parameter("nebula_structure")) == 0.0, key + " has no galactic structure")
+			_check(is_equal_approx(float(game.sky_material.get_shader_parameter("star_density")), float(game.SKY_PRESETS[key].stars)), key + " keeps its designed star density")
+			_check(is_equal_approx(float(game.sky_material.get_shader_parameter("meteor_rate")), float(game.SKY_PRESETS[key].meteor)), key + " keeps its designed meteors")
+			_check(is_equal_approx(float(game.sky_material.get_shader_parameter("nebula_structure")), float(game.SKY_PRESETS[key].n_struct)), key + " keeps its designed sky structure")
 			_check(not game.attic.visible, key + " hides the attic")
 			for other in game.attic_worlds.worlds:
 				var holder: Node3D = game.attic_worlds.world_node(other)

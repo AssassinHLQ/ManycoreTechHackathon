@@ -50,6 +50,11 @@ func _run() -> void:
 		if node.scene_file_path.begins_with("res://assets/models/"):
 			core_models[node.scene_file_path] = true
 	for planet in game.planets:
+		if planet.has_meta("runtime_baked"):
+			var terrain: Resource = load("res://assets/runtime_bakes/planet_" + planet.planet_id + ".res")
+			var meshes: Array = terrain.get_meta("meshes", [])
+			if terrain.get_meta("signature", {}).get("model", "") == planet.lux_model_path and not meshes.is_empty() and planet.surface.mesh == meshes[0].mesh:
+				core_models[planet.lux_model_path] = true
 		var signature: Array[String] = []
 		for node in planet.find_children("*", "MeshInstance3D", true, false):
 			var name := String(node.name)

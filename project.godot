@@ -55,4 +55,6 @@ renderer/rendering_method.mobile="gl_compatibility"
 lights_and_shadows/directional_shadow/size=2048
 anti_aliasing/quality/msaa_3d=2
 limits/opengl/max_lights_per_object=16
+limits/opengl/max_lights_per_object.web=4
+limits/opengl/max_renderable_lights.web=8
 environment/defaults/default_clear_color=Color(0.005, 0.008, 0.025, 1)

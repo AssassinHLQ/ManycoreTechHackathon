@@ -9,6 +9,10 @@ const PlanetShader = preload("res://shaders/planet.gdshader")
 const CloudShader = preload("res://shaders/clouds.gdshader")
 ## 读取 LOD 距离档位用。settings.gd 不 preload 任何脚本，无循环依赖。
 const SettingsScript = preload("res://scripts/settings.gd")
+const SurfaceBake = preload("res://scripts/planet_surface_bake.gd")
+const RuntimeBake = preload("res://scripts/runtime_bake.gd")
+var _surface_bake: Resource
+var _baked_collision_path := ""
 
 var game: Node3D
 var planet_id := ""
@@ -805,6 +809,15 @@ func _ready() -> void:
 	site_height = _raw_terrain_height(site_direction)
 	_setup_cave()
 	_update_orbit()
+	if not "--rebake-runtime" in OS.get_cmdline_user_args() and RuntimeBake.load_generated(self, "planet_" + planet_id, SurfaceBake._signature(self)):
+		preload("res://scripts/web_static_batch.gd").apply(self)
+		preload("res://scripts/scene_visibility.gd").apply(self)
+		_orbit_time = float(game.elapsed) if game != null else 0.0
+		_update_orbit()
+		if game != null and game.settings != null:
+			for node in find_children("Prop_*", "MultiMeshInstance3D", true, false):
+				game.settings.apply_prop_lod(node)
+		return
 	# 道具容器：先建好，后面所有 Prop_* 都挂进来（便于整组隐藏）
 	_prop_root = Node3D.new()
 	_prop_root.name = "PropRoot"
@@ -836,6 +849,9 @@ func _ready() -> void:
 	#   叠一层几何水面只会打架，所以这类星球直接跳过。
 	if kind == "cangbo" and lux_model_path == "":
 		_build_water()
+	preload("res://scripts/web_static_batch.gd").apply(self)
+	preload("res://scripts/scene_visibility.gd").apply(self)
+	set_meta("bake_children", get_children())
 
 
 func _setup_cave() -> void:
@@ -1048,6 +1064,16 @@ func _ensure_terrain_collision() -> void:
 	# 占整场构建的两成）。改成飞船或玩家靠近本星球时再建，落地前早就建好了。
 	if terrain_collision_done:
 		return
+	var started := Time.get_ticks_msec()
+	if "--profile-startup" in OS.get_cmdline_user_args():
+		print("COLLISION BEGIN ", planet_id)
+	if not _baked_collision_path.is_empty():
+		var cached := load(_baked_collision_path) as Shape3D
+		if cached != null:
+			_install_terrain_collision(cached)
+			if "--profile-startup" in OS.get_cmdline_user_args():
+				print("COLLISION READY ", planet_id, " ", Time.get_ticks_msec() - started, " ms")
+			return
 	# ── Lux3D 分支 ──
 	#
 	# ⚠ 碰撞体**不能用** Lux3D 网格，要用按高度表生成的程序化球面，原因：
@@ -1064,26 +1090,23 @@ func _ensure_terrain_collision() -> void:
 		if col_mesh == null:
 			push_warning("Lux3D 行星建不出碰撞网格：%s" % planet_id)
 			return
-		var body := StaticBody3D.new()
-		body.name = "TerrainCollision"
-		body.collision_layer = 1
-		body.collision_mask = 0
-		var collision := CollisionShape3D.new()
-		collision.shape = col_mesh.create_trimesh_shape()
-		body.add_child(collision)
-		add_child(body)
+		_install_terrain_collision(col_mesh.create_trimesh_shape())
 		return
 	if surface == null or surface.mesh == null:
 		return
+	_install_terrain_collision(surface.mesh.create_trimesh_shape())
+
+
+func _install_terrain_collision(shape: Shape3D) -> void:
 	terrain_collision_done = true
-	var body2 := StaticBody3D.new()
-	body2.name = "TerrainCollision"
-	body2.collision_layer = 1
-	body2.collision_mask = 0
-	var collision2 := CollisionShape3D.new()
-	collision2.shape = surface.mesh.create_trimesh_shape()
-	body2.add_child(collision2)
-	add_child(body2)
+	var body := StaticBody3D.new()
+	body.name = "TerrainCollision"
+	body.collision_layer = 1
+	body.collision_mask = 0
+	var collision := CollisionShape3D.new()
+	collision.shape = shape
+	body.add_child(collision)
+	add_child(body)
 
 
 ## 按 `terrain_height()` 生成一张**专用的地形网格**（只用于碰撞，不显示）。
@@ -1158,6 +1181,8 @@ func _build_heightfield_surface_mesh() -> ArrayMesh:
 ##
 ## 返回 true 表示接成功了；失败返回 false，调用方会退回程序化地形。
 func _build_lux3d_surface() -> bool:
+	if not "--rebake-runtime" in OS.get_cmdline_user_args() and SurfaceBake.load_surface(self):
+		return true
 	var packed: PackedScene = load(lux_model_path)
 	if packed == null:
 		push_warning("Lux3D 模型加载失败：%s" % lux_model_path)
@@ -3157,6 +3182,9 @@ func _flush_props() -> void:
 		mm.use_colors = true
 		mm.mesh = mesh
 		mm.instance_count = entries.size()
+		var capture_bake := "--rebake-runtime" in OS.get_cmdline_user_args()
+		var bake_transforms: Array[Transform3D] = []
+		var bake_colors := PackedColorArray()
 		var pending_spots: Array = []
 		for i in range(entries.size()):
 			var e: Dictionary = entries[i]
@@ -3170,6 +3198,9 @@ func _flush_props() -> void:
 				float(e["altitude"]) - aabb.position.y * k)
 			mm.set_instance_transform(i, Transform3D(basis, origin))
 			mm.set_instance_color(i, e["tint"])
+			if capture_bake:
+				bake_transforms.append(Transform3D(basis, origin))
+				bake_colors.append(e["tint"])
 			# 交互点记下「实例下标」，等 instance 建好再绑定节点
 			if e.has("spot"):
 				pending_spots.append([int(e["spot"]), i])
@@ -3182,6 +3213,10 @@ func _flush_props() -> void:
 			if prop_id in GROUND_COVER_PROPS:
 				instance.add_to_group("ground_scatter")
 		instance.multimesh = mm
+		if capture_bake:
+			# The headless renderer cannot read back MultiMesh GPU buffers.
+			instance.set_meta("runtime_transforms", bake_transforms)
+			instance.set_meta("runtime_colors", bake_colors)
 		# 单表面网格走「共享顶点 + 实例级材质」路线（见 _prop_mesh_for_instancing）：
 		# 网格本身仍是 GLB 里那一份，调色交给 material_override，
 		# 这样顶点缓冲全进程只有一份，而每颗星球的色调互不影响。
@@ -3472,7 +3507,10 @@ const ORBIT_WOBBLE := 500.0
 
 func _update_orbit() -> void:
 	var angle := orbit_phase + orbit_speed * _orbit_time
-	position = Vector3(cos(angle) * orbit_radius, orbit_height + sin(angle * 1.7) * ORBIT_WOBBLE, sin(angle) * orbit_radius)
+	var next_position := Vector3(cos(angle) * orbit_radius, orbit_height + sin(angle * 1.7) * ORBIT_WOBBLE, sin(angle) * orbit_radius)
+	# A paused universe must not dirty every descendant's render/physics transform.
+	if position != next_position:
+		position = next_position
 
 
 ## 行星此刻的公转速度（米/秒，世界坐标）。
