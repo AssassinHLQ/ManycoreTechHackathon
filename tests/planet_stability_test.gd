@@ -82,6 +82,9 @@ func _prop_sample(planet) -> Dictionary:
 func _check_prop_contact() -> void:
 	var planet = game.planets[9]
 	_check(planet.planet_id == "jianmo", "Jianmo contact regression uses the intended planet")
+	game.ship.set_physics_process(false)
+	game.ship.global_position = planet.to_global(planet.site_direction.normalized() * (planet.radius + 200.0))
+	await _physics_frames(3)
 	var hit := _prop_sample(planet)
 	_check(not hit.is_empty(), "sample a gentle face of a real crystal collision mesh")
 	if hit.is_empty():
@@ -179,6 +182,9 @@ func _run() -> void:
 			if argument.begins_with("--orbit-time="):
 				game.elapsed = float(argument.trim_prefix("--orbit-time="))
 				await _physics_frames(10)
+		# Approach in the ship before querying the landing surface. Distant
+		# planets intentionally keep their collision out of the physics space.
+		game.ship.global_position = planet.to_global(planet.site_direction.normalized() * (planet.radius + 200.0))
 		planet._ensure_terrain_collision()
 		await _physics_frames(3)
 		var hit := _ground_sample(planet)

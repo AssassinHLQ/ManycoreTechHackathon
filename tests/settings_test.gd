@@ -87,6 +87,7 @@ func _run() -> void:
 	s.load_settings()
 	_check(int(s.values.view_distance) == saved_view, "settings persist to disk")
 	s.reset_defaults()
+	_check(is_equal_approx(game.key_light.directional_shadow_max_distance, 180.0), "desktop medium uses the measured local shadow budget")
 	_check(int(s.values.get("lod", -1)) == 2, "restore defaults restores LOD without dropping its setting")
 	_check(int(s.values.view_distance) == 1 and int(s.values.msaa) == 1, "restore defaults works")
 	_check(int(s.values.sky_detail) == 1, "medium defaults use the medium sky tier")

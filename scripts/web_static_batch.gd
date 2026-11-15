@@ -1,6 +1,6 @@
 extends RefCounted
 ## Static authored landmarks only. Gameplay anchors and collision nodes stay intact.
-static func apply(planet: Node3D, enabled := OS.has_feature("web")) -> void:
+static func apply(planet: Node3D, enabled := true) -> void:
 	if not enabled:
 		return
 	for landmark in planet.find_children("Architecture_*", "Node3D", true, false):

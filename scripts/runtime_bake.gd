@@ -3,6 +3,27 @@ extends RefCounted
 const DIRECTORY := "res://assets/runtime_bakes/"
 const VERSION := 4
 static var _saved_geometry: Dictionary = {}
+static var _prepared_scenes: Dictionary = {}
+
+
+## Deserialize the next planet on a worker while the current world keeps rendering.
+## Keep a reference until load_generated consumes it, so load() cannot reload it.
+static func prepare_generated(tree: SceneTree, key: String) -> void:
+	if OS.has_feature("web") or "--rebake-runtime" in OS.get_cmdline_user_args():
+		return
+	var path := DIRECTORY + key + ".scn"
+	if _prepared_scenes.has(path) or not ResourceLoader.exists(path):
+		return
+	if ResourceLoader.load_threaded_request(path, "PackedScene") != OK:
+		return
+	var status := ResourceLoader.load_threaded_get_status(path)
+	while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		await tree.process_frame
+		status = ResourceLoader.load_threaded_get_status(path)
+	if status == ResourceLoader.THREAD_LOAD_LOADED:
+		_prepared_scenes[path] = ResourceLoader.load_threaded_get(path)
+	elif status == ResourceLoader.THREAD_LOAD_FAILED:
+		ResourceLoader.load_threaded_get(path)
 
 
 static func _save_geometry(parent: Node, key: String) -> Error:
@@ -127,7 +148,12 @@ static func load_generated(target: Node3D, key: String, signature := {}) -> bool
 	var path := DIRECTORY + key + ".scn"
 	if not ResourceLoader.exists(path):
 		return false
-	var packed := load(path) as PackedScene
+	var packed: PackedScene
+	if _prepared_scenes.has(path):
+		packed = _prepared_scenes[path]
+		_prepared_scenes.erase(path)
+	else:
+		packed = load(path) as PackedScene
 	if packed == null:
 		return false
 	var content := packed.instantiate() as Node3D

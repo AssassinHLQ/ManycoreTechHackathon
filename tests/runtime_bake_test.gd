@@ -87,7 +87,18 @@ func _run() -> void:
 	_check(report.get("triangles", -1) == report.get("output_triangles", -2), "windmill batching preserves every source triangle")
 	_check(home.find_children("*", "StaticBody3D", true, false).size() == bodies_before, "windmill batching preserves every collision body")
 	var clone = Planet.new()
+	await Bake.prepare_generated(self, "planet_" + home.planet_id)
 	_check(Bake.load_generated(clone, "planet_" + home.planet_id, home.SurfaceBake._signature(home)), "a second copy of the same planet can load")
+	_check(Bake._prepared_scenes.is_empty(), "prepared snapshots are consumed without retaining a second world")
+	var collision_enabled := true
+	for body in clone.find_children("*", "StaticBody3D", true, false):
+		collision_enabled = collision_enabled and body.process_mode != Node.PROCESS_MODE_DISABLED
+	_check(collision_enabled, "snapshots retain enabled collision before the proximity budget runs")
+	var unscaled_ranges := true
+	for node in clone.find_children("*", "GeometryInstance3D", true, false):
+		if node.visibility_range_end > 0.0 and node.visibility_range_end < 119.9:
+			unscaled_ranges = false
+	_check(unscaled_ranges, "snapshots do not embed a developer's reduced viewing distance")
 	_check(clone._lux_height_map == home._lux_height_map, "cached terrain keeps identical height samples across instances")
 	var tested := false
 	for i in range(home.interactive_spots.size()):

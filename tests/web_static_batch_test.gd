@@ -25,7 +25,7 @@ func _run() -> void:
 		bounds = bounds.merge(node.transform * node.get_aabb()) if i > 0 else node.transform * node.get_aabb()
 	var body := StaticBody3D.new()
 	landmark.add_child(body)
-	Batch.apply(planet, true)
+	Batch.apply(planet)
 	var report: Dictionary = landmark.get_meta("web_batched", {})
 	_check(report.get("sources", 0) == 3 and report.get("batches", 0) == 1, "three shared-material objects become one draw batch")
 	_check(report.get("triangles", 0) == 36 and report.get("output_triangles", 0) == 36, "batch retains every triangle")

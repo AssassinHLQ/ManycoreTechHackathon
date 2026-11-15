@@ -386,6 +386,10 @@ func _build_world_progressive() -> void:
 	if DisplayServer.get_name() != "headless" and not OS.has_feature("web"):
 		DisplayServer.window_set_ime_active(false)
 	_stage_end("touch+knowledge")
+	var collision_budget: Node = preload("res://scripts/planet_collision_budget.gd").new()
+	collision_budget.name = "PlanetCollisionBudget"
+	collision_budget.game = self
+	add_child(collision_budget)
 	world_ready = true
 	if "--profile-runtime" in OS.get_cmdline_user_args():
 		var probe: Node = load("res://scripts/performance_probe.gd").new()
@@ -1143,6 +1147,11 @@ func _build_planets(home_only := false) -> void:
 		# the player is inside a local world or has paused the game.
 		while not home_only and (in_attic or paused):
 			await _yield_frame()
+		if not home_only:
+			await PlanetScript.RuntimeBake.prepare_generated(get_tree(), "planet_" + definition.id)
+			# The player may enter a local world while the worker reads the snapshot.
+			while in_attic or paused:
+				await _yield_frame()
 		var planet := PlanetScript.new()
 		planet.game = self
 		planet.planet_id = definition.id

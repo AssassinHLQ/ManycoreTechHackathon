@@ -130,7 +130,7 @@ func _apply_shadows() -> void:
 	light.shadow_enabled = level > 0
 	light.directional_shadow_max_distance = 220.0 if level == 1 else 380.0
 	RenderingServer.directional_shadow_atlas_set_size(1024 if level == 1 else 2048, true)
-	if OS.has_feature("web") and values.quality == "medium" and level == 2:
+	if values.quality == "medium" and level == 2:
 		light.directional_shadow_max_distance = 180.0
 		RenderingServer.directional_shadow_atlas_set_size(1024, true)
 

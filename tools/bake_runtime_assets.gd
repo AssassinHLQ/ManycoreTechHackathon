@@ -30,6 +30,13 @@ func _run() -> void:
 	await game.await_world_ready()
 	while game.world_build_remaining or game.planets.size() < 20:
 		await process_frame
+	# Never embed the developer's reduced viewing ranges or prop density.
+	# Runtime quality settings must be applied once, after the snapshot loads.
+	game.settings.values.view_distance = 1
+	game.settings.values.lod = 2
+	game.settings.values.grass = 1
+	game.settings._apply_distance()
+	game.settings._apply_grass()
 	# Let queued removals from mesh merging finish before saving the hierarchy.
 	await process_frame
 	for planet in game.planets:

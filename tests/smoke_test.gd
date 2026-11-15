@@ -100,11 +100,18 @@ func _run() -> void:
 		[game.planets[4], Vector3(0.0, 5.0, 8.0), 1.75, "eye gate platform"],
 		[game.planets[2], Vector3(8.5, 15.0, 0.0), 11.5, "tide deck"]
 	]
+	var parked_transform: Transform3D = game.ship.global_transform
+	var ship_processing: bool = game.ship.is_physics_processing()
+	game.ship.set_physics_process(false)
 	for probe in platform_probes:
 		var planet = probe[0]
 		var arch: Node3D = planet.find_child("Architecture_*", true, false)
 		var from: Vector3 = arch.global_transform * probe[1]
 		var to: Vector3 = arch.global_transform * (probe[1] - Vector3(0, 10.0, 0))
+		# Arrive in the ship before checking the proximity-activated collision.
+		game.ship.global_position = from + arch.global_basis.y.normalized() * 40.0
+		await physics_frame
+		await physics_frame
 		var probe_query := PhysicsRayQueryParameters3D.create(from, to, 1)
 		var probe_hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(probe_query)
 		if probe_hit.is_empty():
@@ -112,6 +119,8 @@ func _run() -> void:
 		else:
 			var local: Vector3 = arch.global_transform.affine_inverse() * probe_hit.position
 			_check(absf(local.y - probe[2]) < 0.4, probe[3] + " collision matches its visible top")
+	game.ship.global_transform = parked_transform
+	game.ship.set_physics_process(ship_processing)
 	var dome_arch: Node3D = game.home.find_child("Architecture_Qinglan", true, false)
 	var dome_hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(dome_arch.global_transform * Vector3(0, 21, 0), dome_arch.global_transform * Vector3(0, 10, 0), 1))
 	_check(not dome_hit.is_empty() and (dome_arch.global_transform.affine_inverse() * dome_hit.position).y > 12.5, "windmill cap blocks flight")

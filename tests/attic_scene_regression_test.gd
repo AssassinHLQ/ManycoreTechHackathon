@@ -95,8 +95,11 @@ func _run() -> void:
 	game.leave_attic()
 	_check(camera.far == 400000.0, "return to universe restores camera distance")
 	_check(float(game.sky_material.get_shader_parameter("star_density")) == 1.0, "return to universe restores stars")
-	await process_frame
-	await process_frame
+	# Native snapshots now deserialize asynchronously. Headless frames can
+	# complete faster than a worker's disk read, so wait in real time.
+	var resume_deadline := Time.get_ticks_msec() + 15000
+	while game.planets.size() <= planet_count and Time.get_ticks_msec() < resume_deadline:
+		await process_frame
 	_check(game.planets.size() > planet_count, "planet construction resumes after returning to universe")
 	_cleanup()
 	print("ATTIC SCENE REGRESSION: %d checks, %d failure(s)" % [checks, failures])

@@ -1,7 +1,7 @@
 extends RefCounted
-## Screen-sized detail budgets for Web's comparatively expensive draw submission.
+## Screen-sized detail budgets avoid submitting distant tiny objects on every platform.
 ## Terrain and large silhouettes remain visible at astronomical distances.
-static func apply(root: Node, enabled := OS.has_feature("web")) -> void:
+static func apply(root: Node, enabled := true) -> void:
 	if not enabled:
 		return
 	for node in root.find_children("*", "GeometryInstance3D", true, false):
