@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b2i38tpxl82ny"
-path="res://.godot/imported/model_Image_1.jpg-2437fe3fdf6f403dfdd4a6a369398649.ctex"
+path.s3tc="res://.godot/imported/model_Image_1.jpg-2437fe3fdf6f403dfdd4a6a369398649.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "4288a09cda99001a5adddc7dba4b40a0"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/stone-cat/model_Image_1.jpg"
-dest_files=["res://.godot/imported/model_Image_1.jpg-2437fe3fdf6f403dfdd4a6a369398649.ctex"]
+dest_files=["res://.godot/imported/model_Image_1.jpg-2437fe3fdf6f403dfdd4a6a369398649.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

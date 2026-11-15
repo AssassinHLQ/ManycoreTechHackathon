@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://8ep21apos3nk"
-path="res://.godot/imported/model_glb_1.jpg-04e94be07410693f9891b62a275b7193.ctex"
+path.s3tc="res://.godot/imported/model_glb_1.jpg-04e94be07410693f9891b62a275b7193.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "d153213f0bbfe655301d35b1a170ed75"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/teapot/model_glb_1.jpg"
-dest_files=["res://.godot/imported/model_glb_1.jpg-04e94be07410693f9891b62a275b7193.ctex"]
+dest_files=["res://.godot/imported/model_glb_1.jpg-04e94be07410693f9891b62a275b7193.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

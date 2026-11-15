@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ddxx0piedxbyo"
-path="res://.godot/imported/model_Image_0.jpg-2325d6b3b15d4b6b1a9d1d2844e6f4e2.ctex"
+path.s3tc="res://.godot/imported/model_Image_0.jpg-2325d6b3b15d4b6b1a9d1d2844e6f4e2.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "75ad287a7c1763a32a197cf6a733758b"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/alley-end-door/model_Image_0.jpg"
-dest_files=["res://.godot/imported/model_Image_0.jpg-2325d6b3b15d4b6b1a9d1d2844e6f4e2.ctex"]
+dest_files=["res://.godot/imported/model_Image_0.jpg-2325d6b3b15d4b6b1a9d1d2844e6f4e2.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

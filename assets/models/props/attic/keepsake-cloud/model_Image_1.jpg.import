@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d3cqi6mtwm868"
-path="res://.godot/imported/model_Image_1.jpg-feb113ca46ffc9c10adfec8fa3908fcb.ctex"
+path.s3tc="res://.godot/imported/model_Image_1.jpg-feb113ca46ffc9c10adfec8fa3908fcb.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "ac14ea8d23ab5b827040ad8a3c891116"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/keepsake-cloud/model_Image_1.jpg"
-dest_files=["res://.godot/imported/model_Image_1.jpg-feb113ca46ffc9c10adfec8fa3908fcb.ctex"]
+dest_files=["res://.godot/imported/model_Image_1.jpg-feb113ca46ffc9c10adfec8fa3908fcb.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0

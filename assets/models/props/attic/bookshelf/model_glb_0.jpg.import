@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ccd1fpkebgcl6"
-path="res://.godot/imported/model_glb_0.jpg-41ddbd02c98ec0986df6aa15db77e77a.ctex"
+path.s3tc="res://.godot/imported/model_glb_0.jpg-41ddbd02c98ec0986df6aa15db77e77a.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "a53d2baaec1a971c7041f29d6ddd07b6"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/bookshelf/model_glb_0.jpg"
-dest_files=["res://.godot/imported/model_glb_0.jpg-41ddbd02c98ec0986df6aa15db77e77a.ctex"]
+dest_files=["res://.godot/imported/model_glb_0.jpg-41ddbd02c98ec0986df6aa15db77e77a.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -40,4 +41,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=1
+detect_3d/compress_to=0
