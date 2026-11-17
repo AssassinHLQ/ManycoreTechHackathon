@@ -76,6 +76,7 @@ const ACHIEVEMENTS := {
 	"three-faces": ["三相皆明", "击破镜心的三种形态"],
 	"mirror-calm": ["镜心安静", "完成镜界试炼"],
 	"wind_organ": ["三种来风", "在风琴礁把北风、西风、回风各听一次"],
+	"voyage_first": ["第一份委托", "完成一次有去有回的航行"],
 }
 
 var save_path := SAVE_PATH_DEFAULT
@@ -103,6 +104,8 @@ var mirror_coins_total := 0
 var guide_done := false
 ## 最近 5 次远行的记录（最新在前）：{seconds, rooms, cleared, kills, hits, coins, rank, at}
 var recent_runs: Array = []
+## 当前航行委托：由 main.gd 的 VoyageContract 驱动，跟行囊一起存档。
+var voyage_contract: Dictionary = {}
 
 ## 风琴礁：北风 / 西风 / 回风，三种各听一次即和鸣
 const WIND_NAMES := ["北风", "西风", "回风"]
@@ -489,6 +492,7 @@ func summary() -> Dictionary:
 		"achievements": achievements,
 		"achievement_total": achievement_count(),
 		"games": game_best,
+		"voyage_contract": voyage_contract,
 	}
 
 
@@ -508,6 +512,7 @@ func save() -> void:
 		"guide_done": guide_done,
 		"recent_runs": recent_runs,
 		"dungeon": dungeon,
+		"voyage_contract": voyage_contract,
 		"rod": rod,
 		"sold_total": sold_total,
 		"bait": bait,
@@ -542,6 +547,7 @@ func load_progress() -> void:
 	guide_done = bool(data.get("guide_done", false))
 	recent_runs = data.get("recent_runs", [])
 	dungeon = data.get("dungeon", {})
+	voyage_contract = data.get("voyage_contract", {})
 	rod = String(data.get("rod", "bamboo"))
 	sold_total = int(data.get("sold_total", 0))
 	bait = String(data.get("bait", "plain"))
@@ -560,6 +566,7 @@ func reset() -> void:
 	guide_done = false
 	recent_runs = []
 	dungeon = {}
+	voyage_contract = {}
 	rod = "bamboo"
 	sold_total = 0
 	bait = "plain"

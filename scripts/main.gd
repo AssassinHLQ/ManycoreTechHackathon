@@ -17,7 +17,9 @@ const TouchScript = preload("res://scripts/touch_controls.gd")
 const StationScript = preload("res://scripts/station.gd")
 const DistantStationScript = preload("res://scripts/distant_station.gd")
 const RouteLinkScript = preload("res://scripts/route_link.gd")
+const VoyageContractScript = preload("res://scripts/voyage_contract.gd")
 var route_link = RouteLinkScript.new()
+var voyage_contract = VoyageContractScript.new()
 var route_board_open := false
 var _route_board_was_paused := false
 ## Parent-local coordinates keep a returning traveller attached to the moving planet/station.
@@ -244,6 +246,9 @@ var fire_flame_bases: Array = []
 var fire_flame_offsets: Array = []
 var scan_target: Node3D
 var scan_progress := 0.0
+## 当前委托进入新阶段时只自动设一次目的地，避免覆盖玩家自己的航线选择。
+var _voyage_last_phase := ""
+var _voyage_target_set := false
 ## 下船修理的提示文本（空串 = 不显示）。由 _update_ship_repair 每帧写入，
 ## HUD 读它决定要不要在底部提示「按 F 修理 / 对准飞船再按 F」。
 var repair_hint := ""
@@ -338,6 +343,7 @@ func _build_world_progressive() -> void:
 	progress.save_path = progress_path
 	add_child(progress)
 	progress.load_progress()
+	voyage_contract.load_data(progress.voyage_contract)
 	_restore_progress()
 	# 口袋世界在 _build_attic() 里就建好了，那时 progress 还没创建；
 	# 这里补上引用，风琴礁等道具才能读到存档状态。
@@ -435,6 +441,62 @@ func await_world_ready() -> void:
 	if world_ready:
 		return
 	await world_ready_finished
+
+
+func _save_voyage_contract() -> void:
+	if progress == null or voyage_contract == null:
+		return
+	progress.voyage_contract = voyage_contract.save_data()
+	progress.save()
+
+
+func _set_voyage_target() -> void:
+	if ship == null or voyage_contract == null:
+		return
+	var target_id := String(voyage_contract.target_id)
+	if target_id == "":
+		return
+	for i in range(planets.size()):
+		var planet = planets[i]
+		if String(planet.planet_id) != target_id:
+			continue
+		ship.target = planet
+		target_index = i
+		map_selected = i
+		_voyage_target_set = true
+		return
+
+
+func _update_voyage_contract() -> void:
+	if voyage_contract == null:
+		return
+	if not voyage_contract.active:
+		_voyage_last_phase = ""
+		_voyage_target_set = false
+		return
+	var phase := String(voyage_contract.phase)
+	if phase != _voyage_last_phase:
+		_voyage_last_phase = phase
+		_voyage_target_set = false
+		if phase == "return" and home != null and ship != null:
+			ship.target = home
+			target_index = planets.find(home)
+			map_selected = target_index if target_index >= 0 else map_selected
+			_voyage_target_set = true
+	if phase == "scan_target" and not _voyage_target_set:
+		_set_voyage_target()
+	if phase == "return" and ship != null and ship.docked and ship.docked_station == station:
+		var earned := int(voyage_contract.reward)
+		var first: bool = false
+		if voyage_contract.complete_at_home():
+			if progress != null:
+				progress.add_coins(earned)
+				first = progress.unlock("voyage_first")
+				_save_voyage_contract()
+			if audio != null:
+				audio.play_chime()
+			var suffix := " · 新成就「第一份委托」" if first else ""
+			hud.show_toast("航行委托完成 · +%d 金%s · 下一次出发会有新的目的地" % [earned, suffix], 6.0)
 
 
 func _migrate_legacy_user_data() -> void:
@@ -2061,6 +2123,7 @@ func _process(delta: float) -> void:
 		_trigger_supernova()
 		return
 	_update_scanner(delta)
+	_update_voyage_contract()
 	_update_ship_repair(delta)
 
 
@@ -2224,7 +2287,12 @@ func start_game() -> void:
 	_set_mouse_capture()
 	if DisplayServer.get_name() != "headless" and not OS.has_feature("web"):
 		DisplayServer.window_set_ime_active(false)
-	hud.show_toast("先扫描风车塔，再去看看宇宙。", 5.0)
+	if voyage_contract.start(discovered):
+		_voyage_last_phase = ""
+		_save_voyage_contract()
+		hud.show_toast("新委托：先扫描风车塔，再把一段信号带回归航站。", 5.0)
+	else:
+		hud.show_toast("委托继续：" + String(voyage_contract.status(discovered).get("hint", "")), 4.0)
 
 
 func return_to_menu() -> void:
@@ -2551,6 +2619,7 @@ func _planet_interact() -> bool:
 	var index: int = int(spot.get("index", -1))
 	var kind := String(spot.get("kind", ""))
 	var pid := String(spot.get("id", ""))
+	var host_id := String(host.get("planet_id"))
 	match kind:
 		"crystal":
 			player.fuel = minf(player.fuel + 35.0, 100.0)
@@ -2600,6 +2669,11 @@ func _planet_interact() -> bool:
 			player.oxygen = minf(player.oxygen + 20.0, 100.0)
 			hud.show_toast("信标点亮 · 上一艘船留下的补给 · 燃料氧气 +20", 3.4)
 			audio.play_ui(980.0)
+			if voyage_contract != null and voyage_contract.on_beacon(host_id):
+				_voyage_last_phase = ""
+				_voyage_target_set = false
+				_save_voyage_contract()
+				hud.show_toast("委托推进 · 返回归航站完成交付", 4.0)
 		"med":
 			# 医疗站：氧气回满（比货舱强，但充能少、冷却长）
 			player.oxygen = 100.0
@@ -3207,6 +3281,14 @@ func discover(id: String) -> void:
 	discovered[id] = true
 	scan_progress = 1.0
 	_save_knowledge()
+	if voyage_contract != null and voyage_contract.on_discovered(id):
+		_voyage_last_phase = ""
+		_voyage_target_set = false
+		_save_voyage_contract()
+		if id == "qinglan":
+			hud.show_toast("委托推进 · 现在前往%s扫描主信号" % voyage_contract.target_name, 4.0)
+		else:
+			hud.show_toast("委托推进 · 着陆后点亮%s的地表信标" % voyage_contract.target_name, 4.0)
 	audio.play_chime()
 	var anomaly := _anomaly_by_id(id)
 	if anomaly != null:
