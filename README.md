@@ -224,6 +224,29 @@
 - 飞船与风车塔细节：座舱框、仪表台、船壳面板、姿态喷口、翼尖灯；塔顶盖板、六叶转子、石扶壁、门楣灯与外墙暖窗。
 - **开发者模式**（F3 连按 5 次）：常驻性能 / 显卡数据面板 + 四个特殊按键（F4 直达宇宙线结局、F5 解锁全部条目、F6 补满资源、F7 跳过本轮）。只在本次运行内有效，默认关闭，所以正式截图与基线里不会多出这块面板。
 
+## 四平台打包与验证
+
+使用 Python 3.11+、Node.js 22+、标准版 Godot 4.7.1 和对应导出模板，在项目根目录执行：
+
+```powershell
+python tools/export_platforms.py windows linux web android --archives
+```
+
+脚本在后台预计算静态场景、导入资源、运行冒烟 / 字体 / 触屏 / 预计算测试，然后导出和检查各平台。完整日志位于 `_tools/_tmp/platform_*.log`，文件大小、SHA256 与验证结果写入 `build/platform-validation.json`。可只指定需要的平台；`--godot` 可覆盖引擎路径。
+
+| 平台 | 可分发产物 | 验证范围 |
+| --- | --- | --- |
+| Windows x86_64 | `build/SunnyWindow-Windows.zip` | 内嵌资源包检查、exe 无界面启动 |
+| Linux x86_64 | `build/SunnyWindow-Linux-x86_64.tar.gz` | ELF 架构、资源包检查、压缩包内执行权限；需要 Linux 主机补验原生运行 |
+| Web | `build/SunnyWindow-Web.zip` | 资源包、缓存行为、无界面 Chromium WebGL2 启动及手机尺寸切换 |
+| Android ARM64 | `build/android/game-debug.apk` | APK 完整性、包名、架构、调试签名及授权文件；需要真机补验安装和游玩 |
+
+Android 还需配置 Android SDK 与 JDK，默认读取 `ANDROID_HOME` / `JAVA_HOME`，也可传 `--android-sdk` / `--java-sdk`。当前预设生成调试签名测试 APK；正式发布应另外配置发布密钥。Web 测试默认使用本机 Edge，也可用 `WEB_TEST_BROWSER` 指向 Chromium 浏览器。浏览器测试自动关闭自己的进程，不打开可见窗口。
+
+四个平台都包含授权清单与许可全文，桌面 / Web 的输出目录另外保留可直接阅读的副本。`build/` 为生成产物，不入库。只有在相同源码已完成预计算和测试时才能使用 `--skip-bake` / `--skip-tests`。
+
+最近一次实际验证见 [2026-11-18 四平台验证记录](docs/platform-validation-20261118.md)，其中列出了产物校验值、实际运行范围和待补验项。
+
 ## Windows 单文件版
 
 - 双击 `导出exe.bat`，使用标准版 Godot 4.7.1 和对应 Windows 模板。脚本先预计算，再输出内嵌 PCK 的 `build/windows/game.exe`。
