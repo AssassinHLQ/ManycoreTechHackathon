@@ -113,6 +113,19 @@ func _run() -> void:
 				if c.unicode_at(0) > 0x1F:
 					used[c] = true
 	used.erase("\ufeff")
+	# Credits also display titles, author names and copyright text loaded at runtime.
+	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(
+		"res://assets/models/LICENSE_MANIFEST.json"))
+	var credit_text := ""
+	for asset in manifest.get("assets", []):
+		if asset.get("imported", false) and asset.get("license", "") == "CC BY 4.0":
+			for field in ["title", "author", "modifications"]:
+				credit_text += str(asset.get(field, ""))
+	for filename in ["godot-MIT.txt", "OFL-LXGWWenKai.txt", "OFL-NotoSansSymbols2.txt"]:
+		credit_text += FileAccess.get_file_as_string("res://assets/licenses/" + filename)
+	for c in credit_text:
+		if c.unicode_at(0) > 0x1F:
+			used[c] = true
 
 	var missing: Array = []
 	for c in used:

@@ -507,23 +507,65 @@ func _build_menu() -> void:
 	_button(box, "退出", func(): get_tree().quit()).custom_minimum_size.y = 38
 	var footer := _text(box, "原创科幻原型  /  烤棉花糖为致敬  /  GODOT 4  /  建议佩戴耳机", 11, Color(0.46, 0.6, 0.61))
 	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# 署名义务：用了别人的素材就必须署上出处，且要出现在**游戏里** ——
-	# 导出后的 exe / 网页版并不带仓库里的文档，只写在 THIRD_PARTY_NOTICES.md
-	# 是不够的。以后每加一件外部素材就在这里追加一行。
-	#
-	# 分两行是为了不把一行撑爆（1080 宽的菜单面板放不下）。
-	var credits := _text(box,
-		"外部素材：Black Hole 模型 Nestaeric (CC BY 4.0)　·" +
-		"　UI 贴图 Wenrexa (CC0)　·　图标 Pixel UI Sci-Fi by heyheythere (CC BY 4.0)",
-		10, Color(0.38, 0.5, 0.52))
-	credits.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_build_credits(box)
+
+
+func _build_credits(box: VBoxContainer) -> void:
+	var toggle := _button(box, "授权与署名", func(): pass)
+	toggle.name = "CreditsToggle"
+	toggle.toggle_mode = true
+	var credits := RichTextLabel.new()
+	credits.name = "AssetCredits"
+	credits.fit_content = true
+	credits.scroll_active = false
+	credits.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	credits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var credits2 := _text(box,
-		"星球模型由 Aholo Lux3D（群核科技）文生 3D 生成　·　字体 星野文楷（上游 霞鹜文楷 LXGW WenKai, SIL OFL 1.1）" +
-		"　·　完整声明见 THIRD_PARTY_NOTICES.md",
-		10, Color(0.34, 0.45, 0.47))
-	credits2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	credits2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	credits.add_theme_font_size_override("normal_font_size", 14)
+	credits.add_theme_color_override("default_color", Color("b7cbc7"))
+	credits.selection_enabled = true
+	credits.meta_clicked.connect(func(url): OS.shell_open(str(url)))
+	box.add_child(credits)
+	credits.visible = false
+	toggle.toggled.connect(func(expanded: bool): credits.visible = expanded)
+	# Read the attribution ledger once; add_text preserves titles containing BBCode brackets.
+	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(
+		"res://assets/models/LICENSE_MANIFEST.json"))
+	credits.add_text("外部模型与点云\n\n")
+	for asset in manifest.get("assets", []):
+		if not asset.get("imported", false) or asset.get("license", "") != "CC BY 4.0":
+			continue
+		credits.add_text("%s\n作者：%s\n" % [asset.title, asset.author])
+		_credits_link(credits, "原作", asset.source_url)
+		credits.add_text("  /  ")
+		_credits_link(credits, asset.license, asset.license_url)
+		credits.add_text("\n修改：%s\n\n" % asset.modifications)
+	credits.add_text("Pixel UI Sci-Fi Free — heyheythere / Spyridon Pikoulas\n")
+	_credits_link(credits, "原作", "https://godotengine.org/asset-library/asset/5491")
+	credits.add_text("  /  ")
+	_credits_link(credits, "CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/")
+	credits.add_text("\n图标像素未修改；HUD 使用 health / fuel，运行时染色。\n\n")
+	credits.add_text("UI Minimalism SciFi — Wenrexa\n")
+	_credits_link(credits, "原作", "https://opengameart.org/content/assets-ui-minimalism-scifi")
+	credits.add_text("  /  ")
+	_credits_link(credits, "CC0 1.0", "https://creativecommons.org/publicdomain/zero/1.0/")
+	credits.add_text("\n面板贴图像素未修改；运行时九宫格缩放、染色。\n\n")
+	credits.add_text("星球、家具与道具：Aholo Lux3D（群核科技）生成。\n权属及使用义务以平台服务条款与参赛协议为准。\n")
+	_credits_link(credits, "Aholo Lux3D", "https://labs.aholo3d.cn/")
+	credits.add_text("\n\n字体：星野文楷 Starward WenKai（上游 LXGW WenKai，子集裁剪并改名）；Noto Sans Symbols 2（符号子集）。SIL OFL 1.1。\n\n")
+	credits.add_text("项目原创代码与内容：AGPL-3.0；外部资产保留各自许可。\n")
+	_credits_link(credits, "项目源代码与完整清单", "https://github.com/AssassinHLQ/ManycoreTechHackathon")
+	credits.add_text("\n\n以下为引擎与字体的版权及许可全文：\n\n")
+	_credits_link(credits, "Godot 及所含第三方组件版权信息", "https://godotengine.org/license/")
+	credits.add_text("\n组件许可全文另随包保存在 assets/licenses/GODOT_THIRD_PARTY.txt。\n\n")
+	for filename in ["godot-MIT.txt", "OFL-LXGWWenKai.txt", "OFL-NotoSansSymbols2.txt"]:
+		credits.add_text(filename + "\n" + FileAccess.get_file_as_string(
+			"res://assets/licenses/" + filename) + "\n\n")
+
+
+func _credits_link(credits: RichTextLabel, caption: String, url: String) -> void:
+	credits.push_meta(url)
+	credits.add_text(caption)
+	credits.pop()
 
 
 func _build_pause() -> void:

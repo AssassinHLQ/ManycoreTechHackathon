@@ -1,13 +1,34 @@
 # THIRD_PARTY_NOTICES / 第三方组件与内容声明
 
 > 本文件用于履行第三方组件的署名、许可声明义务，并说明仓库内的非原创内容来源。
-> 最后更新：2026-11-12
+> 最后更新：2026-11-18
 
 ## 0. 版权与许可状态
 
 本项目以 **AGPL-3.0** 发布，见第 5 节。全文见仓库根目录 `LICENSE`。
 
 本文件不授予任何第三方内容的再许可——下文所列内容仍归其各自权利人所有。
+
+### 授权署名清单速查
+
+| 内容 | 作者 / 来源 | 许可与分发时需保留的内容 |
+|---|---|---|
+| 五个已导入的外部模型 / 点云 | Loïc Norgeot、Nestaeric、re1monsen、Ethan Cox | CC BY 4.0；作品名、作者、原作链接、许可证链接及修改说明，逐项见 3.2.6 |
+| Pixel UI Sci-Fi Free 图标 | heyheythere / Spyridon Pikoulas | CC BY 4.0；来源和修改说明见 3.6 |
+| UI Minimalism SciFi 面板贴图 | Wenrexa | CC0 1.0；自愿致谢，见 3.5 |
+| 星野文楷 / Noto Sans Symbols 2 字体子集 | LXGW / The Klee Project Authors / The Noto Project Authors | SIL OFL 1.1；保留版权与许可全文，修改版字体说明见 3.4 |
+| Godot Engine 运行时 | Godot Engine contributors、Juan Linietsky、Ariel Manzur | MIT；保留版权与许可全文，见 3.3 |
+| Lux3D 生成的星球、家具和道具 | Aholo Lux3D（群核科技） | 平台服务条款与参赛协议；本清单不另行授予商用或再分发权，见 3.2.1–3.2.5 |
+| 早期 HTML 原型内嵌的 Three.js | three.js authors | MIT；版权与许可全文见 3.1 |
+
+模型台账为 `assets/models/LICENSE_MANIFEST.json`：截至本次更新共有 214 条记录，
+其中 5 条为已导入的 CC BY 4.0 模型、17 条为未导入的历史候选，192 条为 Lux3D 生成记录
+（含历史版本；不等于当前场景实际加载数量）。`imported` 记录历史导入状态，不保证文件仍存在。
+已导入 CC BY 模型的作者、原作页、路径及修改说明在台账中逐项维护。
+
+主菜单的「授权与署名」可展开查看当前外部模型署名、UI 来源及许可全文。
+Win/Web 导出预设显式包含本文件、模型台账、`LICENSE` 和 `assets/licenses/*.txt`；
+这些设置适用于后续重新导出的包，不代表旧 `build/` 或 `demo/` 已更新。
 
 ---
 
@@ -111,7 +132,7 @@ SOFTWARE.
 
 #### 3.2.2 游戏内的星球模型（`assets/models/*-lux3d*`）
 
-游戏里 18 颗可着陆行星的球体模型，由 **Aholo Lux3D（群核科技）** 的文生 3D 服务生成，
+游戏中的可着陆行星使用 **Aholo Lux3D（群核科技）** 文生 3D 服务生成的球体模型，
 以 `.glb` 文件形式存放：
 
 | 目录 | 对应天体 |
@@ -178,17 +199,38 @@ SOFTWARE.
 
 - **权属与使用限制**：同 3.2.1。
 
-**以下模型不是 Lux3D 产出**，为本项目自行制作或程序化生成，见 3.7：
-`black-hole`（黑洞）、`one-dim-star`（一维星点云）、`ship-fighter`（玩家飞船）、
-`space-station` / `space-station-3`（归航站外壳）。
+#### 3.2.6 已导入的外部模型与点云（CC BY 4.0）
 
-### 3.3 Godot Engine（`demo/` 网页版）
+以下五项来自 Sketchfab，均按 **Creative Commons Attribution 4.0 International** 使用。
+许可证：[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)。
+
+| 作品与原作页 | 作者 | 项目路径 / 用途 | 本项目所做修改 |
+|---|---|---|---|
+| [A Windy Day](https://sketchfab.com/3d-models/fb78f4cc938144e6902dd5cff354d525) | [Loïc Norgeot](https://sketchfab.com/norgeotloic) | `assets/models/one-dim-star/model.glb`；一维星点云 | 去除节点的多余缩放及缩放动画；点云顶点保留；运行时用顶点色着色并按距离分批隐藏 |
+| [Black Hole](https://sketchfab.com/3d-models/e410da98b1e5445eae2acafaaa53587d) | [Nestaeric](https://sketchfab.com/Nestaeric) | `assets/models/black-hole/model.glb`；远景黑洞卡冈图雅 | 保留几何；调整运行时缩放和发光；吸积盘改为程序化径向着色 |
+| [Space Station](https://sketchfab.com/3d-models/0da4a24e7edd49159737675ffcc06228) | [re1monsen](https://sketchfab.com/re1monsen) | `assets/models/space-station/model.glb`；远景布景站 | FBX 转 GLB、烘焙变换、统一单位、原点移至质心、贴图外链；运行时摆放与自转 |
+| [Space Station 3](https://sketchfab.com/3d-models/a7a6ad10261149cab31aa394bfcf8940) | [re1monsen](https://sketchfab.com/re1monsen) | `assets/models/space-station-3/model.glb`；远景布景站 | blend 转 GLB、烘焙变换、统一单位、原点移至质心、重挂三套材质并外链贴图；运行时摆放与自转 |
+| [SpaceShip Fighter  - Version 1 [MESHY 6]](https://sketchfab.com/3d-models/68f13997ad7d4e9280c2afdf889a05fe) | [Ethan Cox](https://sketchfab.com/EthanfromEngland) | `assets/models/ship-fighter/model.glb`；玩家飞船 | 贴图外链及性能压缩、移除近黑色发光贴图、烘焙变换、校正原点和朝向；运行时调整尺寸与材质 |
+
+两个外部空间站用于远景布景；可进入的六廊「归航站」站体由项目代码构建。
+上表是对已导入素材的署名，不表示原作者对游戏的认可或背书。
+标题、作者及授权依据来自项目留存的原始资产授权表 `ASSET_LICENSE_TABLE.html`；
+历史授权记录不等同于对当前作品网页或下载权限的保证。
+
+### 3.3 Godot Engine（Windows / Web 运行时）
 
 `demo/` 下的《借一扇晴天》网页版由 **Godot Engine 4.7.1** 导出，
 其中 `index.wasm`、`index.js` 与运行时逻辑包含 Godot Engine 代码。
 
 Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 Juan Linietsky、Ariel Manzur 所有。
-许可全文已随副本附于 [`demo/licenses/godot-MIT.txt`](demo/licenses/godot-MIT.txt)。
+许可全文见 [`assets/licenses/godot-MIT.txt`](assets/licenses/godot-MIT.txt)；
+历史网页版另保留 [`demo/licenses/godot-MIT.txt`](demo/licenses/godot-MIT.txt)。
+
+引擎内含第三方库的版权与许可全文见
+[`assets/licenses/GODOT_THIRD_PARTY.txt`](assets/licenses/GODOT_THIRD_PARTY.txt)，
+由本机 Godot 4.7.1 的 `Engine.get_copyright_info()` 与 `Engine.get_license_info()` 生成。
+更换导出用引擎时，用同一引擎 headless 运行 `tools/update_engine_notices.gd` 更新该文件。
+官方许可说明：<https://godotengine.org/license/>。
 
 项目地址：https://godotengine.org
 
@@ -198,11 +240,11 @@ Godot Engine 以 MIT 许可证发布，版权归 Godot Engine contributors 与 J
 
 | 文件 | 上游字体 | 版权归属 | 许可 | 本项目所做修改 |
 |---|---|---|---|---|
-| `assets/ui_font.ttf` | LXGW WenKai Medium（霞鹜文楷）1.530 | Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai), with Reserved Font Name '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩' and 'LXGW'.<br>Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee) | SIL OFL 1.1 | ① 裁剪为子集（7,861 码点 = GB2312 全部汉字 7,445 + ASCII / 西文标点 / 箭头 / 几何符号）；② **改名为「星野文楷 Starward WenKai」**（见下方保留字体名合规说明）；③ name 表中的版权与许可声明原样保留 |
+| `assets/ui_font.ttf` | LXGW WenKai Medium（霞鹜文楷）1.530 | Copyright 2021-2026 LXGW (https://github.com/lxgw/LxgwWenKai), with Reserved Font Name '霞鹜', '霞鶩', '落霞孤鹜', '落霞孤鶩' and 'LXGW'.<br>Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee) | SIL OFL 1.1 | ① 裁剪为子集（7,864 码点，含 GB2312、常用标点符号及署名所需的补充字形）；② **改名为「星野文楷 Starward WenKai」**（见下方保留字体名合规说明）；③ name 表中的版权与许可声明原样保留 |
 | `assets/ui_symbols.ttf` | Noto Sans Symbols 2 2.008 | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols) | SIL OFL 1.1 | 裁剪为子集，仅保留界面用到的 3 个码点（▬ ◈ ✦） |
 
-- 许可全文随副本分发：[`demo/licenses/OFL-LXGWWenKai.txt`](demo/licenses/OFL-LXGWWenKai.txt)、
-  [`demo/licenses/OFL-NotoSansSymbols2.txt`](demo/licenses/OFL-NotoSansSymbols2.txt)。
+- 当前导出所附许可全文：[`assets/licenses/OFL-LXGWWenKai.txt`](assets/licenses/OFL-LXGWWenKai.txt)、
+  [`assets/licenses/OFL-NotoSansSymbols2.txt`](assets/licenses/OFL-NotoSansSymbols2.txt)。历史网页版的副本位于 `demo/licenses/`。
 - SIL OFL 1.1 允许使用、研究、修改、嵌入与随软件分发（含商业发行），但**不得单独售卖字体本身**；
   修改版必须继续以 OFL 发布，且**不得使用原字体声明的保留字体名**。
 - **保留字体名合规说明**：LXGW WenKai 声明了保留字体名 `霞鹜` / `霞鶩` / `落霞孤鹜` / `落霞孤鶩` / `LXGW`。
@@ -254,7 +296,7 @@ HUD 里船体／推进剂等小图标来自 **heyheythere（Spyridon Pikoulas）
 | 源码仓库 | <https://github.com/Spyridon-Pikoulas/godot-pixel-ui-scifi-free> |
 | 许可证 | **Creative Commons Attribution 4.0 International（CC BY 4.0）** |
 | 全文 | <https://creativecommons.org/licenses/by/4.0/> |
-| 落地路径 | `assets/ui/icons/`（从中选取 18 个图标中的 2 个：`health.png`、`fuel.png`） |
+| 落地路径 | `assets/ui/icons/`（保存 18 个 PNG；当前 HUD 使用 `health.png`、`fuel.png`） |
 | 版本 | 1.0.1 |
 
 **CC BY 4.0 要求署名**，本条即为该署名。本项目对其的使用方式：
@@ -267,8 +309,9 @@ HUD 里船体／推进剂等小图标来自 **heyheythere（Spyridon Pikoulas）
 
 ### 3.7 《借一扇晴天》原创内容
 
-`demo/` 中除上述引擎与字体外的星球、地形、归航站、建筑、洞穴、模型、材质、着色器、界面、
-文本与程序音频均为本项目原创生成。类型与体验层面受到包括 **Outer Wilds** 在内的探索类作品启发
+项目代码构建的地形、六廊归航站站体、建筑、洞穴、程序化几何、着色器、界面布局、
+文本与程序音频为本项目创作；外部模型、UI 贴图、图标、字体及 Lux3D 生成内容按上述各节单独声明，
+不归入「全部原创模型」或「无限制自有资产」。类型与体验层面受到包括 **Outer Wilds** 在内的探索类作品启发
 （限时轮回、恒星爆发、量化观测、篝火烤棉花糖等玩法母题）；未使用其名称、角色、剧情、地点、界面、模型、文本或音频。
 十颗天体名（青岚星 / 赭崖星 / 沧波星 / 悬晶星 / 玄渊星 / 白曜星 / 磐砂星 / 苔垣星 / 硫坞星 / 缄默星）、舱室名与全部标牌均为本项目原创。
 归航站的环形/六廊外观在类型视觉上参考了《星际穿越》与 Arknights 的环状/移动舰船空间组织，
@@ -276,8 +319,8 @@ HUD 里船体／推进剂等小图标来自 **heyheythere（Spyridon Pikoulas）
 
 归航站的分段环舱、放射辐条与中央枢纽外观参考了 **《星际穿越》（Interstellar）** 中的环形
 空间站/Endurance 的视觉组织方式；**未使用**其名称、标志、角色、剧情、模型、贴图或镜头。
-站名「归航站」、14 段环舱、栖息长臂、12 间舱室名、中央大厅、舰桥、平面布局、家具与标牌
-均为本项目原创重建。
+站名「归航站」、环舱与栖息长臂布局、舱室名、中央大厅、舰桥与标牌为本项目创作；
+家具的程序化几何由代码构建，使用的 Lux3D 家具另见 3.2.4。
 
 归航站「长走廊串联多舱室」的空间母题参考了 **Arknights（明日方舟）** 中罗德岛等移动舰船的
 视觉组织方式；**未使用**其名称、标志、角色、剧情、房间名或任何美术素材。
@@ -309,6 +352,7 @@ HUD 里船体／推进剂等小图标来自 **heyheythere（Spyridon Pikoulas）
 | Noto Sans Symbols 2 子集（`assets/ui_symbols.ttf`） | SIL OFL 1.1 | 同上 |
 | Wenrexa「UI Minimalism SciFi」贴图（`assets/ui/wenrexa/`） | CC0 1.0 | 公共领域，无需署名；此处列出仅为致谢 |
 | Pixel UI Sci-Fi Free 图标（`assets/ui/icons/`） | CC BY 4.0 | **需署名**，见 3.6 |
+| A Windy Day / Black Hole / Space Station / Space Station 3 / SpaceShip Fighter  - Version 1 [MESHY 6] | CC BY 4.0 | **需署名并注明修改**，作者、原作链接及用途见 3.2.6 |
 | Aholo Lux3D 生成的星球模型（`assets/models/*-lux3d*`） | 平台条款 | **非本仓库可再许可**，见 3.2.2 |
 | Aholo Lux3D 生成的阁楼/世界摆件（`assets/models/props/attic*`） | 平台条款 | 同上，见 3.2.3 |
 | Aholo Lux3D 生成的星球道具（`assets/models/props/*`） | 平台条款 | 同上，见 3.2.5 |

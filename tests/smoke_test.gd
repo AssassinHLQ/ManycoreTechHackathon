@@ -193,13 +193,56 @@ func _run() -> void:
 			"every accretion disk shell is shaded by radius instead of by texture")
 		_check(not game.gargantua.find_child("GargantuaLabel", true, false) is Label3D,
 			"Gargantua has no name plate floating over the disk")
-	# CC BY 4.0 要求署名必须出现在**游戏里**（导出后的 exe/网页并不带仓库文档）
-	_check(load("res://assets/models/LICENSE_MANIFEST.json") != null or
-		FileAccess.file_exists("res://assets/models/LICENSE_MANIFEST.json"),
-		"the external-asset licence manifest ships with the game")
-	var manifest := FileAccess.get_file_as_string("res://assets/models/LICENSE_MANIFEST.json")
-	_check(manifest.contains("black-hole") and manifest.contains("Nestaeric"),
-		"the manifest records the black hole's author for attribution")
+	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(
+		"res://assets/models/LICENSE_MANIFEST.json"))
+	var credits: RichTextLabel = game.hud.menu.find_child("AssetCredits", true, false)
+	_check(credits != null, "the menu provides in-game asset attribution")
+	var credited_models := 0
+	for asset in manifest.get("assets", []):
+		if not asset.get("imported", false) or asset.get("license", "") != "CC BY 4.0":
+			continue
+		credited_models += 1
+		_check(FileAccess.file_exists("res://" + asset.get("imported_path", "")),
+			"credited model exists: " + asset.slug)
+		_check(asset.get("source_url", "").begins_with("https://sketchfab.com/3d-models/")
+			and asset.get("license_url", "") == "https://creativecommons.org/licenses/by/4.0/"
+			and not asset.get("modifications", "").is_empty(),
+			"credited model has its original work, licence and modifications: " + asset.slug)
+		_check(credits != null and credits.get_parsed_text().contains(asset.title)
+			and credits.get_parsed_text().contains(asset.author),
+			"in-game credits preserve the work title and author: " + asset.slug)
+	_check(credited_models == 5, "all five installed CC BY models are credited")
+	if credits != null:
+		var credits_toggle: Button = game.hud.menu.find_child("CreditsToggle", true, false)
+		credits_toggle.button_pressed = true
+		await process_frame
+		await process_frame
+		_check(credits.visible, "asset credits can be expanded in the menu")
+		_check(credits.size.x > 0.0 and credits.size.x <= credits.get_parent().size.x,
+			"expanded credits fit the menu content width")
+		var credits_scroll: ScrollContainer = credits.get_parent().get_parent()
+		_check(credits_scroll.get_v_scroll_bar().max_value > credits_scroll.get_v_scroll_bar().page,
+			"the menu can scroll through the full licence text")
+		_check(credits.get_parsed_text().contains("Spyridon Pikoulas")
+			and credits.get_parsed_text().contains("Wenrexa"), "in-game credits include both UI packs")
+		for filename in ["godot-MIT.txt", "OFL-LXGWWenKai.txt", "OFL-NotoSansSymbols2.txt"]:
+			var licence_text := FileAccess.get_file_as_string("res://assets/licenses/" + filename)
+			_check(licence_text.contains("Copyright") and licence_text.length() > 1000
+				and credits.get_parsed_text().contains(licence_text),
+				"in-game credits contain the full copyright and licence: " + filename)
+		credits_toggle.button_pressed = false
+	var engine_notices := FileAccess.get_file_as_string("res://assets/licenses/GODOT_THIRD_PARTY.txt")
+	var copyrights_complete := not engine_notices.is_empty()
+	for component in Engine.get_copyright_info():
+		copyrights_complete = copyrights_complete and engine_notices.contains(component.name)
+		for part in component.parts:
+			for copyright in part.copyright:
+				copyrights_complete = copyrights_complete and engine_notices.contains(copyright)
+	_check(copyrights_complete, "bundled engine component copyrights are preserved")
+	var licences_complete := not engine_notices.is_empty()
+	for licence in Engine.get_license_info().values():
+		licences_complete = licences_complete and engine_notices.contains(licence)
+	_check(licences_complete, "bundled engine component licence texts are preserved")
 
 	# ── 每个世界自己的云 ────────────────────────────────────────────
 	# 上一版六个世界共用同一套 fbm，只换颜色与密度，「换个世界」其实只是同一片云

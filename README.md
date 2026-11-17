@@ -250,8 +250,8 @@ Web 会按物体的世界尺寸裁剪远处小细节，保留大天体轮廓与�
 - 校园网限速：首次加载建议用手机流量/热点，或把 `build/web` 部署到 Cloudflare Pages / 国内对象存储；GitHub Pages 国内线路本身不稳定。
 - 手机浏览器支持横屏触屏操作：自动识别触摸屏并显示摇杆与圆钮；首次触摸会请求全屏并锁定横屏，左上角有「横屏全屏」兜底按钮；`?touch=1` 可强制开启触屏层。iOS Safari 需手动旋转。
 - 网页版由浏览器控制分辨率与垂直同步，设置里这两项会锁定为「由浏览器决定」；音频需要第一次点击后才会响（浏览器策略）；卡顿时可在设置里切低画质。
-- 中文字体已内嵌：Noto Sans SC（wght=400 静态子集，含项目全部用字 + GB2312 一级 3755 常用字 + ASCII / 标点 / 符号，约 1.22 MB / 1,253,428 字节）与 Noto Sans Symbols 2（符号，约 5 KB），遵循 SIL OFL，许可证见 `assets/OFL-NotoSansSC.txt` 与 `assets/OFL-NotoSansSymbols2.txt`。
-- 字体子集在新增文字后需要重新生成；`tests/font_coverage_test.gd` 会扫描全部脚本字符串字面量，逐字核对内嵌字体覆盖情况，有缺字即以非零码退出（`godot --headless --path . --script res://tests/font_coverage_test.gd`）。
+- 中文字体已内嵌：星野文楷 Starward WenKai（上游 LXGW WenKai，子集裁剪并改名）与 Noto Sans Symbols 2 符号子集，遵循 SIL OFL 1.1，版权与许可全文见 `assets/licenses/`。
+- 字体子集在新增文字后需要重新生成；`tests/font_coverage_test.gd` 会扫描脚本字符串字面量及运行时读取的模型署名、字体与引擎许可正文，逐字核对内嵌字体覆盖情况，有缺字即以非零码退出（`godot --headless --path . --script res://tests/font_coverage_test.gd`）。
 - 换电脑时需安装 `4.7.1.stable` 的 Web 导出模板（本机已经装好）。
 
 网页版预览：[01_title.png](captures/01_title.png)、[web_gameplay.png](captures/web_gameplay.png)。
@@ -398,12 +398,13 @@ headless A/B（各取 3 次最小值，本机）：**行星阶段 2,735 → 1,23
 
 ### 素材来源
 
-- **引擎**：Godot Engine 4.7.1，MIT 许可；许可证全文随网页版部署在 `demo/licenses/`。
-- **字体**：Noto Sans SC（wght=400 静态子集，含项目全部用字 + GB2312 一级 3755 常用字 + ASCII / 标点 / 符号，约 1.22 MB）与 Noto Sans Symbols 2（约 5 KB），SIL Open Font License 1.1，许可证全文见 `assets/OFL-NotoSansSC.txt` 与 `assets/OFL-NotoSansSymbols2.txt`。
-  - 版权归属：Noto Sans SC © 2014-2021 Adobe (http://www.adobe.com/)，声明保留字体名 `Source`；Noto Sans Symbols 2 © 2022 The Noto Project Authors。
-  - 本项目对字体的修改：① 由可变字体实例化为 wght=400 静态字重；② 按项目用字裁剪为子集。修改版仍以 SIL OFL 1.1 发布，未使用保留字体名 `Source`，也未使用任何权利方名称作宣传或背书。
-- **3D 模型、贴图、音频**：星球、地形、洞穴、建筑、归航站、家具、粒子、星云天空、太阳表面与全部音效均由项目代码或着色器程序化生成。**例外是两个外部模型**：玩家飞船使用 Sketchfab 作品 “SpaceShip Fighter - Version 1 [MESHY 6]” by **Ethan Cox**，远景黑洞「卡冈图雅」使用 “Black Hole” by **Nestaeric**，两者许可均为 **CC BY 4.0**（可商用、需署名）。飞船文件位于 `assets/models/ship-fighter/model.glb`（几何 0.51 MB）与 `assets/models/ship-fighter/textures/`（baseColor 4096×4096、normal 4096×4096、ORM 2048×2048，原始 PNG 无损；进包时 normal/ORM 按 `process/size_limit` 降到 2048/1024，画面上看不出差别）。原始下载件 38.8 MB；本项目把贴图**外链**到 `textures/`（Godot 的 GLTF 导入器会把内嵌贴图再抽一份到磁盘，内嵌等于同一份存两遍），并由 `tools/ship_build.py` 把变换烘焙进网格、原点移到底部中心、朝向校正为 Godot 约定（机头 -Z、机顶 +Y、翼展 X），运行时按机长缩放到 6.5 m。**朝向由脚本实测判定而非照抄注释** —— 旧版本只绕 X 轴 +90°，机头仍留在 -X，飞船是横着飞的；现由 `tests/probe_ship_facing.gd` 六向截图回归。黑洞模型位于 `assets/models/black-hole/model.glb`，其吸积盘**不使用原贴图**而是按半径程序化着色（见上节「已实现」）。其余 3D 模型、HDRI 天空盒与音频采样未使用任何外部素材。
-- **UI 与标牌**：使用项目内嵌字体与代码绘制，没有引入第三方图标库。
+- **完整授权署名清单**：[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。模型逐项台账：[LICENSE_MANIFEST.json](assets/models/LICENSE_MANIFEST.json)。主菜单可展开「授权与署名」查看来源和许可全文。
+- **引擎**：Godot Engine 4.7.1，MIT；许可全文见 `assets/licenses/godot-MIT.txt`。
+- **字体**：星野文楷 Starward WenKai（上游 LXGW WenKai，版权归 LXGW 与 The Klee Project Authors）和 Noto Sans Symbols 2（The Noto Project Authors），SIL OFL 1.1。均裁剪为子集；文楷修改版已改名以避开保留字体名，版权与许可全文见 `assets/licenses/`。
+- **五个外部模型 / 点云，CC BY 4.0**：A Windy Day — Loïc Norgeot；Black Hole — Nestaeric；Space Station 与 Space Station 3 — re1monsen；SpaceShip Fighter  - Version 1 [MESHY 6] — Ethan Cox。原作链接、项目路径及修改说明见清单 3.2.6；两个空间站用于远景布景，可进入的六廊归航站站体由代码构建。
+- **生成式 3D 资产**：星球、阁楼家具、站内家具和表面道具使用 Aholo Lux3D（群核科技）生成内容，部分带程序化回退。权属及使用义务以平台服务条款与参赛协议为准，本项目的 AGPL 不另行授予这些资产的使用权。
+- **UI**：Wenrexa「UI Minimalism SciFi」面板贴图（CC0 1.0）及 heyheythere / Spyridon Pikoulas「Pixel UI Sci-Fi Free」图标（CC BY 4.0）；运行时九宫格缩放或染色，来源见清单 3.5–3.6。
+- **程序化内容**：地形、六廊归航站站体、建筑与洞穴几何、天空、粒子和程序音频由项目代码或着色器构建；不将上述外部及生成服务资产声称为全部原创。
 
 ### 灵感借鉴
 
@@ -434,9 +435,8 @@ headless A/B（各取 3 次最小值，本机）：**行星阶段 2,735 → 1,23
 - 你可以自由使用、修改、再分发，但**衍生作品必须以同一许可证开源**；
 - AGPL 第 13 条：**通过网络提供服务时，必须向使用者提供对应源代码**——所以本项目的源码与这份
   构建产物一同公开；
-- 第三方组件保留各自许可证：**Godot Engine 4.7.1（MIT）**、**Noto Sans SC 子集（SIL OFL 1.1）**、
-  **飞船模型 "SpaceShip Fighter - Version 1 [MESHY 6]" by Ethan Cox（CC BY 4.0）**，
-  详见 `THIRD_PARTY_NOTICES.md`、`assets/models/LICENSE_MANIFEST.json` 与 `demo/licenses/`。
+- 第三方组件保留各自许可证：Godot Engine 与早期 HTML 内的 Three.js（MIT）、星野文楷及 Noto Sans Symbols 2（SIL OFL 1.1）、五个外部模型和 Pixel UI 图标（CC BY 4.0）、Wenrexa UI 贴图（CC0 1.0）。Lux3D 生成资产另按平台服务条款与参赛协议处理。
+  详见 `THIRD_PARTY_NOTICES.md`、`assets/models/LICENSE_MANIFEST.json` 与 `assets/licenses/`。Win/Web 导出预设会纳入清单、模型台账及许可全文；旧构建需重新导出才能包含本次更新。
 
 > 说明：AGPL 是"防倒钩"的法律手段（禁止他人拿走做成闭源产品），但它不阻止别人**照样开源地**
 > 复制与再分发；技术上无法阻止复制，只能保证复制必须公开源码。
