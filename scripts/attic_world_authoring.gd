@@ -9,9 +9,14 @@ const LINES := {
 }
 const SIGN_POSITIONS := {
 	"cloud": Vector3(10.5, 0.0, -4.7),
-	"firefly": Vector3(-6.0, 0.0, -8.0),
+	"firefly": Vector3(5.3, 0.0, -8.5),
 	"alley": Vector3(0.0, 0.0, -13.0),
-	"snow": Vector3(-2.0, 0.0, -11.8),
+	"snow": Vector3(5.0, 0.0, -6.5),
+}
+const STORY_WALL_POSITIONS := {
+	"cloud": Vector3(10.5, 0.675, -3.5),
+	"firefly": Vector3(5.3, 0.675, -7.3),
+	"snow": Vector3(5.0, 0.675, -5.3),
 }
 const KEYED_FIELDS := ["device_states", "device_values", "device_nodes", "world_done", "minigame_anchors"]
 # These roots are visual-only. In particular, the return portal's glowing
@@ -58,6 +63,7 @@ static func load_world(worlds: Node3D, key: String, holder: Node3D) -> bool:
 	var content := scene.instantiate() as Node3D
 	if content == null:
 		return false
+	add_story_wall(content, key)
 	var status := {"valid": true, "materials": {}}
 	var decoded: Dictionary = _decode(data.get_meta("bindings"), content, holder, status)
 	if not status.valid:
@@ -169,6 +175,7 @@ static func _decode(value, content: Node3D, holder: Node3D, status: Dictionary):
 
 
 static func add_story_sign(content: Node3D, key: String) -> void:
+	add_story_wall(content, key)
 	var sign_root := Node3D.new()
 	sign_root.name = "StorySign"
 	# Hide the board from the direct approach while keeping its reading face reachable.
@@ -204,6 +211,39 @@ static func add_story_sign(content: Node3D, key: String) -> void:
 	light.light_energy = 0.12
 	light.omni_range = 3.5
 	sign_root.add_child(light)
+
+
+static func add_story_wall(content: Node3D, key: String) -> void:
+	if not STORY_WALL_POSITIONS.has(key) or content.has_node("StoryWall"):
+		return
+	var wall := StaticBody3D.new()
+	wall.name = "StoryWall"
+	wall.position = STORY_WALL_POSITIONS[key]
+	wall.collision_layer = 1
+	wall.collision_mask = 0
+	var color := Color("77736d")
+	if key == "firefly":
+		color = Color("4b5042")
+	elif key == "snow":
+		color = Color("8a929a")
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.96
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.name = "WallVisual"
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(2.1, 1.35, 0.32)
+	mesh_instance.mesh = mesh
+	mesh_instance.material_override = material
+	mesh_instance.position.y = 0.0
+	wall.add_child(mesh_instance)
+	var collision := CollisionShape3D.new()
+	collision.name = "CollisionShape3D"
+	var shape := BoxShape3D.new()
+	shape.size = mesh.size
+	collision.shape = shape
+	wall.add_child(collision)
+	content.add_child(wall)
 
 
 static func _add_box(parent: Node3D, title: String, size: Vector3,
@@ -256,6 +296,7 @@ static func install(worlds: Node3D, key: String) -> void:
 	var replacement := scene.instantiate() as Node3D
 	if replacement == null:
 		return
+	add_story_wall(replacement, key)
 	var nodes := {old: replacement}
 	var resources := {}
 	for node in old.find_children("*", "", true, false):

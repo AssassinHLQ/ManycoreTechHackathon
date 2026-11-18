@@ -30,7 +30,17 @@ func _run() -> void:
 		_check(content.is_ancestor_of(worlds.return_anchor(key)), key + " return portal rebound")
 		_check(content.get_node("StorySign/Text").text == worlds.Authoring.LINES[key], key + " sign text")
 		var story_sign := content.get_node("StorySign") as Node3D
-		_check(not story_sign.visible, key + " story sign is hidden outside the telescope archive")
+		_check(story_sign.visible, key + " story sign remains physically discoverable")
+		_check(story_sign.position.is_equal_approx(worlds.Authoring.SIGN_POSITIONS[key]),
+			key + " story sign is placed behind the approach obstruction")
+		_check(story_sign.rotation.y == 0.0, key + " story sign faces the reachable approach side")
+		_check(story_sign.scale.is_equal_approx(Vector3.ONE * 0.32), key + " story sign stays subtle in scale")
+		if key == "alley":
+			_check(content.get_node_or_null("StoryWall") == null, "alley sign uses the existing end wall")
+		else:
+			var story_wall := content.get_node_or_null("StoryWall") as StaticBody3D
+			_check(story_wall != null and story_wall.get_node_or_null("WallVisual") != null,
+				key + " story sign has a solid, visible screen wall")
 		for id in worlds.prop_ids_in(key):
 			_check(content.is_ancestor_of(worlds.prop_anchor(id)), key + " prop anchor " + id)
 		for index in range(3):
@@ -46,7 +56,13 @@ func _run() -> void:
 				key + " puzzle changes leave the other game untouched")
 	var generated_content := Node3D.new()
 	worlds.Authoring.add_story_sign(generated_content, "snow")
-	_check(not generated_content.get_node("StorySign").visible, "generated story signs stay hidden")
+	_check(generated_content.get_node("StorySign").visible, "generated story signs remain discoverable")
+	_check(generated_content.get_node("StorySign").position.is_equal_approx(worlds.Authoring.SIGN_POSITIONS.snow),
+		"generated story sign uses the hidden snow placement")
+	_check(generated_content.get_node("StorySign").rotation.y == 0.0,
+		"generated story signs face the reachable approach side")
+	_check(generated_content.get_node_or_null("StoryWall") is StaticBody3D,
+		"generated story signs include a physical screen wall")
 	generated_content.free()
 	worlds.use_winch()
 	worlds.update_bridge(0.2)
