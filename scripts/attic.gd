@@ -778,7 +778,7 @@ func _build_furniture() -> void:
 	_anchor("AtticAnchor_Record", record_at + Vector3(0.45, 0.85, 0))
 	var record_label := Label3D.new()
 	record_label.name = "RouteRecordLabel"
-	record_label.text = "航海回声台\nE 对照宇宙记录 / 继续航行"
+	record_label.text = "返回空间站\nE 互动"
 	record_label.font = load("res://assets/ui_font.ttf")
 	record_label.font_size = 36
 	record_label.pixel_size = 0.003

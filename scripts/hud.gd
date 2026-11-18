@@ -83,11 +83,6 @@ var end_body: Label
 var end_stats: Label
 var menu_start: Button
 var menu_attic: Button
-var pause_attic: Button
-var routes: Control
-var route_entries: VBoxContainer
-var route_footer: Label
-var route_finish: Button
 var end_heading: Label
 var end_continue: Button
 var end_return: Button
@@ -147,7 +142,6 @@ func _ready() -> void:
 	_build_hud()
 	_build_menu()
 	_build_pause()
-	_build_routes()
 	_build_journal()
 	_build_help()
 	_build_ending()
@@ -545,87 +539,10 @@ func _build_pause() -> void:
 	var sub := _text(box, "恒星会等你一会儿。", 15, Color("8daaa7"))
 	sub.custom_minimum_size.y = 64
 	_button(box, "继续探索", func(): game.set_paused(false)).custom_minimum_size.y = 52
-	# 保留旧入口对象供路由兼容测试使用，但不再把它加入暂停页面。
-	pause_attic = Button.new()
-	pause_attic.text = "回到阁楼"
-	pause_attic.pressed.connect(func(): game.request_attic_visit())
-	pause_attic.visible = false
-	root.add_child(pause_attic)
 	_button(box, "设置", show_settings).custom_minimum_size.y = 42
 	_button(box, "操作与生存指南", show_help).custom_minimum_size.y = 46
 	_button(box, "返回标题", func(): game.return_to_menu()).custom_minimum_size.y = 46
 	pause_menu.visible = false
-
-
-func _build_routes() -> void:
-	routes = _overlay(0.92)
-	var panel := _center_panel(routes, Vector2(1020, 820))
-	var box := _panel_box(panel, 28)
-	_text(box, "航海回声台", 30, Color("e9e3ce"))
-	var intro := _text(box, "宇宙扫描 + 阁楼纪念 → 在唱片柜旁解读 → 返航扫描第二段回声 → 棱镜之心合拢记录", 16, Color("9ecdc6"))
-	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	box.add_child(scroll)
-	route_entries = VBoxContainer.new()
-	route_entries.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	route_entries.add_theme_constant_override("separation", 8)
-	scroll.add_child(route_entries)
-	route_footer = _text(box, "", 16, Color("d9b879"))
-	route_footer.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	route_finish = _button(box, "用棱镜之心合拢归航记录", _finish_routes)
-	_button(box, "继续航行 · 返回原来的位置", _return_from_routes)
-	_button(box, "合上回声台 · Esc", func(): game.close_route_board())
-	routes.visible = false
-
-
-func rebuild_routes() -> void:
-	for child in route_entries.get_children():
-		route_entries.remove_child(child)
-		child.queue_free()
-	for key in game.route_link.ROUTES:
-		var spec: Dictionary = game.route_link.ROUTES[key]
-		_text(route_entries, "%s  /  %s ↔ %s" % [spec.title, spec.memory, spec.place], 20, Color("c7e7df"))
-		var hint := _text(route_entries, spec.hint + "\n" + game.route_link.status(game, key), 15, Color("adc2bd"))
-		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 16)
-		route_entries.add_child(row)
-		var decode := _button(row, "解读回声", _decode_route.bind(key))
-		decode.name = "Decode_" + key
-		decode.disabled = not game.route_link.can_decode(game, key)
-		var navigate := _button(row, "设定航行目标", _navigate_route.bind(key))
-		navigate.name = "Navigate_" + key
-		_text(route_entries, "", 5, Color.WHITE)
-	var missing: String = game.route_link.finale_missing(game)
-	route_footer.text = "归航记录已合拢。四个远方和宇宙的回应都已保存。" if game.route_link.completed else (
-		"可以合拢归航记录。" if missing == "" else "归航还需要：" + missing)
-	if not game.in_attic or game.in_pocket():
-		route_footer.text += "\n解读与合拢须回到阁楼；这里可查进度、设定目的地。"
-	route_finish.disabled = game.route_link.completed or missing != "" or not game.in_attic or game.in_pocket()
-
-
-func _decode_route(key: String) -> void:
-	game.route_link.decode(game, key)
-	rebuild_routes()
-
-
-func _navigate_route(key: String) -> void:
-	game.route_link.navigate(game, key)
-	rebuild_routes()
-
-
-func _finish_routes() -> void:
-	game.route_link.finish(game)
-
-
-func _return_from_routes() -> void:
-	game.close_route_board()
-	if game.in_attic:
-		game.leave_attic()
-	else:
-		game.set_paused(false)
 
 
 func _build_journal() -> void:
@@ -686,8 +603,8 @@ func rebuild_journal() -> void:
 		spacer.custom_minimum_size.y = 12
 		journal_entries.add_child(spacer)
 	journal_objective.text = game.objective_text()
-	if game.route_link.unlocked(game):
-		journal_objective.text += "\n\n阁楼回声 %d/4\nEsc → 航海回声台查看条件与回应；回家需在归航站对接并进入枢纽的暖色舱门，原航程暂停保留。" % game.route_link.verified_count(game)
+	if game.in_attic:
+		journal_objective.text += "\n\n唱片柜旁的音乐盒可返回空间站，离开前的航程会保留。"
 
 
 func _build_help() -> void:
@@ -1019,11 +936,8 @@ func _process(delta: float) -> void:
 	var playing: bool = game.state in ["walk", "ship", "supernova"]
 	hud_root.visible = playing and not game.map_open
 	menu.visible = game.state == "menu"
-	pause_menu.visible = game.paused and not game.journal_open and not game.route_board_open and playing
+	pause_menu.visible = game.paused and not game.journal_open and playing
 	menu_attic.visible = true
-	pause_attic.text = "继续航行 · 返回原来的位置" if game.in_attic else (
-		"回家 · 进入阁楼" if game.can_visit_attic() else "回家 · 请到归航站枢纽的舱门")
-	pause_attic.disabled = not game.in_attic and not game.can_visit_attic()
 	journal.visible = game.journal_open
 	ending.visible = game.state == "end"
 	death_overlay.visible = game.state == "dying"

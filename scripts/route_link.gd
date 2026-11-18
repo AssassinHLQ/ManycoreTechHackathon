@@ -151,7 +151,6 @@ func finish(game) -> bool:
 		return false
 	completed = true
 	game._save_knowledge()
-	game.close_route_board()
 	game.previous_state = "walk"
 	game.end_text = "四段回声在棱镜之心里合成一张完整的归航图。\n\n风、冰光、潮声和萤火都来自你亲自走过的地方。阁楼把宇宙里零散的记录保存下来；你的返航，又让这些小小的纪念有了可以回应的远方。\n\n恒星仍会老去，知识和家不会随轮回消失。你现在知道，两条路通向同一个世界。"
 	game.state = "end"

@@ -100,7 +100,7 @@ func _run() -> void:
 
 	game.keepsakes["alley"] = true
 	var step4: String = game.next_worth_doing()
-	_check(step4.contains("航海回声台"), "四件纪念齐了指向双线回声")
+	_check(step4.contains("音乐盒"), "handbook explains the direct station return")
 	# Optional attic suggestions remain available after the linked story is complete.
 	game.route_link.completed = true
 	_check(game.next_worth_doing().contains("茶"), "归航后仍可选择茶席")

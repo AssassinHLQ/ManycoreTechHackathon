@@ -1194,20 +1194,7 @@ func _build_hub() -> void:
 	for i in range(12):
 		var seam := TAU * float(i) / 12.0
 		_box(hub_root, Vector3(26.0, 0.02, 0.05), Vector3(cos(seam) * 15.0, FLOOR_TOP + 0.045, sin(seam) * 15.0), _mat_dark, Vector3(0.0, -seam, 0.0))
-	# ── 中央立柱（2026-11-10 精简）────────────────────────────────
-	# 原先这里是一整圈「升降梯」装饰：4 米圆柱外壳 + 8 根竖条 + 4 个凹槽 +
-	# 4 道环 + 4 扇 lift_door 假门（有门缝、橙色警示条、小灯球）+ 18 块警示
-	# 地砖 + 两块「中央升降梯」标牌 + 灯杆 + 顶灯球。
-	#
-	# 问题：那些假门长得太像能开的门，玩家反复去撞、以为卡 bug；
-	# 而且它们贴在半径 4 米的实心柱面上，本来就只是为了「看着像升降梯」。
-	# 既然进不去，就不该摆出要请你进去的样子 —— 全部删掉，只留一根光柱。
-	_cylinder(hub_root, 3.2, 3.2, 10.0, Vector3(0.0, 3.0, 0.0), _mat_hull, 24)
-	_add_hub_cylinder_collider(3.2, 10.0, Vector3(0.0, 3.0, 0.0))
-	# 柱脚一圈收边 + 一道细环，让这根柱子有「结构件」的收口，不至于秃得太难看
-	_cylinder(hub_root, 3.5, 3.5, 0.3, Vector3(0.0, FLOOR_TOP + 0.05, 0.0), _mat_trim, 32)
-	_torus(hub_root, 3.22, 3.34, Vector3(0.0, 2.4, 0.0), _mat_trim, Vector3.ZERO, 8, 48)
-	_torus(hub_root, 3.24, 3.5, Vector3(0.0, 7.35, 0.0), _mat_trim, Vector3.ZERO, 8, 48)
+	_build_hub_power_column()
 	_cylinder(hub_root, 2.4, 2.8, 1.0, Vector3(0.0, FLOOR_TOP + 0.5, -10.0), _mat_dark, 20)
 	_cylinder(hub_root, 2.5, 2.5, 0.1, Vector3(0.0, FLOOR_TOP + 1.02, -10.0), _mat_glass, 32)
 	_torus(hub_root, 2.0, 2.4, Vector3(0.0, FLOOR_TOP + 1.2, -10.0), _mat_teal, Vector3.ZERO, 8, 32)
@@ -1233,26 +1220,8 @@ func _build_hub() -> void:
 		var pad_angle := TAU * float(i) / 14.0
 		_box(hub_root, Vector3(0.55, 0.018, 0.3), Vector3(cos(pad_angle) * 6.05, FLOOR_TOP + 0.16, 12.0 + sin(pad_angle) * 6.05),
 			_mat_orange if i % 2 == 0 else _mat_dark, Vector3(0.0, -pad_angle, 0.0))
-	_box(hub_root, Vector3(3.2, 1.0, 1.1), Vector3(0.0, FLOOR_TOP + 0.55, 12.0), _mat_dark)
-	_add_hub_box_collider(Vector3(3.2, 1.0, 1.1), Vector3(0.0, FLOOR_TOP + 0.55, 12.0))
-	_box(hub_root, Vector3(2.2, 0.5, 0.06), Vector3(0.0, FLOOR_TOP + 0.85, 12.56), _mat_glow)
-	_box(hub_root, Vector3(2.2, 0.5, 0.06), Vector3(0.0, FLOOR_TOP + 0.85, 11.44), _mat_glow)
-	_box(hub_root, Vector3(0.6, 0.14, 0.05), Vector3(-1.0, FLOOR_TOP + 0.85, 11.44), _mat_teal)
-	_box(hub_root, Vector3(0.6, 0.14, 0.05), Vector3(1.0, FLOOR_TOP + 0.85, 11.44), _mat_orange)
 	_torus(hub_root, 1.2, 1.6, Vector3(0.0, FLOOR_TOP + 0.04, 12.0), _mat_glow, Vector3.ZERO, 8, 32)
-	for side: float in [-1.0, 1.0]:
-		_box(hub_root, Vector3(0.42, 3.6, 0.42), Vector3(side * 3.6, -0.2, 13.4), _mat_trim)
-		_add_hub_box_collider(Vector3(0.42, 3.6, 0.42), Vector3(side * 3.6, -0.2, 13.4))
-		_box(hub_root, Vector3(0.08, 2.6, 0.08), Vector3(side * 3.6, -0.1, 13.16), _mat_glow)
-		_box(hub_root, Vector3(0.5, 0.3, 0.08), Vector3(side * 3.6, 1.3, 13.16), _mat_dark)
-		_sphere(hub_root, 0.1, Vector3(side * 3.6, 1.3, 13.09), _mat_teal)
-	_box(hub_root, Vector3(5.4, 1.1, 0.16), Vector3(0.0, 2.35, 14.0), _mat_dark)
-	for side: float in [-1.0, 1.0]:
-		_box(hub_root, Vector3(0.22, 4.9, 0.22), Vector3(side * 2.9, 0.45, 14.0), _mat_trim)
-		_box(hub_root, Vector3(0.08, 2.6, 0.08), Vector3(side * 2.9, 0.85, 13.86), _mat_teal)
-		_add_hub_box_collider(Vector3(0.22, 4.9, 0.22), Vector3(side * 2.9, 0.45, 14.0))
-	_label("气闸", Vector3(0.0, 2.35, 13.9), 48, 0.011, PI, Color("f0e0bd"), hub_root)
-	_label("归航站", Vector3(0.0, 2.35, 14.1), 40, 0.0095, 0.0, Color("d9b879"), hub_root)
+	_build_hub_airlock()
 	for i in range(CORRIDOR_COUNT):
 		var lane_angle := TAU * float(i) / float(CORRIDOR_COUNT)
 		for offset: float in [-0.32, 0.32]:
@@ -1335,6 +1304,7 @@ func _build_hub() -> void:
 		_torus(hub_root, radius - 0.3, radius + 0.3, Vector3(0.0, 7.55, 0.0), _mat_trim, Vector3.ZERO, 8, 64)
 	_light(Vector3(0.0, 7.0, 0.0), Color("ffd8ac"), 1.8, 26.0, hub_root)
 	# 枢纽的静态网格也合并；全息沙盘会旋转、六扇门的活动门扇会滑动，都必须排除。
+	_build_home_door()
 	var hub_skip: Array = []
 	if hub_hologram != null:
 		hub_skip.append(hub_hologram)
@@ -1343,13 +1313,117 @@ func _build_hub() -> void:
 	_merge_static_meshes(hub_root, hub_skip, "HubMerged")
 	_build_hub_detail()
 	Precision.station_hub(hub_root)
-	_build_home_door()
 	# 外塔和能源核心的碰撞挂在 hub_body 上，飞船靠近时不会穿模。
 	_add_hub_cylinder_collider(22.0, 64.0, Vector3(0.0, 60.0, 0.0))
 	_add_hub_cylinder_collider(11.5, 152.0, Vector3(0.0, 167.0, 0.0))
 	_add_hub_cylinder_collider(15.0, 20.0, Vector3(0.0, 251.0, 0.0))
 	_add_hub_cylinder_collider(18.5, 58.0, Vector3(0.0, -58.0, 0.0))
 	_add_hub_cylinder_collider(10.5, 134.0, Vector3(0.0, -157.0, 0.0))
+
+
+func _build_hub_airlock() -> void:
+	var console := Node3D.new()
+	console.name = "AirlockConsole"
+	console.position = Vector3(3.8, FLOOR_TOP, 13.6)
+	console.rotation.y = -PI * 0.5
+	hub_root.add_child(console)
+	_box(console, Vector3(2.6, 0.42, 0.9), Vector3(0.0, 0.32, 0.0), _mat_dark)
+	for side: float in [-1.0, 1.0]:
+		_box(console, Vector3(0.24, 1.05, 0.54), Vector3(side * 0.96, 0.75, -0.02), _mat_trim)
+	_box(console, Vector3(2.25, 0.16, 0.78), Vector3(0.0, 1.28, 0.0), _mat_trim)
+	_box(console, Vector3(1.9, 0.68, 0.09), Vector3(0.0, 1.76, 0.3), _mat_screen, Vector3(0.22, 0.0, 0.0))
+	_box(console, Vector3(1.55, 0.045, 0.04), Vector3(0.0, 1.93, 0.37), _mat_glow, Vector3(0.22, 0.0, 0.0))
+	for i in range(5):
+		_box(console, Vector3(0.12, 0.08, 0.05), Vector3(-0.68 + float(i) * 0.34, 1.53, 0.36),
+			_mat_teal if i % 2 == 0 else _mat_orange)
+	_label("气闸控制", Vector3(0.0, 2.14, 0.4), 24, 0.006, PI, Color("f0e0bd"), console)
+	_add_hub_box_collider(Vector3(2.7, 1.35, 0.95), console.position + Vector3(0.0, 0.68, 0.0), console.rotation)
+
+	var gate := Node3D.new()
+	gate.name = "AirlockGate"
+	gate.position = Vector3(0.0, FLOOR_TOP, 15.0)
+	hub_root.add_child(gate)
+	_box(gate, Vector3(5.8, 0.62, 1.1), Vector3(0.0, 4.82, 0.0), _mat_dark)
+	for side: float in [-1.0, 1.0]:
+		_box(gate, Vector3(0.72, 4.9, 1.1), Vector3(side * 2.55, 2.45, 0.0), _mat_trim)
+		_box(gate, Vector3(0.1, 4.3, 0.05), Vector3(side * 2.14, 2.2, -0.59), _mat_glow)
+		_box(gate, Vector3(0.22, 1.2, 0.16), Vector3(side * 3.05, 1.45, -0.48), _mat_dark)
+		for row in range(3):
+			_box(gate, Vector3(0.1, 0.1, 0.06), Vector3(side * 3.05, 1.2 + float(row) * 0.24, -0.59),
+				_mat_teal if row == 0 else _mat_glow)
+	_box(gate, Vector3(4.5, 4.25, 0.38), Vector3(0.0, 2.12, -0.18), _mat_dark)
+	_box(gate, Vector3(4.1, 3.86, 0.1), Vector3(0.0, 2.12, 0.03), _mat_hull)
+	for side: float in [-1.0, 1.0]:
+		_box(gate, Vector3(1.78, 3.55, 0.12), Vector3(side * 0.92, 2.12, 0.22), _mat_dark)
+		_box(gate, Vector3(0.08, 3.25, 0.05), Vector3(side * 1.62, 2.12, 0.33), _mat_teal)
+		_box(gate, Vector3(1.4, 0.07, 0.06), Vector3(side * 0.92, 0.68, 0.33), _mat_trim)
+		_box(gate, Vector3(1.4, 0.07, 0.06), Vector3(side * 0.92, 3.56, 0.33), _mat_trim)
+	_box(gate, Vector3(0.06, 0.9, 0.06), Vector3(0.0, 0.66, 0.33), _mat_trim)
+	_box(gate, Vector3(0.06, 0.9, 0.06), Vector3(0.0, 3.56, 0.33), _mat_trim)
+	for side: float in [-1.0, 1.0]:
+		_box(gate, Vector3(0.08, 3.7, 0.06), Vector3(side * 1.92, 2.12, 0.33), _mat_orange)
+	for i in range(8):
+		var angle := TAU * float(i) / 8.0
+		_sphere(gate, 0.055, Vector3(sin(angle) * 0.88, 2.8 + cos(angle) * 0.88, 0.53), _mat_trim)
+	_torus(gate, 0.82, 0.96, Vector3(0.0, 2.8, 0.43), _mat_trim, Vector3(PI * 0.5, 0.0, 0.0), 12, 40)
+	_torus(gate, 0.68, 0.76, Vector3(0.0, 2.8, 0.48), _mat_glow, Vector3(PI * 0.5, 0.0, 0.0), 10, 32)
+	_cylinder(gate, 0.66, 0.66, 0.08, Vector3(0.0, 2.8, 0.35), _mat_glass, 32, Vector3(PI * 0.5, 0.0, 0.0))
+	_box(gate, Vector3(5.1, 0.2, 1.4), Vector3(0.0, 0.1, 0.4), _mat_dark)
+	for side: float in [-1.0, 1.0]:
+		_box(gate, Vector3(0.66, 0.04, 0.2), Vector3(side * 1.45, 0.18, 1.2), _mat_orange)
+	_add_hub_box_collider(Vector3(4.5, 4.25, 0.45), gate.position + Vector3(0.0, 2.12, 0.18))
+	_label("气闸 · 飞船出口", Vector3(0.0, 4.82, 0.62), 44, 0.0085, PI, Color("f0e0bd"), gate)
+	_label("E 返回飞船", Vector3(0.0, 4.35, 0.62), 28, 0.0065, PI, Color("9fe3dc"), gate)
+	_light(gate.position + Vector3(0.0, 4.3, -1.3), Color("9fe3dc"), 1.0, 7.0, hub_root)
+
+
+func _build_hub_power_column() -> void:
+	var column := Node3D.new()
+	column.name = "HubPowerColumn"
+	hub_root.add_child(column)
+	_cylinder(column, 3.2, 3.2, 10.0, Vector3(0.0, 3.0, 0.0), _mat_hull, 32)
+	_add_hub_cylinder_collider(3.2, 10.0, Vector3(0.0, 3.0, 0.0))
+	_cylinder(column, 3.52, 3.52, 0.34, Vector3(0.0, FLOOR_TOP + 0.05, 0.0), _mat_dark, 32)
+	_cylinder(column, 3.38, 3.38, 0.2, Vector3(0.0, FLOOR_TOP + 0.31, 0.0), _mat_trim, 32)
+	_torus(column, 3.24, 3.38, Vector3(0.0, 2.35, 0.0), _mat_trim, Vector3.ZERO, 10, 64)
+	_torus(column, 3.24, 3.4, Vector3(0.0, 6.95, 0.0), _mat_trim, Vector3.ZERO, 10, 64)
+	_cylinder(column, 3.46, 3.46, 0.28, Vector3(0.0, 7.73, 0.0), _mat_dark, 32)
+	_torus(column, 3.28, 3.48, Vector3(0.0, 7.82, 0.0), _mat_teal, Vector3.ZERO, 10, 64)
+
+	# Segmented armor plates expose the column's casing seams and serviceable panels.
+	for i in range(12):
+		var angle := TAU * float(i) / 12.0
+		var orientation := Basis(Vector3.UP, -angle)
+		var facing := Vector3(0.0, -angle, 0.0)
+		var radial := Vector3(cos(angle), 0.0, sin(angle))
+		var center := radial * 3.24 + Vector3.UP * 3.0
+		var panel_material: Material = _mat_dark if i % 3 == 0 else _mat_hull
+		_box(column, Vector3(0.1, 6.55, 1.38), center, panel_material, facing)
+		for side: float in [-1.0, 1.0]:
+			_box(column, Vector3(0.08, 6.35, 0.075), center + radial * 0.09
+				+ orientation * Vector3(0.0, 0.0, side * 0.67), _mat_trim, facing)
+		if i % 3 == 0:
+			_box(column, Vector3(0.05, 5.35, 0.05), center + radial * 0.15, _mat_teal, facing)
+		for y: float in [-0.22, 6.22]:
+			_box(column, Vector3(0.09, 0.12, 1.16), radial * 3.31 + Vector3.UP * y, _mat_dark, facing)
+
+	# Flush access panels and fasteners make the central riser read as maintained machinery.
+	for i in range(4):
+		var angle := TAU * float(i) / 4.0 + PI / 4.0
+		var orientation := Basis(Vector3.UP, -angle)
+		var facing := Vector3(0.0, -angle, 0.0)
+		var radial := Vector3(cos(angle), 0.0, sin(angle))
+		var center := radial * 3.34 + Vector3.UP * 3.1
+		_box(column, Vector3(0.08, 1.25, 0.74), center, _mat_dark, facing)
+		_box(column, Vector3(0.045, 0.9, 0.48), center + radial * 0.055, _mat_hull, facing)
+		for side: float in [-1.0, 1.0]:
+			for y: float in [-0.48, 0.48]:
+				var bolt_pos := center + radial * 0.09 + orientation * Vector3(0.0, y, side * 0.28)
+				_sphere(column, 0.045, bolt_pos, _mat_trim)
+		for k in range(3):
+			_box(column, Vector3(0.035, 0.045, 0.09), center + radial * 0.09
+				+ orientation * Vector3(0.0, -0.32 + float(k) * 0.16, 0.0),
+				_mat_glow if k == 0 else _mat_teal, facing)
 
 
 # 枢纽补充细节：所有盒子合并成一张 8 材质网格，只占 1 个节点、8 次绘制。
@@ -2269,20 +2343,41 @@ func up_direction() -> Vector3:
 
 
 func _build_home_door() -> void:
-	# Freestanding cabin at the hub's rear, clear of all six corridors and airlock.
+	# A lit portal frame makes the home route readable from the hub approach.
 	var cabin := Node3D.new()
 	cabin.name = "HomeDoor"
 	cabin.position = Vector3(-10.0, FLOOR_TOP, 15.0)
 	hub_root.add_child(cabin)
+	_box(cabin, Vector3(4.3, 0.24, 1.45), Vector3(0.0, 0.12, 0.3), _mat_dark)
 	for side: float in [-1.0, 1.0]:
-		_box(cabin, Vector3(0.22, 3.4, 0.7), Vector3(side * 1.45, 1.7, 0.0), _mat_trim)
-	_box(cabin, Vector3(3.12, 0.22, 0.7), Vector3(0.0, 3.4, 0.0), _mat_trim)
-	_box(cabin, Vector3(2.68, 3.3, 0.24), Vector3(0.0, 1.65, 0.0), _mat_warm)
-	_box(cabin, Vector3(0.12, 0.12, 0.18), Vector3(0.95, 1.4, -0.2), _mat_glow)
+		_box(cabin, Vector3(0.48, 4.1, 1.0), Vector3(side * 1.78, 2.05, 0.0), _mat_trim)
+		_box(cabin, Vector3(0.08, 3.45, 0.05), Vector3(side * 1.47, 1.95, -0.52), _mat_glow)
+		_box(cabin, Vector3(0.22, 0.72, 0.16), Vector3(side * 2.02, 1.55, -0.53), _mat_dark)
+		for row in range(3):
+			_box(cabin, Vector3(0.08, 0.08, 0.06),
+				Vector3(side * 2.02, 1.78 + float(row) * 0.2, -0.63),
+				_mat_glow if row == 0 else _mat_teal)
+	_box(cabin, Vector3(4.3, 0.58, 1.0), Vector3(0.0, 4.34, 0.0), _mat_dark)
+	_box(cabin, Vector3(3.86, 0.16, 1.05), Vector3(0.0, 4.0, 0.0), _mat_trim)
+	_box(cabin, Vector3(2.8, 0.08, 0.06), Vector3(0.0, 4.02, -0.56), _mat_glow)
+	var portal_material := StandardMaterial3D.new()
+	portal_material.albedo_color = Color(1.0, 0.52, 0.24, 0.42)
+	portal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	portal_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	portal_material.emission_enabled = true
+	portal_material.emission = Color("ff7c38")
+	portal_material.emission_energy_multiplier = 1.25
+	_box(cabin, Vector3(2.82, 3.25, 0.045), Vector3(0.0, 1.9, -0.48), portal_material)
+	_box(cabin, Vector3(0.06, 2.9, 0.05), Vector3(0.0, 1.9, -0.53), _mat_warm)
+	_box(cabin, Vector3(2.35, 0.07, 0.05), Vector3(0.0, 1.0, -0.53), _mat_glow)
+	_box(cabin, Vector3(2.35, 0.07, 0.05), Vector3(0.0, 2.8, -0.53), _mat_glow)
+	for step in range(3):
+		_box(cabin, Vector3(2.8 - float(step) * 0.24, 0.045, 0.22),
+			Vector3(0.0, 0.2 + float(step) * 0.04, 0.95 + float(step) * 0.27), _mat_warm)
 	_add_hub_box_collider(Vector3(3.12, 3.6, 0.7), cabin.position + Vector3(0.0, 1.8, 0.0))
-	_label("回家 · 阁楼", Vector3(0.0, 3.95, -0.4), 44, 0.009, PI, Color("ffe4b4"), cabin)
-	_label("靠近舱门按 E", Vector3(0.0, 2.7, -0.15), 30, 0.007, PI, Color("fff0d0"), cabin)
-	_light(cabin.position + Vector3(0.0, 2.5, -1.5), Color("ffd8ac"), 1.2, 7.0, hub_root)
+	_label("回家 · 阁楼", Vector3(0.0, 4.25, -0.59), 44, 0.008, PI, Color("ffe4b4"), cabin)
+	_label("E 进入阁楼", Vector3(0.0, 3.45, -0.59), 28, 0.007, PI, Color("fff0d0"), cabin)
+	_light(cabin.position + Vector3(0.0, 2.3, -1.4), Color("ff9b5d"), 1.5, 8.0, hub_root)
 	# Floor guides lead from the airlock side toward the door without crossing the core.
 	for i in range(6):
 		_box(hub_root, Vector3(0.35, 0.02, 0.9),

@@ -20,8 +20,6 @@ const RouteLinkScript = preload("res://scripts/route_link.gd")
 const VoyageContractScript = preload("res://scripts/voyage_contract.gd")
 var route_link = RouteLinkScript.new()
 var voyage_contract = VoyageContractScript.new()
-var route_board_open := false
-var _route_board_was_paused := false
 ## Parent-local coordinates keep a returning traveller attached to the moving planet/station.
 var _attic_return: Dictionary = {}
 
@@ -2433,9 +2431,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			guide_card.skip()
 			return
 	if event.is_action_pressed("ui_cancel"):
-		if route_board_open:
-			close_route_board()
-			return
 		if scope_active:
 			_exit_scope()
 			return
@@ -2701,7 +2696,7 @@ func _relic_line(pid: String) -> String:
 
 
 func _interact() -> void:
-	if map_open or paused or route_board_open:
+	if map_open or paused:
 		return
 	if state == "walk":
 		if in_attic:
@@ -2711,7 +2706,7 @@ func _interact() -> void:
 				audio.play_ui(520.0 if opened else 440.0)
 				return
 			if near_route_record():
-				open_route_board()
+				leave_attic()
 				return
 			# 阁楼本体：雨停后窗台的燕子
 			if not in_pocket() and near_swallow():
@@ -3105,7 +3100,9 @@ func get_prompt() -> String:
 		if in_pocket():
 			if fishing_phase != "":
 				return ""  # 冰钓时 HUD 自己有说明，别叠两层
-			if touch_ui_active():
+			if near_route_record():
+			return "「互动」返回空间站" if touch_ui_active() else "E 返回空间站"
+		if touch_ui_active():
 				return "「互动」交互 / 上下云舟 / 抛竿　·　「行囊」查看进度"
 			return "WASD 移动 · E 互动 / 读木牌 / 推门 · B 行囊 · H 旅人手册 · Esc 菜单"
 		if near_attic_chest():
@@ -3114,8 +3111,6 @@ func get_prompt() -> String:
 			return "E 合上木箱" if attic.chest_open else "E 打开木箱"
 		if touch_ui_active():
 			return "「互动」互动 / 推门　·　「行囊」查看进度"
-		if near_route_record():
-			return "E 航海回声台 · 解读阁楼与宇宙的线索 / 继续航行"
 		# 燕子特写：站在窗台/壁炉边时给出对应提示
 		if near_swallow():
 			if attic != null and attic.swallow_perched():
@@ -3296,7 +3291,6 @@ func discover(id: String) -> void:
 		if route_link.tracked == route_link.key_for(id):
 			route_link.tracked = ""
 		_save_knowledge()
-		hud.show_toast("回声已验证 %d/4 · 回阁楼航海回声台查看回应。" % route_link.verified_count(self), 6.0)
 	if id == "xuanyuan":
 		end_text = anomaly.body
 		previous_state = state
@@ -3665,7 +3659,7 @@ func toggle_codex() -> void:
 ## 「下一件值得做的事」：照原作判定顺序给出当前该做什么。
 func next_worth_doing() -> String:
 	if keepsakes.size() >= 4 and not route_link.completed:
-		return "四件纪念已归架。到唱片柜旁的航海回声台，把它们与宇宙扫描记录对照；已验证 %d/4。" % route_link.verified_count(self)
+		return "四件纪念已归架。可以继续探索，或在音乐盒处返回空间站。"
 	if attic_worlds == null:
 		return "下一件值得做的事：回阁楼，转动黄铜天气旋钮。"
 	var snow := keepsakes.has("snow")
@@ -4028,7 +4022,7 @@ func leave_attic() -> void:
 	map_open = false
 	get_active_camera().current = true
 	_set_mouse_capture()
-	hud.show_toast("已回到原来的航程 · 轮回时间与飞船状态已保留。", 4.0)
+	hud.show_toast("已返回空间站 · 原航程已保留。", 3.0)
 
 
 func _capture_attic_return() -> void:
@@ -4099,33 +4093,7 @@ func near_route_record() -> bool:
 	return true
 
 
-func open_route_board() -> void:
-	if state not in ["walk", "ship"] or route_board_open:
-		return
-	_dev_clear_overlays()
-	_route_board_was_paused = paused
-	paused = true
-	map_open = false
-	journal_open = false
-	route_board_open = true
-	hud.rebuild_routes()
-	hud.routes.visible = true
-	_set_mouse_capture(false)
-
-
-func close_route_board() -> void:
-	if not route_board_open:
-		return
-	route_board_open = false
-	if hud != null:
-		hud.routes.visible = false
-	paused = _route_board_was_paused
-	_set_mouse_capture(not paused)
-
-
 func _close_route_context() -> void:
-	if route_board_open:
-		close_route_board()
 	scan_target = null
 	scan_progress = 0.0
 

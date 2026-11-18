@@ -20,6 +20,17 @@ func _check(ok: bool, label: String) -> void:
 		push_error("FAIL  " + label)
 
 
+func _has_route_board_ui() -> bool:
+	for node in game.hud.find_children("*", "Label", true, false):
+		if (node as Label).text.contains("航海回声台"):
+			return true
+	for node in game.hud.find_children("*", "Button", true, false):
+		var label := (node as Button).text
+		if label.contains("回声台") or label.contains("解读回声"):
+			return true
+	return false
+
+
 func _cleanup() -> void:
 	for path in [KNOWLEDGE, PROGRESS]:
 		if FileAccess.file_exists(path):
@@ -113,7 +124,11 @@ func _run() -> void:
 	game.elapsed = 271.25
 	game.set_paused(true)
 	game.hud._process(0.0)
-	_check(game.hud.pause_attic.disabled, "landed ship cannot enter home through pause")
+	var pause_has_home_entry := false
+	for node in game.hud.pause_menu.find_children("*", "Button", true, false):
+		if (node as Button).text.contains("阁楼") or (node as Button).text.contains("回家"):
+			pause_has_home_entry = true
+	_check(not pause_has_home_entry, "pause menu has no teleport to the attic")
 	game.enter_attic()
 	_check(not game.in_attic, "direct public entry also rejects a landed ship")
 	game.set_paused(false)
@@ -128,39 +143,39 @@ func _run() -> void:
 	for door in game.attic.doors:
 		game.player.global_position = door.anchor.global_position
 		game._interact()
-		_check(game.pocket_key == door.key and not game.route_board_open, "route record cannot intercept the %s door" % door.key)
+		_check(game.pocket_key == door.key and not _has_route_board_ui(), "music box story UI cannot intercept the %s door" % door.key)
 		if game.in_pocket():
 			game.leave_pocket()
 	var record: Node3D = game.attic.anchors.AtticAnchor_Record
+	var record_label: Label3D = game.attic.find_child("RouteRecordLabel", true, false)
+	_check(record_label != null and record_label.text.contains("返回空间站"),
+		"music box label gives a direct station-return instruction")
 	game.player.global_position = record.global_position
 	game._interact()
-	_check(game.route_board_open and game.paused, "E at the generated gramophone opens the real route panel and freezes movement")
-	game.player.set_physics_process(true)
-	var board_pose: Transform3D = game.player.transform
-	Input.action_press("move_forward")
-	await physics_frame
-	await physics_frame
-	Input.action_release("move_forward")
-	game.player.set_physics_process(false)
-	_check(game.player.transform.is_equal_approx(board_pose), "movement input cannot pass through the route panel")
-	_check(game.hud.route_entries.get_parent() is ScrollContainer, "route rows remain reachable through a scrolling panel")
-	_check(game.hud.routes.find_child("Decode_cloud", true, false) != null, "panel exposes the route action")
-	game.hud.routes.find_child("Decode_cloud", true, false).pressed.emit()
-	_check(game.route_link.decoded.has("cloud") and cloud.visible, "actual decode button reveals a separate surface signal")
+	_check(not game.in_attic and game.in_station and game.player.get_parent() == game.station,
+		"E at the music box returns directly to the homecoming station")
+	_check(not _has_route_board_ui(), "music box does not build the removed route panel")
+	var route_menu_button := false
+	for node in game.hud.pause_menu.find_children("*", "Button", true, false):
+		if (node as Button).text.contains("回声台"):
+			route_menu_button = true
+	_check(not route_menu_button, "pause menu no longer exposes the route panel")
+	preload("res://tests/home_fixture.gd").enter(game)
+	_check(game.in_attic, "the station entrance remains the only way back into the attic")
+	_check(game.route_link.decode(game, "cloud") and game.route_link.decoded.has("cloud") and cloud.visible,
+		"route data can still decode a separate surface signal")
 	_check(not game.discovered.has(cloud.anomaly_id), "decoding never awards universe verification")
 	_check(not game.route_link.decode(game, "cloud"), "decoding is idempotent")
-	game.hud.routes.find_child("Navigate_cloud", true, false).pressed.emit()
+	game.route_link.navigate(game, "cloud")
 	_check(game.ship.target == game.home and game.route_link.tracked == "cloud", "navigate button sets the real ship target and surface tracking")
-	_check(game.hud.route_finish.disabled and not game.route_link.finish(game), "incomplete records cannot trigger the linked ending")
+	_check(not game.route_link.finish(game), "incomplete records cannot trigger the linked ending")
 	var cancel := InputEventAction.new()
 	cancel.action = "ui_cancel"
 	cancel.pressed = true
 	game._unhandled_input(cancel)
-	_check(not game.route_board_open and not game.paused, "Esc closes a physical route panel without opening pause")
-	game.set_paused(true)
-	game.open_route_board()
+	_check(game.paused and not _has_route_board_ui(), "Esc opens pause without restoring the removed route panel")
 	game._unhandled_input(cancel)
-	_check(game.paused and not game.route_board_open, "Esc restores the pause menu when opened there")
+	_check(not game.paused, "Esc closes the pause menu")
 	game.leave_attic()
 	_check(game.state == "walk" and game.in_station and game.player.get_parent() == game.station and not game.paused, "return restores the homecoming station interior and input")
 	_check(game.elapsed == clock and game.ship.fuel == 63.5 and game.ship.hull == 74.0, "return preserves loop time, ship fuel and damage")
@@ -196,10 +211,9 @@ func _run() -> void:
 	var station_pose: Transform3D = game.player.transform
 	var station_view: Transform3D = game.player.camera.transform
 	game.player.velocity = Vector3(0.1, 0.2, 0.3)
-	game.set_paused(true)
-	game.hud._process(0.0)
-	_check(not game.hud.pause_attic.disabled, "pause entry is enabled only at the actual station door")
-	game.hud.pause_attic.pressed.emit()
+	_check(game.can_visit_attic(), "physical home door is the only attic entrance")
+	game._interact()
+	_check(game.in_attic, "E at the physical home door enters the attic")
 	game.leave_attic()
 	_check(game.in_station and game.active_station == game.station and game.player.get_parent() == game.station,
 		"station return restores interior and active station")
@@ -216,7 +230,7 @@ func _run() -> void:
 		_check(game.route_link.decode(game, key), "%s unlocks once both lines have contributed" % key)
 	game.route_link.navigate(game, "snow")
 	game.return_to_menu()
-	_check(game._attic_return.is_empty() and not game.route_board_open, "title return discards obsolete return snapshot")
+	_check(game._attic_return.is_empty(), "title return discards obsolete return snapshot")
 	game.queue_free()
 	await process_frame
 	await _boot()
@@ -253,10 +267,8 @@ func _run() -> void:
 	game.resume_home_voyage()
 	_check(not game.in_attic and game.state == "walk", "ending continues the voyage toward the station")
 	preload("res://tests/home_fixture.gd").enter(game)
-	game.open_route_board()
-	_check(not game.hud.route_finish.disabled, "both lines expose an enabled final action")
-	game.hud.route_finish.pressed.emit()
-	_check(game.route_link.completed and game.state == "end" and game.end_text.contains("归航图"), "actual heart action opens a distinct linked ending")
+	_check(game.route_link.finish(game), "the completed records and heart can still close the linked ending")
+	_check(game.route_link.completed and game.state == "end" and game.end_text.contains("归航图"), "completed records open the linked ending")
 	_check(not game.route_link.finish(game), "linked ending cannot be awarded twice")
 	_check(game.attic.tea_step == 0, "tea and optional combat are not required by the linked ending")
 	game.hud._process(0.0)
