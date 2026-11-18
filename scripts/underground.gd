@@ -633,8 +633,6 @@ static func _home_interior(root: Node3D, planet) -> void:
 		var _post := _box(root, Vector3(0.34, 3.6, 0.34), Vector3(side * 1.42, 3.62, 5.52), dark_wood)
 		_box_collider(body, Vector3(0.34, 3.6, 0.34), Vector3(side * 1.42, 3.62, 5.52))
 	_box(root, Vector3(3.3, 0.42, 0.4), Vector3(0, 5.36, 5.52), dark_wood)
-	_box(root, Vector3(2.7, 0.2, 0.9), Vector3(0, 1.82, 5.9), pale)
-	_box_collider(body, Vector3(2.7, 0.2, 0.9), Vector3(0, 1.82, 5.9))
 
 	var _globe := _sphere(root, 1.05, Vector3(0.4, 3.4, -0.6), planet._material(planet.accent_color, 1.0))
 	_ring(root, 1.35, 1.45, Vector3(0.4, 3.4, -0.6), brass).rotation = Vector3(1.2, 0.2, 0.3)
