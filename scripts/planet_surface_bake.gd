@@ -1,6 +1,6 @@
 extends RefCounted
 ## Preserve the exact terrain and collision geometry; calculate it before export.
-const DIRECTORY := "res://assets/runtime_bakes/"
+const DIRECTORY := "res://assets/runtime_bakes/streamed/"
 const VERSION := 1
 
 
@@ -9,7 +9,8 @@ static func _signature(planet: Node3D) -> Dictionary:
 		"radius": planet.radius, "reference": planet.terrain_reference_radius,
 		"pad": planet.site_pad_radius, "site": planet.site_direction,
 		"cave": planet.cave_enabled, "cave_direction": planet.cave_direction,
-		"cave_radius": planet.cave_mouth_radius, "prop_scale": planet.prop_scale}
+		"cave_radius": planet.cave_mouth_radius, "prop_scale": planet.prop_scale,
+		"collision_resolution": Vector2i(256, 128)}
 
 
 static func load_surface(planet: Node3D) -> bool:

@@ -1040,13 +1040,13 @@ static func _ground_y(root: Node3D, planet, x: float, z: float) -> float:
 
 
 # -----------------------------------------------------------------------------
-# Architecture collision follows the combined visible mesh.
+# Architecture collision follows each visible mesh with a simplified convex hull.
 # -----------------------------------------------------------------------------
 static func _add_collision(root: Node3D) -> void:
-	var faces := PackedVector3Array()
 	var meshes: Array[Node] = root.find_children("*", "MeshInstance3D", true, false)
 	if root is MeshInstance3D:
 		meshes.push_front(root)
+	var entries: Array[Dictionary] = []
 	for node in meshes:
 		var mesh_instance := node as MeshInstance3D
 		if mesh_instance.mesh == null:
@@ -1057,19 +1057,35 @@ static func _add_collision(root: Node3D) -> void:
 			if current is Node3D:
 				relative_transform = (current as Node3D).transform * relative_transform
 			current = current.get_parent()
-		for face_vertex in mesh_instance.mesh.get_faces():
-			faces.append(relative_transform * face_vertex)
-	if faces.size() < 3:
+		var box := mesh_instance.mesh.get_aabb()
+		var shape: Shape3D = null
+		var collision_transform := relative_transform
+		# Decorative strips thinner than 10 cm are effectively planes for walking.
+		# Their AABB is a better stable proxy and avoids degenerate hull warnings.
+		var has_volume := box.size.x > 0.1 and box.size.y > 0.1 and box.size.z > 0.1
+		if has_volume:
+			shape = mesh_instance.mesh.create_convex_shape(true, true)
+		if shape is ConvexPolygonShape3D and (shape as ConvexPolygonShape3D).points.size() < 4:
+			shape = null
+		if shape == null or not shape is ConvexPolygonShape3D:
+			if box.size.length_squared() <= 0.000001:
+				continue
+			var fallback := BoxShape3D.new()
+			fallback.size = Vector3(maxf(box.size.x, 0.02), maxf(box.size.y, 0.02), maxf(box.size.z, 0.02))
+			shape = fallback
+			collision_transform = relative_transform * Transform3D(Basis.IDENTITY, box.get_center())
+		entries.append({"shape": shape, "transform": collision_transform})
+	if entries.is_empty():
 		return
 	var body := StaticBody3D.new()
 	body.name = "BuildingCollision"
 	body.collision_layer = 8
 	body.collision_mask = 0
-	var collision := CollisionShape3D.new()
-	var shape := ConcavePolygonShape3D.new()
-	shape.set_faces(faces)
-	collision.shape = shape
-	body.add_child(collision)
+	for entry in entries:
+		var collision := CollisionShape3D.new()
+		collision.shape = entry["shape"] as Shape3D
+		collision.transform = entry["transform"] as Transform3D
+		body.add_child(collision)
 	root.add_child(body)
 
 

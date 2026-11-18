@@ -42,7 +42,7 @@ func _run() -> void:
 		"ship asset sweep uses multiple mesh-decomposed convex pieces")
 
 	var exact_mesh_shape_count := 0
-	var proxy_shape_count := 0
+	var simplified_shape_count := 0
 	for planet in game.planets:
 		for body_node in planet.find_children("*", "StaticBody3D", true, false):
 			var body := body_node as StaticBody3D
@@ -53,9 +53,9 @@ func _run() -> void:
 				if collision.shape is ConcavePolygonShape3D:
 					exact_mesh_shape_count += 1
 				else:
-					proxy_shape_count += 1
-	_check(exact_mesh_shape_count > 0, "planet asset colliders contain render-mesh triangle shapes")
-	_check(proxy_shape_count == 0, "planet asset colliders contain no primitive or convex proxies")
+					simplified_shape_count += 1
+	_check(exact_mesh_shape_count == 0, "planet asset colliders do not use full render-mesh triangle shapes")
+	_check(simplified_shape_count > 0, "planet asset colliders use simplified mesh-derived shapes")
 	await _test_sweep_contact_validation()
 
 	game.queue_free()

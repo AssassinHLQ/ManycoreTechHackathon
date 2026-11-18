@@ -96,11 +96,11 @@ func _ready() -> void:
 	body.collision_layer = 8
 	body.collision_mask = 0
 	var pedestal_collision := CollisionShape3D.new()
-	pedestal_collision.shape = pedestal.mesh.create_trimesh_shape()
+	pedestal_collision.shape = pedestal.mesh.create_convex_shape(true, true)
 	pedestal_collision.transform = pedestal.transform
 	body.add_child(pedestal_collision)
 	var monolith_collision := CollisionShape3D.new()
-	monolith_collision.shape = monolith.mesh.create_trimesh_shape()
+	monolith_collision.shape = monolith.mesh.create_convex_shape(true, true)
 	monolith_collision.transform = monolith.transform
 	body.add_child(monolith_collision)
 	add_child(body)

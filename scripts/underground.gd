@@ -349,7 +349,8 @@ static func _build_shaft(root: Node3D, body: StaticBody3D, shaft_radius: float, 
 # 螺旋坡道：40 段微倾石阶，从门口一直绕到洞底。
 # -----------------------------------------------------------------------------
 static func _build_ramp(root: Node3D, body: StaticBody3D, shaft_radius: float, floor_y: float, palette: Dictionary) -> void:
-	var samples := 160
+	const VISIBLE_SAMPLES := 160
+	const COLLISION_SAMPLES := 40
 	var radius := shaft_radius - 2.2
 	var half_width := 1.5
 	var thickness := 0.45
@@ -357,6 +358,28 @@ static func _build_ramp(root: Node3D, body: StaticBody3D, shaft_radius: float, f
 	var total_angle := 0.36 * 40.0
 	var start_y := -0.2
 	var end_y := floor_y + 0.15
+	var mesh := _make_ramp_mesh(radius, half_width, thickness, start_angle, total_angle,
+		start_y, end_y, VISIBLE_SAMPLES)
+	var surface := MeshInstance3D.new()
+	surface.mesh = mesh
+	surface.material_override = palette.rock
+	root.add_child(surface)
+	var collision_mesh := _make_ramp_mesh(radius, half_width, thickness, start_angle, total_angle,
+		start_y, end_y, COLLISION_SAMPLES)
+	var collision := CollisionShape3D.new()
+	collision.shape = collision_mesh.create_trimesh_shape()
+	body.add_child(collision)
+	for i in range(0, VISIBLE_SAMPLES, 10):
+		var t := float(i) / float(VISIBLE_SAMPLES)
+		var angle := start_angle + total_angle * t
+		var y := lerpf(start_y, end_y, t)
+		var radial := Vector3(cos(angle), 0.0, sin(angle))
+		_cyl(root, 0.07, 0.11, 1.15, radial * (radius + half_width - 0.15) + Vector3(0, y + 0.45, 0), palette.accent, 6)
+
+
+static func _make_ramp_mesh(radius: float, half_width: float, thickness: float,
+		start_angle: float, total_angle: float, start_y: float, end_y: float,
+		samples: int) -> ArrayMesh:
 	var tool := SurfaceTool.new()
 	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var previous_top := []
@@ -381,20 +404,7 @@ static func _build_ramp(root: Node3D, body: StaticBody3D, shaft_radius: float, f
 		previous_top = [top_inner, top_outer]
 		previous_bottom = [bottom_inner, bottom_outer]
 	tool.generate_normals()
-	var mesh: ArrayMesh = tool.commit()
-	var surface := MeshInstance3D.new()
-	surface.mesh = mesh
-	surface.material_override = palette.rock
-	root.add_child(surface)
-	var collision := CollisionShape3D.new()
-	collision.shape = mesh.create_trimesh_shape()
-	body.add_child(collision)
-	for i in range(0, samples, 10):
-		var t := float(i) / float(samples)
-		var angle := start_angle + total_angle * t
-		var y := lerpf(start_y, end_y, t)
-		var radial := Vector3(cos(angle), 0.0, sin(angle))
-		_cyl(root, 0.07, 0.11, 1.15, radial * (radius + half_width - 0.15) + Vector3(0, y + 0.45, 0), palette.accent, 6)
+	return tool.commit()
 
 
 static func _quad(tool: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:

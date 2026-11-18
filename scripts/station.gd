@@ -48,7 +48,8 @@ const ROOM_HALF_WIDTH := 5.0
 const FLOOR_TOP := -2.0
 const CEILING_Y := 2.8
 const HALL_CEILING_Y := 5.6
-const WALL_HEIGHT := 4.8
+const WALL_SEAL_OVERLAP := 0.1
+const WALL_HEIGHT := 4.8 + WALL_SEAL_OVERLAP
 const ROOM_CENTERS := [-84.0, -56.0, -28.0, 28.0, 56.0, 84.0]
 const ROOM_NAMES_LEFT := ["医疗舱", "食堂", "档案室", "实验舱", "储藏舱", "休憩厅"]
 const ROOM_NAMES_RIGHT := ["温室", "居住舱", "通信室", "维修间", "图书室", "观景廊"]
@@ -116,13 +117,17 @@ var _mat_green: StandardMaterial3D
 var _mat_blue: StandardMaterial3D
 var _mat_orange: StandardMaterial3D
 var _mat_white: StandardMaterial3D
+var runtime_scene_ready := false
+signal runtime_scene_ready_finished
 
 
 func _ready() -> void:
 	# 玩家先在已同步的碰撞世界中移动，随后再携带站体及子节点进入下一物理步。
 	# 提前移动父节点会让玩家相对物理服务器上一快照的地板反复升降。
 	process_physics_priority = 10
-	if not "--rebake-runtime" in OS.get_cmdline_user_args() and RuntimeBake.load_generated(self, "station"):
+	if not "--rebake-runtime" in OS.get_cmdline_user_args() and await RuntimeBake.load_generated(self, "station"):
+		runtime_scene_ready = true
+		runtime_scene_ready_finished.emit()
 		return
 	_font = load("res://assets/ui_font.ttf")
 	_build_materials()
@@ -134,6 +139,8 @@ func _ready() -> void:
 	Precision.station_exterior(exterior_hub_shell, ring_root)
 	_merge_exterior_meshes()
 	set_meta("bake_children", get_children())
+	runtime_scene_ready = true
+	runtime_scene_ready_finished.emit()
 
 
 func _merge_exterior_meshes() -> void:
@@ -843,7 +850,10 @@ func _build_continuous_ring() -> void:
 	ring_instance.material_override = hull_material
 	ring_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ring_root.add_child(ring_instance)
-	_add_static_shape(exterior_body, ring_mesh.create_trimesh_shape(), Vector3.ZERO)
+	# Visual ring keeps 96 segments. Collision uses a coarser 32-segment mesh so
+	# the hull stays continuous without making physics walk every render triangle.
+	var ring_collision_mesh := _make_ring_mesh(32, RING_RADIUS, RING_HALF_WIDTH, RING_HALF_HEIGHT, 0.0)
+	_add_static_shape(exterior_body, ring_collision_mesh.create_trimesh_shape(), Vector3.ZERO)
 	for band_y: float in [-RING_HALF_HEIGHT - 0.12, RING_HALF_HEIGHT + 0.12]:
 		var band := MeshInstance3D.new()
 		band.mesh = _make_ring_mesh(96, RING_RADIUS, RING_HALF_WIDTH - 0.3, 0.1, band_y)
@@ -1266,8 +1276,9 @@ func _build_hub() -> void:
 		for k in range(8):
 			_box(door, Vector3(1.4, 0.02, 0.42), Vector3(-0.95, FLOOR_TOP + 0.04, -3.15 + float(k) * 0.9),
 				_mat_orange if k % 2 == 0 else _mat_dark)
-		_box(door, Vector3(0.4, 5.2, 7.8), Vector3(0.0, 5.4, 0.0), _mat_wall)
-		_add_hub_box_collider(Vector3(0.4, 5.2, 7.8), door.transform * Vector3(0.0, 5.4, 0.0), door.rotation)
+		_box(door, Vector3(0.4, 5.2 + WALL_SEAL_OVERLAP, 7.8), Vector3(0.0, 5.4 + WALL_SEAL_OVERLAP * 0.5, 0.0), _mat_wall)
+		_add_hub_box_collider(Vector3(0.4, 5.2 + WALL_SEAL_OVERLAP, 7.8),
+			door.transform * Vector3(0.0, 5.4 + WALL_SEAL_OVERLAP * 0.5, 0.0), door.rotation)
 		_box(door, Vector3(0.1, 1.0, 5.4), Vector3(-0.28, 3.6, 0.0), _mat_dark)
 		_label("%s  %s" % [String.chr(65 + i), CORRIDOR_NAMES[i]], Vector3(-0.36, 3.62, 0.0), 44, 0.011, -PI * 0.5, Color("ffe4b4"), door)
 		for side: float in [-1.0, 1.0]:
@@ -1283,8 +1294,10 @@ func _build_hub() -> void:
 		wall.rotation.y = -mid_angle
 		hub_root.add_child(wall)
 		# 端点为两扇相邻门的侧边，另留 0.2 米搭接封住斜向缝隙。
-		_box(wall, Vector3(0.5, 10.0, HUB_WALL_SPAN), Vector3(0.0, 3.0, 0.0), _mat_wall)
-		_add_hub_box_collider(Vector3(0.5, 10.0, HUB_WALL_SPAN), wall.transform * Vector3(0.0, 3.0, 0.0), wall.rotation)
+		_box(wall, Vector3(0.5, 10.0 + WALL_SEAL_OVERLAP, HUB_WALL_SPAN),
+			Vector3(0.0, 3.0 + WALL_SEAL_OVERLAP * 0.5, 0.0), _mat_wall)
+		_add_hub_box_collider(Vector3(0.5, 10.0 + WALL_SEAL_OVERLAP, HUB_WALL_SPAN),
+			wall.transform * Vector3(0.0, 3.0 + WALL_SEAL_OVERLAP * 0.5, 0.0), wall.rotation)
 		_build_hub_wall_detail(wall)
 		_light(Vector3(cos(mid_angle) * 20.0, 6.3, sin(mid_angle) * 20.0), Color("ffd8ac"), 1.3, 18.0, hub_root)
 	for i in range(12):
@@ -1928,9 +1941,9 @@ func _build_room_window(x: float, side: float, width: float, height: float) -> v
 	var side_width := (wall_width - width) * 0.5
 	var center_y := 0.35
 	var bottom_h := center_y - height * 0.5 - FLOOR_TOP
-	var top_h := CEILING_Y - (center_y + height * 0.5)
+	var top_h := CEILING_Y - (center_y + height * 0.5) + WALL_SEAL_OVERLAP
 	_box(self, Vector3(wall_width, bottom_h, 0.3), Vector3(x, FLOOR_TOP + bottom_h * 0.5, z_wall), _mat_wall, Vector3.ZERO, true)
-	_box(self, Vector3(wall_width, top_h, 0.3), Vector3(x, CEILING_Y - top_h * 0.5, z_wall), _mat_wall, Vector3.ZERO, true)
+	_box(self, Vector3(wall_width, top_h, 0.3), Vector3(x, CEILING_Y - top_h * 0.5 + WALL_SEAL_OVERLAP * 0.5, z_wall), _mat_wall, Vector3.ZERO, true)
 	for edge: float in [-1.0, 1.0]:
 		_box(self, Vector3(side_width, height, 0.3), Vector3(x + edge * (width * 0.5 + side_width * 0.5), center_y, z_wall), _mat_wall, Vector3.ZERO, true)
 	_box(self, Vector3(width, height, 0.05), Vector3(x, center_y, z_wall), _mat_window)
@@ -2209,9 +2222,10 @@ func _build_hall_window(side: float) -> void:
 	var wall_width := 26.0
 	var side_width := (wall_width - width) * 0.5
 	var bottom_h := center_y - height * 0.5 - FLOOR_TOP
-	var top_h := HALL_CEILING_Y - (center_y + height * 0.5)
+	var top_h := HALL_CEILING_Y - (center_y + height * 0.5) + WALL_SEAL_OVERLAP
 	_box(self, Vector3(wall_width, bottom_h, 0.3), Vector3(0.0, FLOOR_TOP + bottom_h * 0.5, z_wall), _mat_wall, Vector3.ZERO, true)
-	_box(self, Vector3(wall_width, top_h, 0.3), Vector3(0.0, HALL_CEILING_Y - top_h * 0.5, z_wall), _mat_wall, Vector3.ZERO, true)
+	_box(self, Vector3(wall_width, top_h, 0.3),
+		Vector3(0.0, HALL_CEILING_Y - top_h * 0.5 + WALL_SEAL_OVERLAP * 0.5, z_wall), _mat_wall, Vector3.ZERO, true)
 	for edge: float in [-1.0, 1.0]:
 		_box(self, Vector3(side_width, height, 0.3), Vector3(edge * (width * 0.5 + side_width * 0.5), center_y, z_wall), _mat_wall, Vector3.ZERO, true)
 	_box(self, Vector3(width, height, 0.05), Vector3(0.0, center_y, z_wall), _mat_window)

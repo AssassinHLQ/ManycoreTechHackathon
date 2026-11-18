@@ -743,8 +743,8 @@ static var _prop_cache_order: Array = []
 ## 淘汰时必须跳过这些：它们的 Mesh 被 MultiMesh 持有，卸载只会导致
 ## 下次重新载入一份新的，而旧的仍然活着 —— 内存不降反升。
 static var _prop_in_use := {}
-## 每种道具的共享碰撞形状（由可见网格三角面生成，见 _prop_collision_shape）。
-## 同一进程里所有星球复用 —— 形状的 BVH 只建一次。
+## 每种道具的共享碰撞形状（由可见网格生成，见 _prop_collision_shape）。
+## 同一进程里所有星球复用，简化后的凸碰撞只建一次。
 static var _prop_shape_cache := {}
 
 ## Low ground plants participate in the vegetation density setting.
@@ -759,6 +759,8 @@ var prop_queue: Dictionary = {}
 var scatter_prop_queue: Dictionary = {}
 ## Per-asset flushed instance counts. Later layout passes may append the same asset.
 var _flushed_prop_ids: Dictionary = {}
+var runtime_scene_ready := false
+signal runtime_scene_ready_finished
 
 
 func _ready() -> void:
@@ -809,14 +811,18 @@ func _ready() -> void:
 	site_height = _raw_terrain_height(site_direction)
 	_setup_cave()
 	_update_orbit()
-	if not "--rebake-runtime" in OS.get_cmdline_user_args() and RuntimeBake.load_generated(self, "planet_" + planet_id, SurfaceBake._signature(self)):
-		preload("res://scripts/web_static_batch.gd").apply(self)
-		preload("res://scripts/scene_visibility.gd").apply(self)
+	if not "--rebake-runtime" in OS.get_cmdline_user_args() and await RuntimeBake.load_generated(self, "planet_" + planet_id, SurfaceBake._signature(self)):
 		_orbit_time = float(game.elapsed) if game != null else 0.0
 		_update_orbit()
 		if game != null and game.settings != null:
+			var prop_index := 0
 			for node in find_children("Prop_*", "MultiMeshInstance3D", true, false):
 				game.settings.apply_prop_lod(node)
+				prop_index += 1
+				if prop_index % 32 == 0:
+					await get_tree().process_frame
+		runtime_scene_ready = true
+		runtime_scene_ready_finished.emit()
 		return
 	# 道具容器：先建好，后面所有 Prop_* 都挂进来（便于整组隐藏）
 	_prop_root = Node3D.new()
@@ -852,6 +858,8 @@ func _ready() -> void:
 	preload("res://scripts/web_static_batch.gd").apply(self)
 	preload("res://scripts/scene_visibility.gd").apply(self)
 	set_meta("bake_children", get_children())
+	runtime_scene_ready = true
+	runtime_scene_ready_finished.emit()
 
 
 func _setup_cave() -> void:
@@ -878,7 +886,7 @@ func _setup_cave() -> void:
 	#
 	#   原因：洞体（underground.gd）用的是绝对米数 —— 竖井半径 10.6 米、
 	#   洞室 +9.5 米、井深 13 米。星球半径 ×5 之后，这个洞相对星球变成了
-	#   一个针眼，而碰撞球面的格子（384 等分 = 33 米弧长）比洞口（10 米）还大，
+	#   一个针眼，而碰撞球面的格子（256 等分 = 50 米弧长）比洞口（10 米）还大，
 	#   _cut_cave_hole 连一个三角形都裁不掉 → 洞口被地形封死，
 	#   冒烟测试『the open mouth drops all the way to the cave floor』翻红。
 	#   放大 5 倍后 cave_hole_angle = 50/2000 = 0.025 rad > 一格 0.0164 rad，
@@ -1016,7 +1024,7 @@ func _build_surface() -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = radius
 	sphere.height = radius * 2.0
-	# ⚠ 这里保持 256/128（原来就是），**不要跟着碰撞那套提到 384×192**。
+	# ⚠ 这里保持 256/128（原来就是），视觉表面不跟随碰撞网格降采样。
 	#   程序化星球的碰撞体直接复用这块可视网格（见 _ensure_terrain_collision
 	#   的非 Lux3D 分支），可视面 = 碰撞面，本来就没有「不一致」。
 	#   盲提高分辨率只会让可视网格从 6.5 万面涨到 14.7 万面，白烧 GPU。
@@ -1117,15 +1125,11 @@ func _build_heightfield_surface_mesh() -> ArrayMesh:
 	var sphere := SphereMesh.new()
 	sphere.radius = radius
 	sphere.height = radius * 2.0
-	# ⚠ 2026-11-11 分辨率从 128×64（cave 256×128）提到 384×192。
-	#
-	#   这是「地形把人物卡死」的根因：Lux3D 的高度表本身是 96×192 格
-	#   （半径 2000 米时每格约 65 米），而旧碰撞球面在赤道只有 128 格
-	#   = **每格 98 米**，比高度表本身还粗 —— 采样不足导致碰撞面在地下
-	#   切出一条条几十米宽的大折面，玩家走在折面棱上就被卡住。
-	#   现在的 384×192（每格约 32 米）是高度表的 2 倍过采样，能完整表达它。
-	sphere.radial_segments = 384
-	sphere.rings = 192
+	# 碰撞使用规则的低面数网格，视觉网格和高度查询保持原分辨率。
+	# 256×128 在大星球上仍能连续表达地形坡度，同时比旧版 384×192 少约 56%
+	# 的三角面。洞口再用 _refine_around_cave 做局部细分，避免入口被封死。
+	sphere.radial_segments = 256
+	sphere.rings = 128
 	var arrays := sphere.get_mesh_arrays()
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	for i in range(vertices.size()):
@@ -1133,16 +1137,15 @@ func _build_heightfield_surface_mesh() -> ArrayMesh:
 		vertices[i] = d * terrain_height(d)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	if cave_enabled:
-		# ⚠ 2026-11-11 洞口必须**局部细分**，否则开不出洞。
+		# ⚠ 洞口必须**局部细分**，否则开不出洞。
 		#
-		#   矛盾点：碰撞球面整球 384×192，一格约 33 米弧长；
+		#   矛盾点：碰撞球面整球 256×128，一格约 50 米弧长；
 		#   而洞口只有 cave_mouth_radius（青岚星 10 米）—— **洞口比一格还小**。
 		#   `_cut_cave_hole` 按三角形重心角度判据裁，重心永远落不进洞口，
 		#   于是一个三角形都裁不掉，洞口被地形封死（冒烟测试
 		#   『the open mouth drops all the way to the cave floor』翻红）。
 		#
-		#   之前能用是因为星球半径只有 400 米、一格 19 米，也差不多是侥幸。
-		#   现在把洞口周围递归切 3 轮（33 → 16.5 → 8.2 → 4.1 米），
+		#   现在把洞口周围递归切 3 轮（50 → 25 → 12.5 → 6.25 米），
 		#   洞口边缘才有足够密的顶点，裁出来的洞才对得上 underground 的竖井。
 		var refined := _refine_around_cave(vertices, arrays[Mesh.ARRAY_INDEX])
 		vertices = refined[0]
@@ -2509,17 +2512,37 @@ func _add_prop_colliders(entries: Array, prop_id: String, mesh: Mesh, aabb: AABB
 		body.add_child(collision)
 
 
-## 由可见网格生成共享碰撞形状（三角面），全进程每种道具一份。
+## 由可见网格生成共享碰撞形状，全进程每种道具一份。
+##
+## 旧版把完整 render mesh 直接做成 ConcavePolygonShape3D。高模上的
+## 微小三角面会变成玩家脚下的细碎台阶，尤其是站点平台和楼梯最明显。
+## 这里使用引擎自带的清理 + 简化凸包，保留资产的大轮廓，同时把碰撞
+## 顶点数压到适合实时移动的范围。凹陷很深或几何退化时用 AABB 凸包兜底。
 static func _prop_collision_shape(prop_id: String, mesh: Mesh) -> Shape3D:
 	if _prop_shape_cache.has(prop_id):
 		return _prop_shape_cache[prop_id]
 	var shape: Shape3D = null
 	if mesh != null:
-		var faces: PackedVector3Array = mesh.get_faces()
-		if faces.size() >= 3:
-			var concave := ConcavePolygonShape3D.new()
-			concave.set_faces(faces)
-			shape = concave
+		var box := mesh.get_aabb()
+		var has_volume := box.size.x > 0.00001 and box.size.y > 0.00001 and box.size.z > 0.00001
+		if has_volume:
+			var convex := mesh.create_convex_shape(true, true)
+			if convex != null and convex.points.size() >= 4:
+				shape = convex
+		if shape == null and has_volume:
+			if box.size.length_squared() > 0.000001:
+				var fallback := ConvexPolygonShape3D.new()
+				fallback.points = PackedVector3Array([
+					box.position,
+					box.position + Vector3(box.size.x, 0.0, 0.0),
+					box.position + Vector3(0.0, box.size.y, 0.0),
+					box.position + Vector3(0.0, 0.0, box.size.z),
+					box.position + Vector3(box.size.x, box.size.y, 0.0),
+					box.position + Vector3(box.size.x, 0.0, box.size.z),
+					box.position + Vector3(0.0, box.size.y, box.size.z),
+					box.end,
+				])
+				shape = fallback
 	_prop_shape_cache[prop_id] = shape
 	return shape
 
