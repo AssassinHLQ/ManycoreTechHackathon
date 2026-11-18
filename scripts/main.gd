@@ -279,9 +279,6 @@ func _ready() -> void:
 func _build_world_progressive() -> void:
 	await _yield_frame()
 	_stage_begin()
-	_build_environment()
-	_stage_end("environment")
-	await _yield_frame()
 	# ⚠ 只建母星（约 2 秒），其余 19 颗在 world_ready 之后补 ——
 	#   否则菜单相机要等 44 秒才建得出来，玩家看到纯黑屏。
 	#   详见 _build_planets 头部注释。
@@ -289,6 +286,9 @@ func _build_world_progressive() -> void:
 	_stage_end("planet home")
 	await _yield_frame()
 	_stage_begin()
+	_build_environment()
+	_stage_end("environment")
+	await _yield_frame()
 	_build_campfire()
 	_build_explorers()
 	_stage_end("campfire+explorers")
