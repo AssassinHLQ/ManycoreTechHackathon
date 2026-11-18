@@ -1718,7 +1718,9 @@ func _update_third_person_camera(_delta: float) -> void:
 		var up := Vector3.UP
 		if absf(dir.dot(up)) > 0.98:
 			up = Vector3.FORWARD
-		camera.basis = Basis.looking_at(dir, up)
+		# 相机先响应鼠标目标，机身再通过 _apply_attitude 逐步追上。
+		# turn_budget 是飞船局部坐标里的剩余待转量，直接叠加在跟随机头的视角上。
+		camera.basis = (Basis.looking_at(dir, up) * Basis(turn_budget)).orthonormalized()
 	camera.fov = 62.0
 
 
@@ -1753,8 +1755,16 @@ func _reset_cockpit_camera() -> void:
 		camera.position = Vector3(0.0, ship_model_height * 0.78, -ship_model_length * 0.125)
 	else:
 		camera.position = Vector3(0, 1.54, -1.42)
-	camera.rotation = Vector3.ZERO
+	camera.basis = Basis.IDENTITY
 	camera.fov = 72.0
+
+
+## 座舱视角先跟随鼠标，飞船机身随后追上目标朝向。
+## turn_budget 越大，镜头领先角越大；姿态控制每帧消耗它后，镜头自然回到机头轴线上。
+func _update_cockpit_camera_view() -> void:
+	if third_person or camera == null:
+		return
+	camera.basis = Basis(turn_budget).orthonormalized()
 
 
 ## 手动飞行时只保留机头前向和机体竖向速度。
@@ -1802,6 +1812,7 @@ func _physics_process(delta: float) -> void:
 	var target_fov := maxf(base_fov / zoom, 3.0)
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 8.0))
 	_update_third_person_camera(delta)
+	_update_cockpit_camera_view()
 	if docked:
 		velocity = Vector3.ZERO
 		thrust_level = 0.0
