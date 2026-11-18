@@ -993,12 +993,29 @@ func _build_window_scenes() -> void:
 							Vector3(x, 0.10 + float(layer) * 0.22, 0.35), _material(Color("2f4a42")), 8)
 				_sphere(holder, 0.16, Vector3(-0.95, 0.78, 1.15), _material(Color("f2f8ff"), 1.2))
 			"cloud":
-				# 云海：层叠的云与暖光
-				for i in range(5):
-					var x2 := -1.3 + float(i) * 0.65
-					var puff := _sphere(holder, 0.34, Vector3(x2, -0.42 + float(i % 2) * 0.12, 0.6),
-						_material(Color("f6ead0"), 0.45))
-					puff.scale = Vector3(1.5, 0.5, 1.0)
+				# 云海：用交叠的云底和大小错落的顶部云团形成柔和轮廓。
+				var cloud_shadow := _material(Color("cbd4e1"), 0.08)
+				var cloud_highlight := _material(Color("f8f3e7"), 0.18)
+				cloud_shadow.roughness = 0.96
+				cloud_highlight.roughness = 0.9
+				var cloud_base := [
+					Vector3(-1.1, -0.55, 0.34), Vector3(-0.55, -0.53, 0.37),
+					Vector3(0.02, -0.5, 0.32), Vector3(0.59, -0.54, 0.38),
+					Vector3(1.14, -0.52, 0.33),
+				]
+				for lobe in cloud_base:
+					var base := _sphere(holder, lobe.z, Vector3(lobe.x, lobe.y, 0.66), cloud_shadow)
+					base.scale = Vector3(1.78, 0.58, 0.88)
+				var cloud_crowns := [
+					Vector3(-1.3, -0.27, 0.21), Vector3(-0.88, -0.16, 0.27),
+					Vector3(-0.42, -0.22, 0.24), Vector3(0.04, -0.1, 0.3),
+					Vector3(0.5, -0.2, 0.24), Vector3(0.96, -0.14, 0.27),
+					Vector3(1.36, -0.26, 0.2),
+				]
+				for index in range(cloud_crowns.size()):
+					var lobe: Vector3 = cloud_crowns[index]
+					var crown := _sphere(holder, lobe.z, Vector3(lobe.x, lobe.y, 0.54 + float(index % 3) * 0.04), cloud_highlight)
+					crown.scale = Vector3(1.12, 1.02, 0.82)
 				_sphere(holder, 0.2, Vector3(0.95, 0.72, 1.1), _material(Color("ffd9a0"), 1.4))
 			"firefly":
 				# 萤火森林：暗林 + 几簇萤火

@@ -3,7 +3,7 @@ extends Node3D
 ## 地面线：阁楼四扇门后面的「口袋世界」。
 ##
 ## 四扇门各通向一小块独立场景（雪夜 / 云海 / 萤火 / 雨巷），镜界回廊通向一间镜像阁楼。
-## 每个世界都是自成一体的封闭小场地：平台 + 边界碰撞 + 一处回程门，玩家走进去、看一圈、再走回来。
+## 每个世界都是自成一体的小场地：平台碰撞与越界救援让玩家自由探索并返回。
 ## 世界之间相距很远，也和太阳系（原点附近）完全分开，所以互不干扰。
 
 const Placement := preload("res://scripts/prop_placement.gd")
@@ -250,8 +250,8 @@ func _anchor(parent: Node3D, anchor_name: String, pos: Vector3) -> Node3D:
 	return node
 
 
-## 每个世界都要有：地面碰撞、四面看不见的边界墙、一处回程门。
-func _build_ground_and_bounds(holder: Node3D, ground_material: Material) -> StaticBody3D:
+## 地面保留实体碰撞；口袋世界不设隐形围墙，其他封闭区域保留边界。
+func _build_ground(holder: Node3D, ground_material: Material, include_bounds := false) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	body.name = "WorldCollision"
 	body.collision_layer = 1
@@ -366,7 +366,7 @@ func _build_snow(holder: Node3D) -> Dictionary:
 	var snow_ground := _mat(Color("e8eef4"))
 	var wood := _mat(Color("5a4534"))
 	var iron := _mat(Color("3a4048"))
-	_build_ground_and_bounds(holder, snow_ground)
+	_build_ground(holder, snow_ground)
 	# 雪堆（数量按场地面积补）
 	var drift_n := int(round(14.0 * _scenery_density("snow")))
 	var drift_prop_tpl := _prop("snow-drift", 0.75)
@@ -497,7 +497,7 @@ func _build_cloud(holder: Node3D) -> Dictionary:
 	dawn.name = "DawnLight"
 	# 回程门立在栈桥入口（原作的入口在 z ≈ -4 一带）
 	var anchor := _build_return_portal(holder, "cloud", Color("bcd2e8"),
-		_cloud_local(Vector3(0.0, 0.0, -5.4)))
+		_cloud_local(Vector3(0.0, 0.0, -8.8)))
 	return {"spawn": _cloud_local(Vector3(0.0, 1.05, -9.0)), "return": anchor, "title": "云海"}
 
 
@@ -505,7 +505,7 @@ func _build_cloud(holder: Node3D) -> Dictionary:
 func _build_firefly(holder: Node3D) -> Dictionary:
 	var moss := _mat(Color("31503f"))
 	var wood := _mat(Color("3f3024"))
-	_build_ground_and_bounds(holder, moss)
+	_build_ground(holder, moss)
 	var pine_n := int(round(13.0 * _scenery_density("firefly")))
 	for i in range(pine_n):
 		var angle := TAU * float(i) / float(pine_n) + 0.5
@@ -549,7 +549,7 @@ func _build_alley(holder: Node3D) -> Dictionary:
 	var pavement := _mat(Color("4d5057"))
 	var wall := _mat(Color("5d646b"))
 	var iron := _mat(Color("2c3036"))
-	_build_ground_and_bounds(holder, pavement)
+	_build_ground(holder, pavement)
 	# 两侧高墙，形成一条巷子
 	for side in [-1.0, 1.0]:
 		var wall_node := _box(holder, Vector3(0.5, 7.0, PLATFORM_HALF * 1.8),
@@ -624,7 +624,7 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 	var floor_mat := _mat(Color("3d4450"), 0.16)
 	var wall_mat := _mat(Color("55606e"), 0.20)
 	var glow := _mat(Color("cfe0e6"), 0.6)
-	_build_ground_and_bounds(holder, floor_mat)
+	_build_ground(holder, floor_mat, true)
 	# 露天镜面庭院：地板 + 三面墙（正面敞开，方便从外面看进去）
 	var half_x := 6.0
 	var half_z := 5.0
@@ -2078,7 +2078,7 @@ func _build_dungeon(holder: Node3D) -> Dictionary:
 	var wall_mat := _mat(Color("3f4753"), 0.18)
 	var trim := _mat(Color("8894a2"))
 	var glow := _mat(Color("cfe0e6"), 1.4)
-	_build_ground_and_bounds(holder, floor_mat)
+	_build_ground(holder, floor_mat, true)
 
 	var room_anchors: Array = []
 	var total: int = DUNGEON_ROOM_KINDS.size()

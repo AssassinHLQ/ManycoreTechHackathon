@@ -1776,7 +1776,7 @@ light_energy = 1.8
 omni_range = 70.0
 
 [node name="ReturnPortal" type="Node3D" parent="." unique_id=1960954075]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 12.130393)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10)
 
 [node name="MeshInstance3D_0001" type="MeshInstance3D" parent="ReturnPortal" unique_id=1095683202]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.62, 1.1, 0)
