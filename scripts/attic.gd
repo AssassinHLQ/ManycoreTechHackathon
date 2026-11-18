@@ -70,6 +70,41 @@ func _material(color: Color, emission := 0.0) -> StandardMaterial3D:
 	return material
 
 
+func _cloud_sky_material() -> StandardMaterial3D:
+	var noise := FastNoiseLite.new()
+	noise.seed = 24187
+	noise.frequency = 1.0
+	noise.fractal_octaves = 4
+	noise.fractal_gain = 0.45
+	var width := 384
+	var height := 256
+	var image := Image.create(width, height, false, Image.FORMAT_RGBA8)
+	var sky_top := Color("4c94c4")
+	var sky_horizon := Color("a6cee4")
+	for y in range(height):
+		var v := float(y) / float(height - 1)
+		for x in range(width):
+			var u := float(x) / float(width - 1)
+			var edge := 0.43 + noise.get_noise_2d(u * 7.2, 7.2) * 0.15 \
+				+ noise.get_noise_2d(u * 15.0, 12.6) * 0.045
+			var billow := noise.get_noise_2d(u * 5.0 + 4.0, v * 4.0) * 0.13 \
+				+ noise.get_noise_2d(u * 13.0, v * 10.0) * 0.045
+			var cloud_depth := v - edge + billow
+			var coverage := clampf((cloud_depth + 0.03) / 0.07, 0.0, 1.0)
+			coverage = coverage * coverage * (3.0 - 2.0 * coverage)
+			var sky := sky_top.lerp(sky_horizon, v)
+			var depth := clampf((cloud_depth + 0.04) / 0.32, 0.0, 1.0)
+			var cloud := Color("fbfdff").lerp(Color("d3e2eb"), depth * 0.32)
+			var light_noise := noise.get_noise_2d(u * 8.0 + 13.0, v * 7.0)
+			cloud = cloud.lightened(maxf(0.0, light_noise) * 0.08)
+			image.set_pixel(x, y, sky.lerp(cloud, coverage))
+	var material := StandardMaterial3D.new()
+	material.albedo_texture = ImageTexture.create_from_image(image)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	return material
+
+
 func _box(parent: Node3D, size: Vector3, pos: Vector3, material: Material) -> MeshInstance3D:
 	var mesh := BoxMesh.new()
 	mesh.size = size
@@ -1051,8 +1086,8 @@ func _build_window_scenes() -> void:
 			"snow": Color("e6f2f8"),
 		}[key]
 		# 背景板：窗外那一片天/远景
-		var backdrop := _box(holder, Vector3(3.4, 2.4, 0.06), Vector3(0, 0, 1.35), _material(palette, 0.5))
-		backdrop.material_override = _material(palette, 0.55)
+		var backdrop_material := _cloud_sky_material() if key == "cloud" else _material(palette, 0.55)
+		_box(holder, Vector3(3.4, 2.4, 0.06), Vector3(0, 0, 1.35), backdrop_material)
 		match key:
 			"snow":
 				# 雪夜：白地、两棵松、月亮
@@ -1065,29 +1100,7 @@ func _build_window_scenes() -> void:
 							Vector3(x, 0.10 + float(layer) * 0.22, 0.35), _material(Color("2f4a42")), 8)
 				_sphere(holder, 0.16, Vector3(-0.95, 0.78, 1.15), _material(Color("f2f8ff"), 1.2))
 			"cloud":
-				# 云海：用交叠的云底和大小错落的顶部云团形成柔和轮廓。
-				var cloud_shadow := _material(Color("cbd4e1"), 0.08)
-				var cloud_highlight := _material(Color("f8f3e7"), 0.18)
-				cloud_shadow.roughness = 0.96
-				cloud_highlight.roughness = 0.9
-				var cloud_base := [
-					Vector3(-1.1, -0.55, 0.34), Vector3(-0.55, -0.53, 0.37),
-					Vector3(0.02, -0.5, 0.32), Vector3(0.59, -0.54, 0.38),
-					Vector3(1.14, -0.52, 0.33),
-				]
-				for lobe in cloud_base:
-					var base := _sphere(holder, lobe.z, Vector3(lobe.x, lobe.y, 0.66), cloud_shadow)
-					base.scale = Vector3(1.78, 0.58, 0.88)
-				var cloud_crowns := [
-					Vector3(-1.3, -0.27, 0.21), Vector3(-0.88, -0.16, 0.27),
-					Vector3(-0.42, -0.22, 0.24), Vector3(0.04, -0.1, 0.3),
-					Vector3(0.5, -0.2, 0.24), Vector3(0.96, -0.14, 0.27),
-					Vector3(1.36, -0.26, 0.2),
-				]
-				for index in range(cloud_crowns.size()):
-					var lobe: Vector3 = cloud_crowns[index]
-					var crown := _sphere(holder, lobe.z, Vector3(lobe.x, lobe.y, 0.54 + float(index % 3) * 0.04), cloud_highlight)
-					crown.scale = Vector3(1.12, 1.02, 0.82)
+				# The procedural sky texture forms one irregular cloud bank behind the window.
 				_sphere(holder, 0.2, Vector3(0.95, 0.72, 1.1), _material(Color("ffd9a0"), 1.4))
 			"firefly":
 				# 萤火森林：暗林 + 几簇萤火
