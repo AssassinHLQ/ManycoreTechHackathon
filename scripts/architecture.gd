@@ -52,9 +52,9 @@ static func build(planet, kind: String) -> void:
 			_build_liuwu(root, planet)
 		"jianmo":
 			_build_jianmo(root, planet)
-	_add_collision(root, kind, planet)
 	_detail_pass(root, kind, planet)
 	Precision.landmark(root, kind, planet.accent_color)
+	_add_collision(root)
 	_limit_range(root, 1500.0)
 
 
@@ -1040,225 +1040,38 @@ static func _ground_y(root: Node3D, planet, x: float, z: float) -> float:
 
 
 # -----------------------------------------------------------------------------
-# 主要建筑使用简化碰撞代理，保证玩家能站在平台、撞到塔楼与立柱。
+# Architecture collision follows the combined visible mesh.
 # -----------------------------------------------------------------------------
-static func _add_collision(root: Node3D, kind: String, planet) -> void:
+static func _add_collision(root: Node3D) -> void:
+	var faces := PackedVector3Array()
+	var meshes: Array[Node] = root.find_children("*", "MeshInstance3D", true, false)
+	if root is MeshInstance3D:
+		meshes.push_front(root)
+	for node in meshes:
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var relative_transform := Transform3D.IDENTITY
+		var current: Node = mesh_instance
+		while current != root:
+			if current is Node3D:
+				relative_transform = (current as Node3D).transform * relative_transform
+			current = current.get_parent()
+		for face_vertex in mesh_instance.mesh.get_faces():
+			faces.append(relative_transform * face_vertex)
+	if faces.size() < 3:
+		return
 	var body := StaticBody3D.new()
 	body.name = "BuildingCollision"
 	body.collision_layer = 8
 	body.collision_mask = 0
+	var collision := CollisionShape3D.new()
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(faces)
+	collision.shape = shape
+	body.add_child(collision)
 	root.add_child(body)
-	match kind:
-		"qinglan":
-			_cylinder_collider(body, 14.0, 1.2, Vector3(0, 0.6, 0))
-			_cylinder_collider(body, 12.6, 0.55, Vector3(0, 1.48, 0))
-			_cylinder_collider(body, 5.9, 6.3, Vector3(0, 9.35, 0))
-			# 风车顶盖与转子（转子面朝 +Z，与几何一致）。
-			_cylinder_collider(body, 6.3, 2.3, Vector3(0, 12.35, 0))
-			_box_collider(body, Vector3(1.8, 13.0, 1.2), Vector3(0.0, 11.6, 7.2), 0.0)
-			# 引水渠：两道石梁 + 支承立柱，玩家会撞到，所以要有碰撞代理。
-			var aqueduct_dir := Vector3(0.66, 0.0, 0.75).normalized()
-			var aqueduct_top := Vector3(aqueduct_dir.x * 11.6, 3.3, aqueduct_dir.z * 11.6)
-			var aqueduct_end := aqueduct_dir * 26.0
-			aqueduct_end.y = _ground_y(root, planet, aqueduct_end.x, aqueduct_end.z) + 1.2
-			for side in [-1.0, 1.0]:
-				var lateral: Vector3 = Vector3(-aqueduct_dir.z, 0.0, aqueduct_dir.x) * side * 0.55
-				_beam_collider(body, aqueduct_top + lateral, aqueduct_end + lateral, 0.3)
-			for i in range(3):
-				var t := 0.3 + float(i) * 0.25
-				var top: Vector3 = aqueduct_top.lerp(aqueduct_end, t)
-				var ground: float = _ground_y(root, planet, top.x, top.z)
-				var height: float = maxf(0.6, top.y - ground)
-				_cylinder_collider(body, 0.46, height, Vector3(top.x, ground + height * 0.5, top.z))
-			for i in range(3):
-				var angle := TAU * (float(i) / 3.0 + 0.09)
-				var center := Vector3(cos(angle) * 18.0, 0, sin(angle) * 18.0)
-				center.y = _ground_y(root, planet, center.x, center.z)
-				var yaw := -angle + PI * 0.5
-				_box_collider(body, Vector3(4.4, 5.9, 4.0), center + Basis(Vector3.UP, yaw) * Vector3(0, 2.95, 0), yaw)
-		"zheya":
-			_cylinder_collider(body, 14.0, 1.4, Vector3(0, 0.7, 0))
-			_cylinder_collider(body, 12.2, 1.0, Vector3(0, 1.85, 0))
-			_cylinder_collider(body, 4.0, 7.0, Vector3(0, 5.0, 0))
-			for i in range(8):
-				var angle := TAU * float(i) / 8.0
-				_cylinder_collider(body, 1.1, 8.0, Vector3(cos(angle) * 8.8, 6.8, sin(angle) * 8.8))
-			# 卤水池心与喷泉柱
-			_cylinder_collider(body, 3.2, 6.0, Vector3(0, 8.5, 0))
-			# 四道卤水收集槽（与可见形体一致）
-			for i in range(4):
-				var side := -1.0 if i % 2 == 0 else 1.0
-				var z := -7.0 if i < 2 else 7.0
-				var trough_pos := Vector3(side * 14.0, 3.6, z)
-				var trough_basis := Basis.from_euler(Vector3(-0.16, 0.2 * side, 0.1 * side))
-				_box_collider_basis(body, Vector3(5.2, 0.5, 1.6), trough_basis, trough_pos)
-		"cangbo":
-			_box_collider(body, Vector3(18.0, 1.0, 14.0), Vector3(0, 11.0, 0))
-			_box_collider(body, Vector3(15.5, 0.45, 11.5), Vector3(0, 11.7, 0))
-			_box_collider(body, Vector3(9.0, 0.9, 8.0), Vector3(-1.5, 11.6, 0))
-			_box_collider(body, Vector3(5.0, 3.8, 6.0), Vector3(5.2, 13.85, 0))
-			_box_collider(body, Vector3(21.0, 0.8, 3.4), Vector3(18.5, 11.0, 0))
-			_box_collider(body, Vector3(5.5, 0.8, 6.5), Vector3(30.0, 11.0, 0))
-			_cylinder_collider(body, 0.5, 7.2, Vector3(-2.0, 20.7, 0))
-			_sphere_collider(body, 2.35, Vector3(-2.0, 24.0, 0), Vector3(1.0, 0.24, 1.0), Quaternion(Vector3.UP, Vector3(0.4, 0.82, 0.2).normalized()))
-			for drone_pos in [Vector3(-13, 16, -6), Vector3(-12, 20, 7), Vector3(12, 18, -8), Vector3(25, 16, 7)]:
-				_sphere_collider(body, 0.9, drone_pos)
-		"xuanjing":
-			_cylinder_collider(body, 10.5, 6.5, Vector3(0, 5.8, 0))
-			_cylinder_collider(body, 9.5, 1.0, Vector3(0, 9.1, 0))
-			_cylinder_collider(body, 8.0, 0.8, Vector3(0, 10.0, 0))
-			for i in range(8):
-				var angle := TAU * float(i) / 8.0
-				_cylinder_collider(body, 0.62, 9.0, Vector3(cos(angle) * 6.2, 15.5, sin(angle) * 6.2))
-			for i in range(10):
-				_box_collider(body, Vector3(4.0, 0.55, 1.65), Vector3(0, 1.0 + i * 0.86, 19.0 - i * 1.15), sin(float(i) * 1.7) * 0.08)
-			for p in [Vector3(-14, 7, -3), Vector3(13, 11, 1), Vector3(-11, 15, 8), Vector3(11, 5, -10)]:
-				_cylinder_collider(body, 3.2, 3.8, p)
-		"xuanyuan":
-			_cylinder_collider(body, 16.0, 2.1, Vector3(0, 0.7, 0))
-			_cylinder_collider(body, 14.0, 0.8, Vector3(0, 1.35, 0))
-			_box_collider(body, Vector3(4.2, 23.0, 4.2), Vector3(-10.0, 15.0, 0))
-			_box_collider(body, Vector3(4.2, 23.0, 4.2), Vector3(10.0, 15.0, 0))
-			_box_collider(body, Vector3(23.0, 3.0, 4.0), Vector3(0, 27.0, 0))
-			for i in range(8):
-				_box_collider(body, Vector3(8.0 - i * 0.25, 0.45, 1.8), Vector3(0, 0.35 + i * 0.35, 20.0 - i * 1.45))
-			for i in range(10):
-				var angle := TAU * float(i) / 10.0
-				var floater_pos := Vector3(cos(angle) * 16.0, 8.0 + (i % 4) * 4.0, sin(angle) * 7.0 - 2.0)
-				var floater_basis := Basis.from_euler(Vector3(angle * 0.35, angle, angle * 0.22))
-				_box_collider_basis(body, Vector3(1.2 + (i % 3) * 0.35, 2.1, 1.0), floater_basis, floater_pos)
-		"baiyao":
-			_cylinder_collider(body, 15.5, 1.1, Vector3(0, 0.55, 0))
-			_cylinder_collider(body, 12.6, 0.9, Vector3(0, 1.55, 0))
-			_cylinder_collider(body, 9.4, 0.7, Vector3(0, 2.35, 0))
-			# 七根冰棱与中央主棱。
-			for i in range(7):
-				var angle := TAU * float(i) / 7.0 + 0.22
-				var radius_out := 9.6 - float(i % 3) * 0.8
-				var height := 13.0 + float(i % 4) * 3.4
-				_cylinder_collider(body, 1.1, height, Vector3(cos(angle) * radius_out, 2.4 + height * 0.5, sin(angle) * radius_out))
-			_cylinder_collider(body, 1.9, 24.0, Vector3(0, 14.6, 0))
-			# 冰拱门两柱与横梁。
-			for side in [-1.0, 1.0]:
-				_cylinder_collider(body, 1.15, 12.0, Vector3(side * 3.4, 7.0, 13.0))
-			_box_collider(body, Vector3(7.4, 1.1, 1.2), Vector3(0, 11.6, 13.0))
-		"pansha":
-			_cylinder_collider(body, 14.5, 1.0, Vector3(0, 0.5, 0))
-			_cylinder_collider(body, 10.5, 0.8, Vector3(0, 1.4, 0))
-			for i in range(6):
-				var angle := TAU * float(i) / 6.0
-				var height := 9.0 + float(i % 3) * 2.6
-				_cylinder_collider(body, 1.5, height, Vector3(cos(angle) * 7.0, 1.8 + height * 0.5, sin(angle) * 7.0))
-			for i in range(10):
-				var angle := TAU * float(i) / 10.0 + 0.3
-				var radius_out := 17.0 + float(i % 3) * 2.4
-				var height := 4.0 + float(i % 4) * 1.9
-				_cylinder_collider(body, 2.1, height, Vector3(cos(angle) * radius_out, 0.6 + height * 0.5, sin(angle) * radius_out))
-			_cylinder_collider(body, 3.4, 1.6, Vector3(0, 2.2, 0))
-			_cylinder_collider(body, 0.45, 7.0, Vector3(0, 6.5, 0))
-			var fallen_basis := Basis.from_euler(Vector3(0.0, 0.7, 1.15))
-			_box_collider_basis(body, Vector3(2.9, 2.9, 12.0), fallen_basis, Vector3(-13.0, 2.6, 9.0))
-		"taiyuan":
-			_cylinder_collider(body, 17.0, 0.9, Vector3(0, 0.45, 0))
-			_cylinder_collider(body, 7.0, 1.2, Vector3(0, 1.5, 0))
-			# 三层环墙用切向盒代理（不能做成实心圆柱，否则玩家进不去迷宫）。
-			_wall_colliders(body, 15.0, 3.6, 24, 0.0, 0.18)
-			_wall_colliders(body, 11.0, 2.9, 18, PI, 0.2)
-			_wall_colliders(body, 7.6, 2.2, 14, PI * 0.5, 0.26)
-			for i in range(6):
-				var angle := TAU * float(i) / 6.0 + 0.55
-				var mid := Vector3(cos(angle) * 10.8, 2.8, sin(angle) * 10.8)
-				_box_collider(body, Vector3(6.0, 2.4, 0.55), mid, -angle)
-			_cylinder_collider(body, 2.1, 11.0, Vector3(0, 7.6, 0))
-			_cylinder_collider(body, 2.4, 2.2, Vector3(0, 14.0, 0))
-		"liuwu":
-			_cylinder_collider(body, 16.0, 1.2, Vector3(0, 0.6, 0))
-			_box_collider(body, Vector3(26.0, 0.5, 3.0), Vector3(0, 1.35, 0))
-			for z in [-8.0, 8.0]:
-				for side in [-1.0, 1.0]:
-					_cylinder_collider(body, 1.3, 15.0, Vector3(side * 10.0, 8.7, z))
-				_box_collider(body, Vector3(20.0, 1.5, 1.5), Vector3(0, 16.4, z))
-			_box_collider(body, Vector3(4.4, 2.2, 15.0), Vector3(0, 12.4, 0))
-			for i in range(3):
-				var angle := TAU * float(i) / 3.0 + 0.6
-				_cylinder_collider(body, 3.4, 2.0, Vector3(cos(angle) * 12.0, 2.4, sin(angle) * 12.0))
-			_box_collider(body, Vector3(6.0, 12.0, 5.0), Vector3(16.0, 7.2, -12.0))
-		"jianmo":
-			_cylinder_collider(body, 13.0, 0.8, Vector3(0, 0.4, 0))
-			_cylinder_collider(body, 6.4, 1.0, Vector3(0, 1.2, 0))
-			for i in range(3):
-				var angle := TAU * float(i) / 3.0
-				var center := Vector3(cos(angle) * 9.5, 0.6, sin(angle) * 9.5)
-				var yaw := -angle + PI * 0.5
-				var basis := Basis(Vector3.UP, yaw)
-				for side in [-1.0, 1.0]:
-					var p := center + basis * Vector3(side * 3.1, 0, 0)
-					_box_collider(body, Vector3(1.0, 12.0, 1.4), p + Vector3(0, 6.0, 0), yaw)
-				_box_collider(body, Vector3(7.4, 1.0, 1.5), center + Vector3(0, 12.0, 0), yaw)
-			_cylinder_collider(body, 2.2, 5.0, Vector3(0, 4.0, 0))
 
-
-## 环形墙体的碰撞代理：沿圆环摆放切向盒，留出门洞（门洞角度与 _wall_ring 的几何一致）。
-static func _wall_colliders(body: StaticBody3D, radius: float, height: float, segments: int,
-		door_angle: float, door_half: float) -> void:
-	var segment_angle := TAU / float(segments)
-	var yaw_step := segment_angle * radius
-	for i in range(segments):
-		var angle := segment_angle * float(i)
-		var delta: float = absf(wrapf(angle - door_angle, -PI, PI))
-		if delta < door_half + segment_angle * 0.5:
-			continue
-		var center := Vector3(cos(angle) * radius, height * 0.5 + 1.8, sin(angle) * radius)
-		_box_collider(body, Vector3(yaw_step + 0.15, height, 0.62), center, -angle)
-
-
-static func _box_collider(body: StaticBody3D, size: Vector3, pos: Vector3, yaw := 0.0) -> void:
-	var collision := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = size
-	collision.shape = shape
-	collision.position = pos
-	collision.rotation.y = yaw
-	body.add_child(collision)
-
-
-static func _box_collider_basis(body: StaticBody3D, size: Vector3, basis: Basis, pos: Vector3) -> void:
-	var collision := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = size
-	collision.shape = shape
-	collision.transform = Transform3D(basis, pos)
-	body.add_child(collision)
-
-
-static func _sphere_collider(body: StaticBody3D, radius: float, pos: Vector3, scale := Vector3.ONE, rotation := Quaternion.IDENTITY) -> void:
-	var collision := CollisionShape3D.new()
-	var shape := SphereShape3D.new()
-	shape.radius = radius
-	collision.shape = shape
-	collision.transform = Transform3D(Basis(rotation).scaled(scale), pos)
-	body.add_child(collision)
-
-
-static func _beam_collider(body: StaticBody3D, a: Vector3, b: Vector3, radius: float) -> void:
-	var delta := b - a
-	var collision := CollisionShape3D.new()
-	var shape := CylinderShape3D.new()
-	shape.radius = radius
-	shape.height = delta.length()
-	collision.shape = shape
-	collision.transform = Transform3D(Basis(Quaternion(Vector3.UP, delta.normalized())), (a + b) * 0.5)
-	body.add_child(collision)
-
-
-static func _cylinder_collider(body: StaticBody3D, radius: float, height: float, pos: Vector3) -> void:
-	var collision := CollisionShape3D.new()
-	var shape := CylinderShape3D.new()
-	shape.radius = radius
-	shape.height = height
-	collision.shape = shape
-	collision.position = pos
-	body.add_child(collision)
 
 
 # -----------------------------------------------------------------------------

@@ -178,6 +178,7 @@ var ascend_level := 0.0
 var _batch := {}
 var hull_body: StaticBody3D
 var hull_shape: Shape3D
+var planet_asset_sweep_shapes: Array[Dictionary] = []
 var station_velocity := Vector3.ZERO
 var last_station_port := Vector3.ZERO
 var _station_motion := {}
@@ -565,6 +566,8 @@ func _ready() -> void:
 		hull_collision.position = Vector3(0, -0.2, 0.2)
 		hull_collision.shape = box
 		hull_shape = box
+	if planet_asset_sweep_shapes.is_empty() and hull_shape != null:
+		planet_asset_sweep_shapes.append({"shape": hull_shape, "transform": hull_collision.transform})
 	hull_body.add_child(hull_collision)
 	add_child(hull_body)
 	camera = Camera3D.new()
@@ -831,7 +834,48 @@ func _build_mesh_collision(collider: CollisionShape3D) -> bool:
 		var convex := ConvexPolygonShape3D.new()
 		convex.points = pts
 		hull_shape = convex
+	_build_planet_asset_sweep_shapes()
 	return true
+
+
+func _build_planet_asset_sweep_shapes() -> void:
+	planet_asset_sweep_shapes.clear()
+	if _ship_model_root == null or not is_instance_valid(_ship_model_root):
+		return
+	var settings := MeshConvexDecompositionSettings.new()
+	settings.max_convex_hulls = 16
+	settings.max_concavity = 0.03
+	settings.resolution = 10000
+	for node in _ship_model_root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var original_child_count := mesh_instance.get_child_count()
+		mesh_instance.create_multiple_convex_collisions(settings)
+		var generated_nodes: Array[Node] = []
+		for i in range(original_child_count, mesh_instance.get_child_count()):
+			generated_nodes.append(mesh_instance.get_child(i))
+		for generated_node in generated_nodes:
+			if generated_node is StaticBody3D:
+				for node_shape in generated_node.find_children("*", "CollisionShape3D", true, false):
+					var collision_shape := node_shape as CollisionShape3D
+					if collision_shape.shape == null:
+						continue
+					planet_asset_sweep_shapes.append({
+						"shape": collision_shape.shape,
+						"transform": _transform_to_ship(collision_shape),
+					})
+			generated_node.free()
+
+
+func _transform_to_ship(node: Node) -> Transform3D:
+	var result := Transform3D.IDENTITY
+	var current := node
+	while current != self:
+		if current is Node3D:
+			result = (current as Node3D).transform * result
+		current = current.get_parent()
+	return result
 
 
 ## 收集 GLB 本体全部三角面顶点，转换到 **ship 局部空间**（= 碰撞体所在空间）。
@@ -2344,7 +2388,7 @@ func _move_with_station_collision(delta: float) -> bool:
 
 
 func _move_with_planet_asset_collision(motion: Vector3) -> bool:
-	if hull_shape == null or motion.length_squared() < 0.000001:
+	if planet_asset_sweep_shapes.is_empty() or motion.length_squared() < 0.000001:
 		return false
 	var planet = game.nearest_planet(global_position)
 	if planet == null:
@@ -2357,23 +2401,39 @@ func _move_with_planet_asset_collision(motion: Vector3) -> bool:
 	if altitude > PLANET_ASSET_COLLISION_ALTITUDE:
 		return false
 	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = hull_shape
-	query.transform = Transform3D(global_transform.basis, global_position)
-	query.motion = motion
 	query.collision_mask = PLANET_ASSET_COLLISION_MASK
 	query.exclude = [hull_body.get_rid()]
 	query.margin = 0.03
 	var space := get_world_3d().direct_space_state
-	var fractions: PackedFloat32Array = space.cast_motion(query)
-	if fractions.size() < 2 or fractions[0] >= 0.99999:
+	var safe_fraction := 1.0
+	var unsafe_fraction := 1.0
+	var contact_shape: Shape3D = null
+	var contact_transform := Transform3D.IDENTITY
+	for entry in planet_asset_sweep_shapes:
+		var candidate_shape: Shape3D = entry["shape"]
+		var candidate_transform: Transform3D = entry["transform"]
+		query.shape = candidate_shape
+		query.transform = _planet_asset_query_transform(candidate_transform, global_position)
+		query.motion = motion
+		var fractions: PackedFloat32Array = space.cast_motion(query)
+		if fractions.size() < 2 or fractions[0] >= safe_fraction:
+			continue
+		safe_fraction = fractions[0]
+		unsafe_fraction = fractions[1]
+		contact_shape = candidate_shape
+		contact_transform = candidate_transform
+	if contact_shape == null:
 		return false
 	var start := global_position
-	var safe_fraction := clampf(fractions[0] - 0.002, 0.0, 1.0)
-	global_position = start + motion * safe_fraction
+	query.shape = contact_shape
 	query.motion = Vector3.ZERO
-	query.transform = Transform3D(global_transform.basis,
-		start + motion * minf(fractions[1] + 0.002, 1.0))
+	query.transform = _planet_asset_query_transform(contact_transform,
+		start + motion * unsafe_fraction)
 	var hit := space.get_rest_info(query)
+	if hit.is_empty():
+		global_position = start + motion
+		return false
+	global_position = start + motion * maxf(safe_fraction - 0.03 / motion.length(), 0.0)
 	var normal: Vector3 = hit.get("normal", -motion.normalized())
 	if normal.length_squared() < 0.0001:
 		normal = -motion.normalized()
@@ -2390,11 +2450,15 @@ func _move_with_planet_asset_collision(motion: Vector3) -> bool:
 		hull = maxf(0.0, hull - (impact_speed - 10.0) * 0.45)
 		impact_cooldown = 1.2
 		autopilot = false
-		game.hud.show_toast("撞上星球地表资产 · 船体 %d%% · X 制动" % int(hull), 3.2)
+		game.hud.show_toast("撞上星球 · 船体 %d%% · X 制动" % int(hull), 3.2)
 		game.audio.play_impact()
 		if hull <= 0.0:
-			game.begin_death("飞船撞上地表资产解体", 4.2)
+			game.begin_death("撞上星球，飞船解体", 4.2)
 	return true
+
+
+func _planet_asset_query_transform(local_transform: Transform3D, at_position: Vector3) -> Transform3D:
+	return Transform3D(global_transform.basis, at_position) * local_transform
 
 
 func _station_normal_impact_speed(relative_velocity: Vector3, surface_normal: Vector3) -> float:
