@@ -1989,7 +1989,7 @@ func _physics_process(delta: float) -> void:
 					fuel = maxf(0.0, fuel - actual_step * RCS_FUEL_PER_RAD)
 
 		velocity += gravity * delta
-	_move_with_station_collision(delta)
+	var planet_asset_contact := _move_with_station_collision(delta)
 	if _apply_black_hole_capture(delta):
 		return
 
@@ -2003,7 +2003,7 @@ func _physics_process(delta: float) -> void:
 	offset = global_position - planet.global_position
 	normal = offset.normalized()
 	altitude = offset.length() - planet.terrain_height(normal)
-	if altitude < 3.4:
+	if altitude < 3.4 and not planet_asset_contact:
 		# 撞击严重程度 = 「相对地面、沿地面法线的接近速度」。
 		#
 		# 不能再用 velocity.length()（飞船自己的绝对速度）。行星在以
@@ -2278,10 +2278,10 @@ func _apply_black_hole_capture(delta: float) -> bool:
 	return false
 
 
-func _move_with_station_collision(delta: float) -> void:
+func _move_with_station_collision(delta: float) -> bool:
 	var motion := velocity * delta
 	if _move_with_planet_asset_collision(motion):
-		return
+		return true
 	var station: Node3D = null
 	var nearest := INF
 	for candidate in _dockable_stations():
@@ -2294,7 +2294,7 @@ func _move_with_station_collision(delta: float) -> void:
 			nearest = distance
 	if station == null:
 		global_position += motion
-		return
+		return false
 	if _station_blocked(global_position):
 		var rest := _station_rest(global_position)
 		var normal: Vector3 = rest.get("normal", (global_position - station.global_position).normalized())
@@ -2305,9 +2305,9 @@ func _move_with_station_collision(delta: float) -> void:
 		if not _station_blocked(escape):
 			global_position = escape
 		velocity = normal * 8.0
-		return
+		return false
 	if motion.length_squared() < 0.000001:
-		return
+		return false
 	# ⚠ 子步长自适应：速度上限移除后，一帧位移可能非常大，
 	#   固定 32 步会穿透站点。这里按「每步 3 米」算需要多少步，
 	#   上限 1024 步（覆盖到约 3072 米/帧 ≈ 184 km/s），
@@ -2339,7 +2339,8 @@ func _move_with_station_collision(delta: float) -> void:
 			game.audio.play_impact()
 			if hull <= 0.0:
 				game.begin_death("飞船撞上空间站解体", 4.2)
-		return
+		return false
+	return false
 
 
 func _move_with_planet_asset_collision(motion: Vector3) -> bool:

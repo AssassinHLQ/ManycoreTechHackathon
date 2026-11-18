@@ -450,11 +450,8 @@ func _build_hud() -> void:
 func _build_menu() -> void:
 	menu = _overlay(0.2)
 	var panel := Panel.new()
-	# 面板高度按内容实测调：原名 590×768 @ y=96（底 864）。
-	# 加了两行外部素材署名后，第三行（Aholo Lux3D）仍被裁，故定为 590×880 @ y=60，
-	# 底部落在 940，给 1080 屏留 140px 余量；内容超长时 _panel_box 会内部滚动。
-	panel.position = Vector2(66, 60)
-	panel.size = Vector2(590, 880)
+	panel.position = Vector2(66, 110)
+	panel.size = Vector2(590, 620)
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	menu.add_child(panel)
 	var box := _panel_box(panel, 34)
@@ -468,24 +465,17 @@ func _build_menu() -> void:
 	# 标题只留中文名；原来的英文小标题与副标题已去掉，不再出现两个名字打架。
 	var heading := _text(box, "借 一 扇 晴 天", 49, Color("e9e3ce"))
 	heading.custom_minimum_size.y = 84
-	var description := _text(box, "没有任务箭头，也没有必须打赢的战争。\n只有一颗正在老去的恒星，和等待你亲自拼凑的答案。", 17, Color("b7cbc7"))
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.custom_minimum_size.y = 90
 	var rule := HSeparator.new()
 	box.add_child(rule)
-	var features := _text(box, "◈ 球形重力徒步与喷气背包\n◈ 惯性飞行、目的地锁定与自动着陆\n◈ 二十颗天体与六廊归航站\n◈ 阁楼纪念与宇宙回声的往返旅程", 15, Color("91aaa8"))
-	features.custom_minimum_size.y = 142
 	menu_start = _button(box, "开始探索", func(): game.start_game())
 	menu_start.custom_minimum_size.y = 54
-	menu_attic = _button(box, "回家入口位于归航站中央枢纽", func(): game.request_attic_visit())
+	menu_attic = _button(box, "进入阁楼", func(): game.request_attic_visit())
 	menu_attic.disabled = true
 	menu_attic.custom_minimum_size.y = 44
 	menu_attic.visible = false
 	_button(box, "设置", show_settings).custom_minimum_size.y = 42
 	_button(box, "操作与生存指南", show_help).custom_minimum_size.y = 44
 	_button(box, "退出", func(): get_tree().quit()).custom_minimum_size.y = 38
-	var footer := _text(box, "原创科幻原型  /  烤棉花糖为致敬  /  GODOT 4  /  建议佩戴耳机", 11, Color(0.46, 0.6, 0.61))
-	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_build_credits(box)
 
 
