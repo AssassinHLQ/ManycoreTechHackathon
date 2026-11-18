@@ -10,6 +10,9 @@ var docked := false
 var docked_station
 var target
 var autopilot := false
+var _autopilot_target = null
+var _autopilot_min_altitude := INF
+var _autopilot_passed_target := false
 var fuel := 200.0
 var hull := 100.0
 var focus := false
@@ -73,6 +76,14 @@ const AUTOPILOT_ACCEL := 230.0
 ## 自动航行进入减速段时使用的高速制动能力，速度剖面也按它计算。
 ## 在上一版高速刹车基础上提高 4 倍，避免无上限巡航接近目标时刹不住。
 const AUTOPILOT_BRAKE_DECEL := 1200.0 * 4.0
+## 自动航行恢复阶段的临时速度。只在已经越过目标后使用，巡航阶段仍无速度上限。
+const AUTOPILOT_RECOVERY_SPEED := 600.0
+## 接近地面后开始拉平机头，避免一直朝行星中心俯冲。
+const AUTOPILOT_FLARE_ALT := 1200.0
+## 拉平时给机头的抬升分量，配合地表切线形成明显的抬头姿态。
+const AUTOPILOT_FLARE_UP := 0.80
+## 自动航行的姿态转向速率。自动驾驶只缓慢摆正机头，不影响速度控制。
+const AUTOPILOT_TURN_RATE := 0.55
 ## 每改变 1 m/s 速度消耗多少推进剂（自动航行）。
 ##
 ## ⚠ 2026-11-11 场景放大后从 0.008 降到 0.003：
@@ -259,10 +270,10 @@ var _roll_dir := 0.0
 ## 鼠标灵敏度（弧度/像素）。0.0022 约合「推 700 像素转 90°」。
 ##
 ## ⚠ 2026-11-10 用户两次要求调低（「太灵活了，晕」→「还是太灵活」）：
-##   0.0022 -> 0.0009 -> **0.00045**
-##   现在约合「推 3500 像素转 90°」，是初版的 1/5。
+##   0.0022 -> 0.0009 -> 0.00045 -> **0.00015**
+##   现在约合「推 10500 像素转 90°」，鼠标转向明显变慢。
 ##   如果还是晕，继续往下调；嫌慢就往上调。
-const AIM_SENSITIVITY := 0.00045
+const AIM_SENSITIVITY := 0.00015
 ## 速度矢量向机头方向对齐的角速度（弧度/秒）。
 ##
 ## 用户：「往前飞, 鼠标掉头但不加速, 为什么还是往后飞」——
@@ -272,10 +283,10 @@ const AIM_SENSITIVITY := 0.00045
 ##   追得快，角差越来越大，dot 从 1.0 掉到 0.12 —— 越追越远）。
 ##
 ## 数值：
-##   1.2 rad/s ≈ 69°/秒 → 掉头 180° 约 2.6 秒转过来
+##   0.35 rad/s ≈ 20°/秒 → 掉头 180° 约 9 秒转过来
 ##   调大 → 更快咬住新航向，更像飞机
 ##   调小 → 更飘，惯性更强，更像纯太空
-const VELOCITY_ALIGN_RATE := 1.2
+const VELOCITY_ALIGN_RATE := 0.35
 
 ## 机头**将要指向**的朝向 = 当前姿态 × 待转量。
 ##
@@ -314,8 +325,8 @@ func _quat_axis(q: Quaternion) -> Vector3:
 
 
 ## 最大角速度（弧度/秒）。待转量足够大时的转速上限。
-## 1.2 rad/s ≈ 69°/秒，让大幅转向稍微沉稳一些。
-const MAX_TURN_RATE := 1.2
+## 0.35 rad/s ≈ 20°/秒，让大幅转向明显沉稳。
+const MAX_TURN_RATE := 0.35
 
 ## 「满速待转量」（弧度）。待转量达到这个值时速度封顶，更小则按 √ 曲线衰减。
 ##
@@ -343,8 +354,8 @@ var _attitude_prev_budget := 0.0
 var forward_input := 0.0
 
 ## 滚转速率（弧度/秒），A/D 控制。这是**包络满值**时的峰值转速。
-## ⚠ 2026-11-10 用户：「ad 转动还是很快要减慢」→ 2.4 → 1.3（约 74°/秒）。
-const ROLL_RATE := 1.3
+## ⚠ A/D 转动继续放慢，峰值约 18°/秒。
+const ROLL_RATE := 0.32
 
 ## 滚转包络从 0 升到 1（或降回 0）所需时间（秒）。
 ## 这就是滚转的「惯性」：按下后约 ROLL_RAMP_TIME 到达满速，
@@ -356,9 +367,11 @@ const ROLL_RAMP_TIME := 0.45
 ## 加速，是理论无限加速的」）。
 ## 旧版有 SHIP_MAX_SPEED=420 / SHIP_BOOST_MAX_SPEED=700 两个人造上限，
 ## 那是错的：太空里没有阻力，推力一直在就该一直加速。
-const SHIP_THRUST := 144.0
-const SHIP_BOOST_THRUST := 300.0
-const SHIP_BRAKE_DECEL := 260.0
+## 手动推进/制动统一放大 4 倍。速度仍然不设上限，只改变每秒的 Δv。
+const MANUAL_ACCEL_MULTIPLIER := 4.0
+const SHIP_THRUST := 144.0 * MANUAL_ACCEL_MULTIPLIER
+const SHIP_BOOST_THRUST := 300.0 * MANUAL_ACCEL_MULTIPLIER
+const SHIP_BRAKE_DECEL := 260.0 * MANUAL_ACCEL_MULTIPLIER
 
 ## ⚠ 速度上限**已彻底移除**（2026-11-10 用户：「为什么现在上限速度还是有, 3200」）
 ##
@@ -1739,6 +1752,21 @@ func _reset_cockpit_camera() -> void:
 	camera.fov = 72.0
 
 
+## 手动飞行时只保留机头前向和机体竖向速度。
+##
+## 速度矢量不再因为掉头、滚转或上一帧的惯性而侧滑、倒飞。
+## 制动时保留完整速度，方便 S/X 匹配空间站的相对运动。
+func _constrain_manual_velocity_to_forward() -> void:
+	if Input.is_action_pressed("brake"):
+		return
+	var nose_dir := -global_transform.basis.z.normalized()
+	var side_axis := global_transform.basis.x.normalized()
+	var vertical_axis := side_axis.cross(nose_dir).normalized()
+	var forward_speed := maxf(velocity.dot(nose_dir), 0.0)
+	var vertical_speed := velocity.dot(vertical_axis)
+	velocity = nose_dir * forward_speed + vertical_axis * vertical_speed
+
+
 func _physics_process(delta: float) -> void:
 	_update_station_motion(delta)
 	if game.state != "ship" or game.paused or game.supernova_active or game.map_open:
@@ -1821,6 +1849,10 @@ func _physics_process(delta: float) -> void:
 	gravity += _black_hole_pull(delta)
 	var thrusting := false
 	var braking := false
+	if not autopilot or target == null:
+		_autopilot_target = null
+		_autopilot_min_altitude = INF
+		_autopilot_passed_target = false
 
 	if autopilot and target != null:
 		# 自动驾驶也要吃引力。
@@ -1832,22 +1864,44 @@ func _physics_process(delta: float) -> void:
 		velocity += gravity * delta
 		var target_velocity := _target_orbital_velocity()
 		var target_altitude := _target_altitude(target)
+		if target != _autopilot_target:
+			_autopilot_target = target
+			_autopilot_min_altitude = target_altitude
+			_autopilot_passed_target = false
 		var desired_speed := _autopilot_desired_speed(target_altitude, gravity)
 		var aim := _autopilot_aim(target.global_position)
 		var desired_direction := (aim - global_position).normalized()
 		# 期望速度以「地面」为参照系：行星在公转，相对速度才算数。
-		var desired_velocity := desired_direction * desired_speed + target_velocity
-		var before_velocity := velocity
 		var relative_velocity := velocity - target_velocity
 		var current_toward_speed := relative_velocity.dot(desired_direction)
+		var relative_speed := relative_velocity.length()
+		var lateral_velocity := relative_velocity - desired_direction * current_toward_speed
+		var lateral_speed := lateral_velocity.length()
+		# 记录最近高度。高度开始回升且速度已经背离目标，说明已经飞过头，
+		# 进入恢复段先把速度收住，再重新朝目标靠近，避免绕圈。
+		if target_altitude < _autopilot_min_altitude:
+			_autopilot_min_altitude = target_altitude
+		elif target_altitude > _autopilot_min_altitude + maxf(1200.0, _autopilot_min_altitude * 0.08) \
+				and current_toward_speed < -120.0:
+			_autopilot_passed_target = true
+		if _autopilot_passed_target:
+			desired_speed = minf(desired_speed, AUTOPILOT_RECOVERY_SPEED)
+		var desired_velocity := desired_direction * desired_speed + target_velocity
+		var before_velocity := velocity
 		# 先按当前接近速度计算刹停距离，再决定是否进入刹车段。
 		# 这样高速飞行时会提前刹车，不会等到目标贴脸才反推。
 		var available_braking := maxf(AUTOPILOT_BRAKE_DECEL - gravity.length(), AUTOPILOT_BRAKE_FLOOR)
-		var closing_speed := maxf(current_toward_speed, 0.0)
-		var stopping_distance := closing_speed * closing_speed / maxf(2.0 * available_braking, 0.001)
-		var braking_margin := maxf(150.0, closing_speed * 0.25)
+		# 刹停距离要包含切向速度。只算纵向速度会让飞船带着巨大的横向
+		# 速度擦过目标，之后不断修正方向形成圆周飞行。
+		var stopping_distance := relative_speed * relative_speed / maxf(2.0 * available_braking, 0.001)
+		var braking_margin := maxf(150.0, relative_speed * 0.25)
 		var distance_requires_braking := target_altitude <= stopping_distance + braking_margin
-		braking = current_toward_speed > desired_speed + 0.5 or distance_requires_braking
+		# 横向速度超过当前巡航速度的一小部分时也立即进入强制修正，
+		# 且阈值封顶，避免高速巡航时永远不处理横向漂移。
+		var lateral_brake_threshold := maxf(120.0, minf(desired_speed * 0.12, 1200.0))
+		var lateral_requires_braking := lateral_speed > lateral_brake_threshold
+		braking = _autopilot_passed_target or current_toward_speed > desired_speed + 0.5 \
+			or distance_requires_braking or lateral_requires_braking
 		var control_rate := AUTOPILOT_BRAKE_DECEL if braking else AUTOPILOT_ACCEL
 		velocity = velocity.move_toward(desired_velocity, delta * control_rate)
 		var delta_v := velocity.distance_to(before_velocity)
@@ -1858,16 +1912,31 @@ func _physics_process(delta: float) -> void:
 				velocity = before_velocity
 				autopilot = false
 				game.hud.show_toast("推进剂耗尽 · 自动航行中止", 3.0)
-		var up := normal if altitude < 900.0 else Vector3.UP
-		if absf(desired_direction.dot(up)) > 0.96:
+		# 低空不再把机头一直指向行星中心。沿当前相对速度取地表切线，
+		# 再混入向上的法线分量，提前抬头并保持可控的侧向朝向。
+		var orientation_direction := desired_direction
+		if altitude < AUTOPILOT_FLARE_ALT:
+			var tangent_direction := relative_velocity.slide(normal)
+			if tangent_direction.length_squared() < 1.0:
+				tangent_direction = desired_direction.slide(normal)
+			if tangent_direction.length_squared() < 1.0:
+				tangent_direction = global_transform.basis.x.slide(normal)
+			if tangent_direction.length_squared() < 1.0:
+				tangent_direction = normal.cross(Vector3.FORWARD)
+			var flare_direction := (tangent_direction.normalized() + normal * AUTOPILOT_FLARE_UP).normalized()
+			var flare_t := clampf(1.0 - altitude / AUTOPILOT_FLARE_ALT, 0.0, 1.0)
+			orientation_direction = desired_direction.slerp(flare_direction, flare_t).normalized()
+		var up := normal if altitude < AUTOPILOT_FLARE_ALT else Vector3.UP
+		if absf(orientation_direction.dot(up)) > 0.96:
 			up = Vector3.FORWARD
-		var desired_basis := Basis.looking_at(desired_direction, up)
+		var desired_basis := Basis.looking_at(orientation_direction, up)
 		var transform := global_transform
-		transform.basis = transform.basis.slerp(desired_basis, clampf(delta * 3.0, 0.0, 1.0)).orthonormalized()
+		transform.basis = transform.basis.slerp(desired_basis,
+			clampf(delta * AUTOPILOT_TURN_RATE, 0.0, 1.0)).orthonormalized()
 		global_transform = transform
-		# 自动刹车使用反推力，不点亮后方前进尾焰，也不让前进引擎声持续播放。
-		thrusting = autopilot and not braking and delta_v > 0.02
-		thrust_level = 0.8 if thrusting else 0.0
+		# 自动驾驶的推力是控制器内部动作，不显示手动前进尾焰，也不播放前进引擎声。
+		thrusting = false
+		thrust_level = 0.0
 	else:
 		# ── 姿态：飞船缓慢转向期望朝向，机头始终对着屏幕中心 ──
 		#
@@ -1961,49 +2030,20 @@ func _physics_process(delta: float) -> void:
 				fuel = maxf(0.0, fuel - brake_dv * MANUAL_FUEL_PER_DV * bh_fuel_multiplier)
 				braking = true
 
-		# ── 速度矢量缓慢转向机头 ──
-		#
-		# ⚠ 2026-11-10 用户：「往前飞, 鼠标掉头但不加速, 为什么还是往后飞,
-		#   虽然飞船头朝准星了, 但是还得加规则, 飞船前进方向只能是准星方向」
-		#
-		#   严格纯物理下，机头转了速度矢量不会变（真空中没有力改变它），
-		#   所以会出现「机头朝前、飞船倒着飘」——物理上对，玩起来很怪。
-		#   用户选「速度缓慢转向机头，保留惯性感」。
-		#
-		# 实现要点（第一版做错过，这里记下来）：
-		#   第一版是「每帧 lerp(velocity, nose*speed, delta*0.8)」——
-		#   问题是**机头同时在转**，速度追得比机头慢，角差反而越来越大
-		#   （实测 dot 从 1.000 一路掉到 0.121）。
-		#
-		#   正确的做法是**用角速度而不是插值比例**：
-		#     比较当前速度方向与机头方向的夹角 θ，
-		#     每帧最多转 VELOCITY_ALIGN_RATE * delta 弧度。
-		#   这样：
-		#     · 角差大（掉头 180°）→ 每秒转固定角度，不会越追越远
-		#     · 角差小 → 自然收敛，不会抖动
-		#     · 无论机头转多快，速度总有确定的追赶速率
-		var speed_aligned := velocity.length()
-		if speed_aligned > 0.5 and not Input.is_action_pressed("brake"):
-			var nose_dir := -global_transform.basis.z.normalized()
-			var vel_dir := velocity / speed_aligned
-			var cos_angle := clampf(vel_dir.dot(nose_dir), -1.0, 1.0)
-			if cos_angle < 0.9999:
-				var angle_between := acos(cos_angle)
-				# 这一帧最多转这么多弧度
-				var max_step := VELOCITY_ALIGN_RATE * delta
-				var t := clampf(max_step / maxf(angle_between, 0.0001), 0.0, 1.0)
-				var actual_step := angle_between * t
-				# ⚠ 速度转向机头同样要烧 RCS 推进剂。
-				#   用户：「只有在完全不动鼠标，不加速减速的情况下才不花费」——
-				#   也就是任何改变运动状态的操作用户都要付燃料。
-				#   没燃料时不做对齐：飞船保持原有惯性方向继续飘
-				#   （这才符合「不受外力就匀速直线运动」）。
-				if fuel > 0.0:
-					var new_dir := vel_dir.slerp(nose_dir, t).normalized()
-					velocity = new_dir * speed_aligned
-					fuel = maxf(0.0, fuel - actual_step * RCS_FUEL_PER_RAD)
+		# ── 速度矢量约束 ──
+		# 用户要求手动飞行只能沿机头前方行进。这里去掉侧向惯性，
+		# 并截断负向速度，避免掉头后倒飞或绕圈。
+		# 严格限制手动飞行方向：掉头后不会倒飞，也不会保留侧向漂移。
+		# Space/C 的竖向速度保留，S/X 制动时跳过约束以支持对接减速。
+		_constrain_manual_velocity_to_forward()
 
 		velocity += gravity * delta
+		if not Input.is_action_pressed("brake"):
+			# 重力可能在本帧把速度投到机头后方，立即截断负向分量。
+			var nose_dir := -global_transform.basis.z.normalized()
+			var forward_speed := velocity.dot(nose_dir)
+			if forward_speed < 0.0:
+				velocity -= nose_dir * forward_speed
 	var planet_asset_contact := _move_with_station_collision(delta)
 	if _apply_black_hole_capture(delta):
 		return
