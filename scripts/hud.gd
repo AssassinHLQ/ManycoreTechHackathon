@@ -46,10 +46,6 @@ var solar_warning: Label
 var bh_warning: Label
 var location_title: Label
 var location_sub: Label
-var voyage_panel: Panel
-var voyage_title_label: Label
-var voyage_progress_label: Label
-var voyage_hint_label: Label
 var time_label: Label
 var time_caption: Label
 var prompt: Label
@@ -224,22 +220,6 @@ func _build_hud() -> void:
 
 	location_title = _label(hud_root, "青岚星", Rect2(28, 22, 650, 38), 26, Color("e3eee8"))
 	location_sub = _label(hud_root, "", Rect2(30, 62, 720, 30), 14, Color(0.66, 0.79, 0.78))
-
-	# 当前委托固定在右上角，给玩家一个持续可完成的短目标。
-	voyage_panel = Panel.new()
-	voyage_panel.anchor_left = 1.0
-	voyage_panel.anchor_right = 1.0
-	voyage_panel.offset_left = -532
-	voyage_panel.offset_right = -24
-	voyage_panel.offset_top = 92
-	voyage_panel.offset_bottom = 204
-	voyage_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	voyage_panel.add_theme_stylebox_override("panel", _panel_style())
-	hud_root.add_child(voyage_panel)
-	voyage_title_label = _label(voyage_panel, "航行委托", Rect2(16, 8, 474, 22), 13, Color("70c7c3"))
-	voyage_progress_label = _label(voyage_panel, "", Rect2(16, 32, 474, 24), 16, Color("e9e3ce"))
-	voyage_hint_label = _label(voyage_panel, "", Rect2(16, 59, 474, 45), 12, Color("a9c5c0"))
-	voyage_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	time_label = _label(hud_root, "17:00", Rect2(-130, 20, 260, 38), 25, Color("f1d39a"))
 	_center_anchor(time_label, false)
@@ -1143,16 +1123,6 @@ func _process(delta: float) -> void:
 	else:
 		location_title.text = planet.display_name
 		location_sub.text = planet.description
-	if voyage_panel != null:
-		var contract = game.voyage_contract
-		var contract_status: Dictionary = contract.status(game.discovered, game.in_attic)
-		var contract_active := bool(contract_status.get("active", false))
-		voyage_panel.visible = playing and not game.journal_open and not game.route_board_open
-		voyage_title_label.text = String(contract_status.get("title", "航行委托"))
-		voyage_progress_label.text = String(contract_status.get("progress", ""))
-		if contract_active:
-			voyage_progress_label.text += "　·　奖励 %d 金" % int(contract_status.get("reward", 0))
-		voyage_hint_label.text = String(contract_status.get("hint", ""))
 	prompt.text = game.get_prompt()
 	if controls_hint != null:
 		if game.has_touch_layer():

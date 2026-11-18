@@ -38,7 +38,6 @@ func _run() -> void:
 
 	game.start_game()
 	_check(game.voyage_contract.active, "starting a new game creates a readable contract")
-	_check(game.hud.voyage_panel.visible, "the contract is visible in the live HUD")
 	_check(game.voyage_contract.phase == "scan_home", "fresh contract starts at the windmill scan")
 	game.discover("qinglan")
 	_check(game.voyage_contract.phase == "scan_target" and game.voyage_contract.target_id == "zheya",
