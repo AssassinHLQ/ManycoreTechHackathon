@@ -83,14 +83,15 @@ func _ready() -> void:
 
 	var light := OmniLight3D.new()
 	light.light_color = accent_color
-	light.light_energy = 1.6
-	light.omni_range = 16.0
+	light.light_energy = 4.0
+	light.omni_range = 32.0
 	light.position.y = 4.2
 	add_child(light)
 	Precision.scanner(self, accent_color)
 	for child in get_children():
 		if child is GeometryInstance3D:
-		child.visibility_range_end = 20000.0
+			child.visibility_range_begin = 0.0
+			child.visibility_range_end = 100000.0
 
 	var body := StaticBody3D.new()
 	body.collision_layer = 8
@@ -116,4 +117,5 @@ func _process(_delta: float) -> void:
 	var discovered: bool = game.discovered.has(anomaly_id)
 	var pulse := 1.0 + sin(time * 2.4) * 0.08
 	orb.scale = Vector3.ONE * (0.75 if discovered else pulse)
-	rune_material.emission_energy_multiplier = 0.65 if discovered else 2.0 + sin(time * 2.0) * 0.35
+	# 扫描点始终保持醒目的高亮，已发现状态只改变尺寸，不关闭信标。
+	rune_material.emission_energy_multiplier = 6.0 + sin(time * 2.0) * 0.8

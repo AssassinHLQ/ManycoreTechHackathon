@@ -181,23 +181,24 @@ func _draw_markers() -> void:
 				draw_string(font, station_screen + Vector2(16, -3), "归航站", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, station_color)
 				draw_string(font, station_screen + Vector2(16, 15), _distance(active_position.distance_to(station_point)), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(station_color, 0.7))
 	for anomaly in game.anomalies:
-		if not game.route_link.can_scan(anomaly.anomaly_id):
+		if not is_instance_valid(anomaly):
 			continue
 		var point: Vector3 = anomaly.global_position + anomaly.global_transform.basis.y * 5.8
 		var distance := active_position.distance_to(point)
-		if distance > (520.0 if game.state == "walk" else 1200.0) or camera.is_position_behind(point):
+		if distance > SCAN_GUIDANCE_RANGE or camera.is_position_behind(point):
 			continue
 		var screen := camera.unproject_position(point)
 		if not Rect2(Vector2(30, 70), size - Vector2(60, 150)).has_point(screen):
-			continue
-		if _is_occluded(camera, point, 3.0):
 			continue
 		var color: Color = anomaly.accent_color
 		var tracked: bool = game.route_link.tracked != "" and anomaly.anomaly_id == game.route_link.echo_id(game.route_link.tracked)
 		if tracked:
 			color = Color("ffe0a0")
 		var diamond := PackedVector2Array([screen + Vector2(0, -6), screen + Vector2(6, 0), screen + Vector2(0, 6), screen + Vector2(-6, 0), screen + Vector2(0, -6)])
-		draw_polyline(diamond, color, 1.4, true)
+		# 外圈 + 内圈让扫描点在复杂星球表面上仍然清楚可见。
+		draw_polyline(diamond, Color(color, 0.35), 5.0, true)
+		draw_polyline(diamond, color, 2.6, true)
+		draw_circle(screen, 3.0, color)
 		if tracked:
 			draw_string(font, screen + Vector2(12, -12), anomaly.title, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, color)
 		if distance < 75.0:
@@ -220,8 +221,6 @@ func _scan_guidance_target(origin: Vector3, max_range: float = SCAN_GUIDANCE_RAN
 	var tracked: Node3D
 	for anomaly in game.anomalies:
 		if not is_instance_valid(anomaly) or not game.route_link.can_scan(anomaly.anomaly_id):
-			continue
-		if game.discovered.has(anomaly.anomaly_id):
 			continue
 		var point: Vector3 = anomaly.scan_position() if anomaly.has_method("scan_position") \
 			else anomaly.global_position + anomaly.global_transform.basis.y * 3.0

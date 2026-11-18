@@ -153,9 +153,11 @@ var station_velocity := Vector3.ZERO
 var last_station_port := Vector3.ZERO
 var _station_motion := {}
 const DOCK_HINT_RADIUS := 600.0
+## 对接判定留出足够的操作余量，避免必须把船头精确插进接口中心。
 const DOCK_INTERACT_RADIUS := 140.0
-const DOCK_SNAP_RADIUS := 64.0
+const DOCK_SNAP_RADIUS := 100.0
 const DOCK_MAX_RELATIVE_SPEED := 22.0
+const DOCK_VERTICAL_TOLERANCE := 30.0
 var dock_cooldown := 0.0
 var impact_cooldown := 0.0
 var fuel_empty_time := 0.0
@@ -2671,7 +2673,7 @@ func nearby_docking_status(max_range := DOCK_HINT_RADIUS) -> Dictionary:
 		nearest = distance
 		result = {"station": candidate, "distance": distance,
 			"relative_speed": velocity.distance_to(station_port_velocity(candidate)),
-			"above_port": offset.dot(candidate.up_direction()) >= 0.0}
+			"above_port": offset.dot(candidate.up_direction()) >= -DOCK_VERTICAL_TOLERANCE}
 	return result
 
 
