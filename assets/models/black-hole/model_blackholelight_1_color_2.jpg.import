@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dg2jxkgypk0id"
 path.s3tc="res://.godot/imported/model_blackholelight_1_color_2.jpg-7eb6a11dea7d284c73906e687ee770b4.s3tc.ctex"
+path.etc2="res://.godot/imported/model_blackholelight_1_color_2.jpg-7eb6a11dea7d284c73906e687ee770b4.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/black-hole/model_blackholelight_1_color_2.jpg"
-dest_files=["res://.godot/imported/model_blackholelight_1_color_2.jpg-7eb6a11dea7d284c73906e687ee770b4.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_blackholelight_1_color_2.jpg-7eb6a11dea7d284c73906e687ee770b4.s3tc.ctex", "res://.godot/imported/model_blackholelight_1_color_2.jpg-7eb6a11dea7d284c73906e687ee770b4.etc2.ctex"]
 
 [params]
 

@@ -506,6 +506,12 @@ func _build_credits(box: VBoxContainer) -> void:
 	_credits_link(credits, "原作", "https://godotengine.org/asset-library/asset/5491")
 	credits.add_text("  /  ")
 	_credits_link(credits, "CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/")
+	credits.add_text("\n图标像素未修改；HUD 使用 health / fuel，运行时染色。\n\n")
+	credits.add_text("UI Minimalism SciFi — Wenrexa\n")
+	_credits_link(credits, "原作", "https://opengameart.org/content/assets-ui-minimalism-scifi")
+	credits.add_text("  /  ")
+	_credits_link(credits, "CC0 1.0", "https://creativecommons.org/publicdomain/zero/1.0/")
+	credits.add_text("\n面板贴图像素未修改；运行时九宫格缩放、染色。\n\n")
 	credits.add_text("音乐\n\n")
 	credits.add_text("Chopin — Waltz Op. 70 no. 3 in D-flat major（归航站与阁楼）\n")
 	credits.add_text("录音：The Musopen Kickstarter Project；来源：Classicals.de\n")
@@ -518,12 +524,6 @@ func _build_credits(box: VBoxContainer) -> void:
 	credits.add_text("  /  ")
 	_credits_link(credits, "CC PDM 1.0", "https://creativecommons.org/publicdomain/mark/1.0/")
 	credits.add_text("\n\n")
-	credits.add_text("\n图标像素未修改；HUD 使用 health / fuel，运行时染色。\n\n")
-	credits.add_text("UI Minimalism SciFi — Wenrexa\n")
-	_credits_link(credits, "原作", "https://opengameart.org/content/assets-ui-minimalism-scifi")
-	credits.add_text("  /  ")
-	_credits_link(credits, "CC0 1.0", "https://creativecommons.org/publicdomain/zero/1.0/")
-	credits.add_text("\n面板贴图像素未修改；运行时九宫格缩放、染色。\n\n")
 	credits.add_text("星球、家具与道具：Aholo Lux3D（群核科技）生成。\n权属及使用义务以平台服务条款与参赛协议为准。\n")
 	_credits_link(credits, "Aholo Lux3D", "https://labs.aholo3d.cn/")
 	credits.add_text("\n\n字体：星野文楷 Starward WenKai（上游 LXGW WenKai，子集裁剪并改名）；Noto Sans Symbols 2（符号子集）。SIL OFL 1.1。\n\n")
@@ -1059,6 +1059,7 @@ func _process(delta: float) -> void:
 		bar_b_label.text = "推进剂"
 		bar_b_value.text = "%.1f T" % (game.ship.fuel * 0.01)
 		bar_a.value = game.ship.hull
+		bar_b.max_value = game.ship.MAX_FUEL
 		bar_b.value = game.ship.fuel
 		_row_icons[0].modulate = Color(0.55, 0.90, 0.95, 0.95) if game.ship.hull > 30.0 \
 				else Color(1.0, 0.45, 0.30, 1.0)
@@ -1099,6 +1100,7 @@ func _process(delta: float) -> void:
 			bar_a.value = game.ship.hull
 			bar_b_label.text = "喷气燃料"
 			bar_b_value.text = "%.1f kg" % (game.player.fuel * 0.12)
+			bar_b.max_value = game.player.MAX_FUEL
 			bar_b.value = game.player.fuel
 		else:
 			bar_a_label.text = "氧气"
@@ -1106,6 +1108,7 @@ func _process(delta: float) -> void:
 			bar_b_label.text = "喷气燃料"
 			bar_b_value.text = "%.1f kg" % (game.player.fuel * 0.12)
 			bar_a.value = game.player.oxygen
+			bar_b.max_value = game.player.MAX_FUEL
 			bar_b.value = game.player.fuel
 		_row_icons[0].modulate = Color(0.55, 0.90, 0.95, 0.95) if game.player.oxygen > 25.0 \
 				else Color(1.0, 0.45, 0.30, 1.0)
@@ -1416,9 +1419,9 @@ func _update_gauge() -> void:
 		return
 	var pct: float = 0.0
 	if game.state == "ship":
-		pct = game.ship.fuel / 100.0
+		pct = game.ship.fuel / game.ship.MAX_FUEL
 	else:
-		pct = game.player.fuel / 100.0
+		pct = game.player.fuel / game.player.MAX_FUEL
 	_gauge_root.set_value(pct)
 
 

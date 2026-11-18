@@ -151,10 +151,11 @@ static func _build_cave_props(root: Node3D, planet, chamber_radius: float,
 				if walker is Node3D:
 					xf = walker.transform * xf
 				walker = walker.get_parent()
-			var shape := CollisionShape3D.new()
-			shape.shape = planet._prop_collision_shape("cave_footbridge", mi.mesh)
-			shape.transform = xf
-			bridge_body.add_child(shape)
+			for part in planet._prop_collision_shapes("cave_footbridge", mi.mesh):
+				var shape := CollisionShape3D.new()
+				shape.shape = part["shape"] as Shape3D
+				shape.transform = xf * (part["transform"] as Transform3D)
+				bridge_body.add_child(shape)
 	if placed > 0:
 		print("[CAVE] %s：摆入 %d 件陈设" % [planet.planet_id, placed])
 

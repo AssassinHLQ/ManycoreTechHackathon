@@ -16,6 +16,31 @@ func _check(condition: bool, message: String) -> void:
 		push_error("FAIL  " + message)
 
 
+func _visible_mesh_hit_y(root_node: Node3D, from: Vector3, to: Vector3) -> float:
+	var direction := to - from
+	var max_distance := direction.length()
+	if max_distance <= 0.001:
+		return INF
+	direction /= max_distance
+	var closest_distance := max_distance
+	var hit_y := INF
+	for item in root_node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := item as MeshInstance3D
+		if mesh_instance.mesh == null or not mesh_instance.is_visible_in_tree():
+			continue
+		var faces := mesh_instance.mesh.get_faces()
+		var mesh_transform := mesh_instance.global_transform
+		for i in range(0, faces.size(), 3):
+			var hit = Geometry3D.ray_intersects_triangle(from, direction,
+				mesh_transform * faces[i], mesh_transform * faces[i + 1], mesh_transform * faces[i + 2])
+			if hit is Vector3:
+				var distance := from.distance_to(hit)
+				if distance <= closest_distance:
+					closest_distance = distance
+					hit_y = (root_node.global_transform.affine_inverse() * hit).y
+	return hit_y
+
+
 func _run() -> void:
 	var test_save := "user://starward_smoke_test.json"
 	if FileAccess.file_exists(test_save):
@@ -37,17 +62,22 @@ func _run() -> void:
 		plume.visible = true
 	for halo in exhaust_ship.engine_halos:
 		halo.visible = true
+	for core in exhaust_ship.engine_cores:
+		core.visible = true
 	for plume in exhaust_ship.ventral_plumes:
 		plume.visible = true
 	for core in exhaust_ship.ventral_cores:
 		core.visible = true
 	exhaust_ship._update_engine(0.016)
-	var exhaust_hidden: bool = exhaust_ship.engine_level == 0.0 \
-		and not exhaust_ship.engine_plumes.is_empty() and not exhaust_ship.ventral_plumes.is_empty()
+	var exhaust_nodes: Array = exhaust_ship.engine_plumes + exhaust_ship.engine_halos \
+		+ exhaust_ship.engine_cores + exhaust_ship.ventral_plumes + exhaust_ship.ventral_cores
+	var exhaust_hidden: bool = exhaust_ship.engine_level == 0.0 and not exhaust_nodes.is_empty()
 	for plume in exhaust_ship.engine_plumes:
 		exhaust_hidden = exhaust_hidden and not plume.visible
 	for halo in exhaust_ship.engine_halos:
 		exhaust_hidden = exhaust_hidden and not halo.visible
+	for core in exhaust_ship.engine_cores:
+		exhaust_hidden = exhaust_hidden and not core.visible
 	for plume in exhaust_ship.ventral_plumes:
 		exhaust_hidden = exhaust_hidden and not plume.visible
 	for core in exhaust_ship.ventral_cores:
@@ -59,17 +89,18 @@ func _run() -> void:
 	# ⚠ 2026-11-11：建场改成两阶段（母星先行、其余后台补建），
 	#   world_ready 时只有 1 颗行星，而下面要断言 20 颗。
 	#
-	#   等待条件用 `planets.size() < 20`（测试真正需要的前置条件）。
+	#   远端星球先以轻量代理出现；断言全量场景前还要等后台替换完成。
 	#
 	#   ⚠ 超时必须用**真实时钟**，不能用「每帧 += 0.016」累加：
 	#     headless 模式帧率极高，累加到 180 只要几秒真实时间，
 	#     而后台补建 19 颗行星真实需要 ~40 秒 —— 循环会提前放弃（实测踩过）。
 	#     现在用 Time.get_ticks_msec() 判真实耗时，上限 180 秒。
 	var deadline_ms: int = Time.get_ticks_msec() + 180000
-	while game.planets.size() < 20 and Time.get_ticks_msec() < deadline_ms:
+	while (game.planets.size() < 20 or game.world_build_remaining) \
+			and Time.get_ticks_msec() < deadline_ms:
 		await process_frame
-	if game.planets.size() < 20:
-		push_error("行星补建超时：只建出 %d / 20 颗（等了 %.1f 秒）"
+	if game.planets.size() < 20 or game.world_build_remaining:
+		push_error("远端场景补建超时：已建 %d / 20 颗（等了 %.1f 秒）"
 			% [game.planets.size(), 180.0])
 	await process_frame
 	var old_logs: Dictionary = game.discovered.duplicate(true)
@@ -141,11 +172,11 @@ func _run() -> void:
 		var ramp_local: Vector3 = cave.global_transform.affine_inverse() * ramp_hit.position
 		_check(ramp_local.y > -1.6, "the ramp is level with the surface at its top")
 	var platform_probes := [
-		[game.home, Vector3(3.2, 6.0, 3.2), 1.755, "observatory platform"],
-		[game.planets[1], Vector3(6.0, 6.0, 0.0), 2.35, "ember platform"],
-		[game.planets[3], Vector3(5.0, 14.0, 0.0), 10.4, "shard temple tiers"],
-		[game.planets[4], Vector3(0.0, 5.0, 8.0), 1.75, "eye gate platform"],
-		[game.planets[2], Vector3(8.5, 15.0, 0.0), 11.5, "tide deck"]
+		[game.home, Vector3(3.2, 6.0, 3.2), "observatory platform"],
+		[game.planets[1], Vector3(6.0, 6.0, 0.0), "ember platform"],
+		[game.planets[3], Vector3(5.0, 14.0, 0.0), "shard temple tiers"],
+		[game.planets[4], Vector3(0.0, 5.0, 8.0), "eye gate platform"],
+		[game.planets[2], Vector3(8.5, 15.0, 0.0), "tide deck"]
 	]
 	var parked_transform: Transform3D = game.ship.global_transform
 	var ship_processing: bool = game.ship.is_physics_processing()
@@ -162,10 +193,12 @@ func _run() -> void:
 		var probe_query := PhysicsRayQueryParameters3D.create(from, to, 8)
 		var probe_hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(probe_query)
 		if probe_hit.is_empty():
-			_check(false, probe[3] + " has a collider")
+			_check(false, probe[2] + " has a collider")
 		else:
 			var local: Vector3 = arch.global_transform.affine_inverse() * probe_hit.position
-			_check(absf(local.y - probe[2]) < 0.4, probe[3] + " collision matches its visible top")
+			var visible_y := _visible_mesh_hit_y(arch, from, to)
+			_check(is_finite(visible_y) and absf(local.y - visible_y) < 0.4,
+				probe[2] + " collision matches its visible top")
 	game.ship.global_transform = parked_transform
 	game.ship.set_physics_process(ship_processing)
 	var dome_arch: Node3D = game.home.find_child("Architecture_Qinglan", true, false)
@@ -353,6 +386,12 @@ func _run() -> void:
 		await physics_frame
 	_check(game.state == "walk", "start enters on-foot mode")
 	var ship: Variant = game.ship
+	var home_arch: Node3D = game.home.find_child("Architecture_Qinglan", true, false)
+	var ship_up: Vector3 = (ship.global_position - game.home.global_position).normalized()
+	var away_from_windmill: Vector3 = (ship.global_position - home_arch.global_position).slide(ship_up).normalized()
+	var parked_ship_forward: Vector3 = -ship.global_transform.basis.z.normalized()
+	_check(parked_ship_forward.dot(away_from_windmill) > 0.8,
+		"parked ship faces away from the windmill")
 	var saved_ship_position: Vector3 = ship.global_position
 	var saved_ship_velocity: Vector3 = ship.velocity
 	var saved_ship_hull: float = ship.hull
@@ -477,8 +516,9 @@ func _run() -> void:
 	_check(game.ship.camera.position.length() > 5.0,
 		"the third-person camera sits outside the hull")
 	var cam_forward: Vector3 = -game.ship.camera.global_transform.basis.z.normalized()
-	var to_center: Vector3 = (-game.ship.camera.position).normalized()
-	_check(to_center.dot(cam_forward) > 0.9, "the third-person camera looks at the ship")
+	var third_person_ship_forward: Vector3 = -game.ship.global_transform.basis.z.normalized()
+	_check(third_person_ship_forward.dot(cam_forward) > 0.98,
+		"the third-person camera stays aligned with the ship nose")
 	# 第三人称里不能出现主角：玩家节点没有身体网格，只剩碰撞胶囊和相机。
 	var body_meshes := 0
 	for node in game.player.find_children("*", "MeshInstance3D", true, false):
@@ -507,6 +547,19 @@ func _run() -> void:
 	_check(game.player.scope_magnification() >= 16.0, "signal scope reaches 16x magnification")
 	game.player._physics_process(0.5)
 	_check(game.player.camera.fov < 6.0, "signal scope narrows the camera field of view")
+	var saved_player_transform: Transform3D = game.player.global_transform
+	game.player.global_position = game.gargantua.global_position + Vector3(0.0, 0.0, 20000.0)
+	game.player.look_at(game.gargantua.global_position, Vector3.UP)
+	game.player.camera.rotation = Vector3.ZERO
+	game.player._update_scope_clip_distance()
+	_check(is_equal_approx(game.player.camera.near, 30.0),
+		"high-zoom scope improves depth precision while the black hole is in view")
+	game.player.look_at(game.gargantua.global_position + Vector3(0.0, 0.0, 40000.0), Vector3.UP)
+	game.player.camera.rotation = Vector3.ZERO
+	game.player._update_scope_clip_distance()
+	_check(is_equal_approx(game.player.camera.near, 0.07),
+		"scope restores close clipping when the black hole leaves view")
+	game.player.global_transform = saved_player_transform
 	game.player.focus = false
 	game.player.scope_zoom = 1.0
 	game.state = "ship"
@@ -643,6 +696,8 @@ func _run() -> void:
 	bh_ship.velocity = Vector3.ZERO
 	_check(bh_ship._black_hole_pull(0.016) == Vector3.ZERO,
 		"outside the pull range the black hole does not touch the ship")
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_PULL_RANGE * 0.9)
+	bh_ship.velocity = Vector3.ZERO
 	var far_pull: float = bh_ship._black_hole_pull(0.016).length()
 	bh_ship.global_position = hole + Vector3(0.0, 0.0, 1800.0)
 	bh_ship.velocity = Vector3.ZERO

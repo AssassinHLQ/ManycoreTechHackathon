@@ -23,8 +23,9 @@ func _run() -> void:
 	root.add_child(attic)
 	await attic.build()
 	var worlds := Worlds.new()
+	worlds.use_authored_scenes = false
 	root.add_child(worlds)
-	worlds.build()
+	await worlds.build()
 	await physics_frame
 	await physics_frame
 	var used := {}
@@ -55,6 +56,15 @@ func _run() -> void:
 			"floor seam %d closed" % i)
 	_check(attic.root.get_node("Roof_Left").rotation.z > 0 and attic.root.get_node("Roof_Right").rotation.z < 0,
 		"roof rises toward the ridge")
+	var mirror_plinth := attic.root.get_node_or_null("MirrorCorridor/Prop_mirror-plinth") as Node3D
+	if ResourceLoader.exists("res://assets/models/props/attic/mirror-plinth/model.glb"):
+		_check(mirror_plinth != null, "mirror entrance uses its generated plinth")
+	if mirror_plinth != null:
+		var plinth_bounds := Placement.bounds(mirror_plinth)
+		_check(absf(mirror_plinth.position.y + plinth_bounds.position.y) < 0.002,
+			"mirror plinth rests on the floor")
+		_check(attic.body.get_node_or_null("Prop_mirror-plinthCollision") != null,
+			"mirror plinth has a matching collision")
 	var space := attic.get_world_3d().direct_space_state
 	for y in [1.2, 2.7]:
 		for i in range(72):

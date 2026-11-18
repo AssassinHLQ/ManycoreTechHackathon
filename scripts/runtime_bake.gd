@@ -1,6 +1,6 @@
 extends RefCounted
 ## Export-time snapshots of static generated geometry, with live gameplay references.
-const DIRECTORY := "res://assets/runtime_bakes/"
+const DIRECTORY := "res://assets/runtime_bakes/streamed/"
 const VERSION := 4
 static var _saved_geometry: Dictionary = {}
 static var _prepared_scenes: Dictionary = {}
@@ -37,7 +37,7 @@ static func _save_geometry(parent: Node, key: String) -> Error:
 			_saved_geometry[geometry.get_instance_id()] = true
 			# Keep shared prop meshes/shapes external instead of embedding a copy
 			# into every planet snapshot. Terrain meshes already have their own file.
-			if not geometry.resource_path.begins_with(DIRECTORY):
+			if not geometry.resource_path.begins_with(DIRECTORY) or not FileAccess.file_exists(geometry.resource_path):
 				var path := DIRECTORY + "geometry_%s_%d.res" % [key, _saved_geometry.size()]
 				var error := ResourceSaver.save(geometry, path, ResourceSaver.FLAG_COMPRESS | ResourceSaver.FLAG_CHANGE_PATH)
 				if error != OK:
@@ -145,6 +145,7 @@ static func save_generated(target: Node3D, key: String, source_paths: Array, sig
 
 
 static func load_generated(target: Node3D, key: String, signature := {}) -> bool:
+	var tree := Engine.get_main_loop() as SceneTree
 	var path := DIRECTORY + key + ".scn"
 	if not ResourceLoader.exists(path):
 		return false
@@ -155,9 +156,14 @@ static func load_generated(target: Node3D, key: String, signature := {}) -> bool
 	else:
 		packed = load(path) as PackedScene
 	if packed == null:
+		print_verbose("Runtime snapshot rejected (%s): failed to load %s" % [key, path])
 		return false
 	var content := packed.instantiate() as Node3D
+	var profile_started := Time.get_ticks_usec()
 	if content.get_meta("bake_version", 0) != VERSION or content.get_meta("signature", {}) != signature:
+		print_verbose("Runtime snapshot rejected (%s): version %s (expected %s), signature %s (expected %s)" % [
+			key, str(content.get_meta("bake_version", 0)), str(VERSION),
+			str(content.get_meta("signature", {})), str(signature)])
 		content.free()
 		return false
 	for source in content.get_meta("source_hashes", {}):
@@ -166,18 +172,25 @@ static func load_generated(target: Node3D, key: String, signature := {}) -> bool
 			continue
 		# Raw scripts are remapped in release exports; source checks are for the editor.
 		if FileAccess.file_exists(source) and FileAccess.get_md5(source) != content.get_meta("source_hashes")[source]:
+			print_verbose("Runtime snapshot rejected (%s): source changed since bake: %s" % [key, source])
 			content.free()
 			return false
 	var model_path: String = signature.get("model", "")
 	if not model_path.is_empty() and FileAccess.file_exists(model_path) and FileAccess.get_modified_time(model_path) != int(content.get_meta("model_time", 0)):
+		print_verbose("Runtime snapshot rejected (%s): model changed since bake: %s" % [key, model_path])
 		content.free()
 		return false
 	var bindings: Dictionary = _decode(content.get_meta("bindings"), content, target)
+	await tree.process_frame
 	var constants: Dictionary = target.get_script().get_script_constant_map()
 	var ground_cover: Array = constants.get("GROUND_COVER_PROPS", [])
+	if "--profile-startup" in OS.get_cmdline_user_args():
+		print("RUNTIME LOAD %-24s validate+decode %7.1f ms" % [key, (Time.get_ticks_usec() - profile_started) / 1000.0])
 	# Copy MultiMesh buffers explicitly: local-to-scene duplication sets the
 	# buffer before its instance count on this engine version.
+	var multimesh_count := 0
 	for node in content.find_children("*", "MultiMeshInstance3D", true, false):
+		var mesh_started := Time.get_ticks_usec()
 		# Older snapshots omitted non-persistent runtime groups.
 		if String(node.name).trim_prefix("Prop_") in ground_cover:
 			node.add_to_group("ground_scatter")
@@ -197,10 +210,19 @@ static func load_generated(target: Node3D, key: String, signature := {}) -> bool
 				copy.set_instance_transform(i, transforms[i])
 				if copy.use_colors:
 					copy.set_instance_color(i, colors[i])
+				if i % 1024 == 1023:
+					await tree.process_frame
 		elif not source.buffer.is_empty():
 			copy.buffer = source.buffer
 		copy.visible_instance_count = source.visible_instance_count
 		node.multimesh = copy
+		multimesh_count += 1
+		if multimesh_count % 4 == 0:
+			await tree.process_frame
+		if "--profile-startup" in OS.get_cmdline_user_args():
+			var mesh_ms := (Time.get_ticks_usec() - mesh_started) / 1000.0
+			if mesh_ms >= 40.0:
+				print("RUNTIME LOAD %-24s multimesh %-18s %7.1f ms" % [key, node.name, mesh_ms])
 	# The station beacon is animated. Keep its material connected to the
 	# visible meshes while isolating it from other scene instances.
 	var live: Array = bindings.get("merge_live_materials", [])
@@ -212,6 +234,7 @@ static func load_generated(target: Node3D, key: String, signature := {}) -> bool
 		for field in bindings:
 			if bindings[field] is Material and bindings[field] == material:
 				bindings[field] = isolated
+		var material_node_count := 0
 		for node in content.find_children("*", "MeshInstance3D", true, false):
 			if node.material_override == material:
 				node.material_override = isolated
@@ -219,11 +242,21 @@ static func load_generated(target: Node3D, key: String, signature := {}) -> bool
 				for surface in range(node.mesh.get_surface_count()):
 					if node.mesh.surface_get_material(surface) == material:
 						node.set_surface_override_material(surface, isolated)
+			material_node_count += 1
+			if material_node_count % 32 == 0:
+				await tree.process_frame
 		live[i] = isolated
 	_unown(content, content)
+	profile_started = Time.get_ticks_usec()
 	for child in content.get_children():
 		content.remove_child(child)
+		var attach_started := Time.get_ticks_usec()
 		target.add_child(child)
+		if "--profile-startup" in OS.get_cmdline_user_args():
+			var attach_ms := (Time.get_ticks_usec() - attach_started) / 1000.0
+			if attach_ms >= 40.0:
+				print("RUNTIME LOAD %-24s attach %-23s %7.1f ms" % [key, child.name, attach_ms])
+		await tree.process_frame
 	for field in bindings:
 		if target.get(field) is Array and bindings[field] is Array:
 			target.get(field).assign(bindings[field])
@@ -231,4 +264,6 @@ static func load_generated(target: Node3D, key: String, signature := {}) -> bool
 			target.set(field, bindings[field])
 	content.free()
 	target.set_meta("runtime_baked", key)
+	if "--profile-startup" in OS.get_cmdline_user_args():
+		print("RUNTIME LOAD %-24s attach total %7.1f ms" % [key, (Time.get_ticks_usec() - profile_started) / 1000.0])
 	return true

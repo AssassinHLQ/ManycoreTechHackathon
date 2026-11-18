@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://cfd773l76v5yb"
 path.s3tc="res://.godot/imported/base_color.jpg-747e3f9265c6d202f8e36fd58fd47589.s3tc.ctex"
+path.etc2="res://.godot/imported/base_color.jpg-747e3f9265c6d202f8e36fd58fd47589.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/space-station-3/textures/base_color.jpg"
-dest_files=["res://.godot/imported/base_color.jpg-747e3f9265c6d202f8e36fd58fd47589.s3tc.ctex"]
+dest_files=["res://.godot/imported/base_color.jpg-747e3f9265c6d202f8e36fd58fd47589.s3tc.ctex", "res://.godot/imported/base_color.jpg-747e3f9265c6d202f8e36fd58fd47589.etc2.ctex"]
 
 [params]
 

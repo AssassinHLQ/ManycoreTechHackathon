@@ -116,6 +116,8 @@ func _run() -> void:
 	_check(game.state == "menu" and not game.in_attic,
 		"return to title keeps the physical home gate closed")
 	_check(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED, "all checks respect --no-capture")
+	while game.world_build_remaining or game.planets.size() < 20:
+		await process_frame
 	game.queue_free()
 	await process_frame
 	_cleanup()

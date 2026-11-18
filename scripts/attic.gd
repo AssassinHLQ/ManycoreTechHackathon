@@ -555,6 +555,11 @@ func _build_mirror_corridor() -> void:
 			_box(frame_root, Vector3(0.14, height, 0.14), Vector3(side * width * 0.5, height * 0.5, 0), _wood_dark)
 		_box(frame_root, Vector3(width + 0.14, 0.14, 0.14), Vector3(0, height, 0), _wood_dark)
 		_box(frame_root, Vector3(width + 0.14, 0.1, 0.14), Vector3(0, 0.05, 0), _wood_dark)
+	var plinth_prop := prop("mirror-plinth", 0.45)
+	if plinth_prop != null:
+		plinth_prop.position = Vector3(width * 0.5 + 0.34, 0, 0)
+		frame_root.add_child(plinth_prop)
+		_collide_prop(plinth_prop)
 	# 镜面本体：微亮、带一点冷光，走进去是回廊。
 	var surface := _box(frame_root, Vector3(width - 0.24, height - 0.40, 0.04), Vector3(0, height * 0.5, 0.02), _mirror)
 	surface.material_override = _material(Color("d7e6ea"), 0.22)

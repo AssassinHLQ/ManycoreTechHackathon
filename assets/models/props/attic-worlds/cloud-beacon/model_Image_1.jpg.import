@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dsn0tbvft6ipf"
 path.s3tc="res://.godot/imported/model_Image_1.jpg-a1559fe529b4b369f70f01a0be4c62af.s3tc.ctex"
+path.etc2="res://.godot/imported/model_Image_1.jpg-a1559fe529b4b369f70f01a0be4c62af.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/cloud-beacon/model_Image_1.jpg"
-dest_files=["res://.godot/imported/model_Image_1.jpg-a1559fe529b4b369f70f01a0be4c62af.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_Image_1.jpg-a1559fe529b4b369f70f01a0be4c62af.s3tc.ctex", "res://.godot/imported/model_Image_1.jpg-a1559fe529b4b369f70f01a0be4c62af.etc2.ctex"]
 
 [params]
 

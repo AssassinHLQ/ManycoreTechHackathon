@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://b0h5e210dus6d"
 path.s3tc="res://.godot/imported/spacestation_main2_metallic-spacestation_main2_roughness_orm.png-7112d280f2ab43102425bfe182ac84da.s3tc.ctex"
+path.etc2="res://.godot/imported/spacestation_main2_metallic-spacestation_main2_roughness_orm.png-7112d280f2ab43102425bfe182ac84da.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/space-station-3/textures/spacestation_main2_metallic-spacestation_main2_roughness_orm.png"
-dest_files=["res://.godot/imported/spacestation_main2_metallic-spacestation_main2_roughness_orm.png-7112d280f2ab43102425bfe182ac84da.s3tc.ctex"]
+dest_files=["res://.godot/imported/spacestation_main2_metallic-spacestation_main2_roughness_orm.png-7112d280f2ab43102425bfe182ac84da.s3tc.ctex", "res://.godot/imported/spacestation_main2_metallic-spacestation_main2_roughness_orm.png-7112d280f2ab43102425bfe182ac84da.etc2.ctex"]
 
 [params]
 

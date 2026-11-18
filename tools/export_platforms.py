@@ -57,9 +57,15 @@ def validate_android(path, sdk, java):
             raise RuntimeError("Android ARM64 engine is missing")
         if not any(name.endswith((".etc2.ctex", ".astc.ctex")) for name in names):
             raise RuntimeError("Android GPU-compressed mobile textures are missing")
-        for scene in (ROOT / "assets/runtime_bakes").glob("*.scn"):
-            if "assets/assets/runtime_bakes/" + scene.name not in names:
-                raise RuntimeError("Android runtime snapshot is missing: " + scene.name)
+        runtime_bakes = ROOT / "assets/runtime_bakes/streamed"
+        runtime_files = sorted(path for path in runtime_bakes.iterdir()
+                               if path.suffix in {".res", ".scn"})
+        if not runtime_files:
+            raise RuntimeError("Android runtime snapshots are missing")
+        for resource in runtime_files:
+            package_path = "assets/assets/runtime_bakes/streamed/" + resource.name
+            if package_path not in names:
+                raise RuntimeError("Android runtime resource is missing: " + resource.name)
         for folder in ["tests/", "tools/", "_tools/", "build/", "captures/", "demo/"]:
             if any(name.startswith("assets/" + folder) for name in names):
                 raise RuntimeError("Android includes development files: " + folder)
@@ -121,6 +127,32 @@ def file_record(path, directory):
                 "sha256": hashlib.file_digest(data, "sha256").hexdigest()}
 
 
+def source_hashes():
+    sources = {}
+    for folder in ["scripts", "shaders", "scenes"]:
+        for path in (ROOT / folder).rglob("*"):
+            if path.suffix in [".gd", ".gdshader", ".tscn", ".tres"]:
+                sources[str(path.relative_to(ROOT)).replace("\\", "/")] = hashlib.sha256(path.read_bytes()).hexdigest()
+    build_inputs = [
+        "tests/smoke_test.gd", "tests/font_coverage_test.gd", "tests/touch_test.gd",
+        "tests/runtime_bake_test.gd", "tests/export_package_test.gd",
+        "tests/web_export_test.mjs", "tests/web_cache_test.mjs",
+        "tools/bake_runtime_assets.gd", "tools/bake_runtime_lods.gd", "tools/export_platforms.py",
+        "project.godot", "export_presets.cfg", "default_bus_layout.tres", *NOTICES,
+    ]
+    for name in build_inputs:
+        sources[name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+    return sources
+
+
+def ensure_sources_unchanged(expected):
+    current = source_hashes()
+    if current != expected:
+        changed = sorted(path for path in expected.keys() | current.keys()
+                         if expected.get(path) != current.get(path))
+        raise RuntimeError("Source files changed during export: " + ", ".join(changed[:10]))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("platforms", nargs="*", choices=list(TARGETS), default=list(TARGETS))
@@ -138,25 +170,31 @@ def main():
     report_path = BUILD / "platform-validation.json"
     report = {"source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT,
               creationflags=HIDDEN, text=True).strip(), "exports": {}, "success": False,
-              "source_sha256": {str(p.relative_to(ROOT)).replace("\\", "/"): hashlib.sha256(p.read_bytes()).hexdigest()
-                  for folder in ["scripts", "shaders", "scenes"] for p in (ROOT / folder).rglob("*")
-                  if p.suffix in [".gd", ".gdshader", ".tscn", ".tres"]}}
-    for name in ["project.godot", "export_presets.cfg", "default_bus_layout.tres", *NOTICES]:
-        report["source_sha256"][name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+              "source_sha256": source_hashes()}
     if report_path.is_file():
         previous = json.loads(report_path.read_text(encoding="utf-8"))
         if previous.get("source_commit") == report["source_commit"] and previous.get("source_sha256") == report["source_sha256"]:
             report.update({key: previous[key] for key in ["exports", "tests", "bake"] if key in previous})
     engine = [args.godot, "--headless", "--path", ROOT]
     try:
+        if args.skip_bake and (report.get("bake") or {}).get("exit_code") != 0:
+            raise RuntimeError("--skip-bake requires a successful bake for the current source fingerprint")
+        if args.skip_tests:
+            required_tests = ["smoke_test", "font_coverage_test", "touch_test", "runtime_bake_test"]
+            tests = report.get("tests") or {}
+            if any((tests.get(name) or {}).get("exit_code") != 0 for name in required_tests):
+                raise RuntimeError("--skip-tests requires passing tests for the current source fingerprint")
         if not args.skip_bake:
             report["bake"] = run("bake", engine + ["--script", "res://tools/bake_runtime_assets.gd",
                 "--", "--no-capture", "--rebake-runtime"], expected="RUNTIME BAKE COMPLETE")
+        ensure_sources_unchanged(report["source_sha256"])
         report["import"] = run("import", engine + ["--editor", "--import"])
         if not args.skip_tests:
             report["tests"] = {name: run(name, engine + ["--script", f"res://tests/{name}.gd", "--", "--no-capture"])
                                for name in ["smoke_test", "font_coverage_test", "touch_test", "runtime_bake_test"]}
+        ensure_sources_unchanged(report["source_sha256"])
         for target in args.platforms:
+            ensure_sources_unchanged(report["source_sha256"])
             report["exports"].pop(target, None)
             preset, filename = TARGETS[target]
             directory = BUILD / target
@@ -189,7 +227,7 @@ def main():
                 if target == "windows":
                     result["native_runtime"] = run("windows_boot", [entry, "--headless", "--audio-driver", "Dummy",
                         "--max-fps", "60", "--quit-after", "1800", "--", "--no-capture"],
-                        expected="\u884c\u661f\u603b\u6570 20")
+                        timeout=120)
                 if target == "web":
                     result["browser"] = run("web_browser", ["node", ROOT / "tests/web_export_test.mjs",
                         directory, LOGS / "web_export"], expected="WEB EXPORT TEST COMPLETE:")
@@ -202,9 +240,11 @@ def main():
             result["entry"] = str(entry)
             result["files"] = [file_record(p, directory)
                                for p in sorted(directory.iterdir()) if p.is_file()]
+            ensure_sources_unchanged(report["source_sha256"])
             report["exports"][target] = result
             report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
             print("Verified " + target, flush=True)
+        ensure_sources_unchanged(report["source_sha256"])
         report["success"] = True
     except Exception as error:
         report["error"] = str(error)

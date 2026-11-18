@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dre1yaqfj5mtl"
 path.s3tc="res://.godot/imported/model_Image_0.jpg-e33bfb74532d9fae78da7a98cde15814.s3tc.ctex"
+path.etc2="res://.godot/imported/model_Image_0.jpg-e33bfb74532d9fae78da7a98cde15814.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/tea-saucer/model_Image_0.jpg"
-dest_files=["res://.godot/imported/model_Image_0.jpg-e33bfb74532d9fae78da7a98cde15814.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_Image_0.jpg-e33bfb74532d9fae78da7a98cde15814.s3tc.ctex", "res://.godot/imported/model_Image_0.jpg-e33bfb74532d9fae78da7a98cde15814.etc2.ctex"]
 
 [params]
 

@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://olnq71sc52kg"
 path.s3tc="res://.godot/imported/orm.png-5b8d84bc43617e49cd741239966f9fda.s3tc.ctex"
+path.etc2="res://.godot/imported/orm.png-5b8d84bc43617e49cd741239966f9fda.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/space-station/textures/orm.png"
-dest_files=["res://.godot/imported/orm.png-5b8d84bc43617e49cd741239966f9fda.s3tc.ctex"]
+dest_files=["res://.godot/imported/orm.png-5b8d84bc43617e49cd741239966f9fda.s3tc.ctex", "res://.godot/imported/orm.png-5b8d84bc43617e49cd741239966f9fda.etc2.ctex"]
 
 [params]
 

@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dubxlp8lbolnf"
 path.s3tc="res://.godot/imported/spacestation_main_albedo_base_color.jpg-d3cddc50e2bcd27a5e8498e26f3b7893.s3tc.ctex"
+path.etc2="res://.godot/imported/spacestation_main_albedo_base_color.jpg-d3cddc50e2bcd27a5e8498e26f3b7893.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/space-station-3/textures/spacestation_main_albedo_base_color.jpg"
-dest_files=["res://.godot/imported/spacestation_main_albedo_base_color.jpg-d3cddc50e2bcd27a5e8498e26f3b7893.s3tc.ctex"]
+dest_files=["res://.godot/imported/spacestation_main_albedo_base_color.jpg-d3cddc50e2bcd27a5e8498e26f3b7893.s3tc.ctex", "res://.godot/imported/spacestation_main_albedo_base_color.jpg-d3cddc50e2bcd27a5e8498e26f3b7893.etc2.ctex"]
 
 [params]
 

@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bsgo02kxl6b8"
 path.s3tc="res://.godot/imported/model_glb_Image_2.jpg-a4332685e0b339ed504b6ec850ce068d.s3tc.ctex"
+path.etc2="res://.godot/imported/model_glb_Image_2.jpg-a4332685e0b339ed504b6ec850ce068d.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/gramophone/model_glb_Image_2.jpg"
-dest_files=["res://.godot/imported/model_glb_Image_2.jpg-a4332685e0b339ed504b6ec850ce068d.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_glb_Image_2.jpg-a4332685e0b339ed504b6ec850ce068d.s3tc.ctex", "res://.godot/imported/model_glb_Image_2.jpg-a4332685e0b339ed504b6ec850ce068d.etc2.ctex"]
 
 [params]
 

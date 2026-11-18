@@ -16,6 +16,31 @@ func _frames(n: int) -> void:
 		await process_frame
 
 
+func _shape_aabb(shape: Shape3D) -> AABB:
+	if shape is BoxShape3D:
+		var box := shape as BoxShape3D
+		return AABB(-box.size * 0.5, box.size)
+	if shape is ConvexPolygonShape3D:
+		var convex := shape as ConvexPolygonShape3D
+		var bounds := AABB()
+		var first := true
+		for point in convex.points:
+			var point_box := AABB(point, Vector3.ZERO)
+			bounds = point_box if first else bounds.merge(point_box)
+			first = false
+		return bounds
+	if shape is ConcavePolygonShape3D:
+		var concave := shape as ConcavePolygonShape3D
+		var bounds := AABB()
+		var first := true
+		for point in concave.get_faces():
+			var point_box := AABB(point, Vector3.ZERO)
+			bounds = point_box if first else bounds.merge(point_box)
+			first = false
+		return bounds
+	return AABB()
+
+
 func _run() -> void:
 	var test_save := "user://starward_hull_probe.json"
 	if FileAccess.file_exists(test_save):
@@ -34,11 +59,11 @@ func _run() -> void:
 	print("=== ship_model_length = %.3f  ship_model_height = %.3f" % [
 		ship.ship_model_length, ship.ship_model_height])
 
-	# 碰撞盒
-	var box: BoxShape3D = ship.hull_shape
-	print("\n--- 碰撞盒（BoxShape3D）---")
-	print("  size = ", box.size)
-	print("  体积 = %.2f" % (box.size.x * box.size.y * box.size.z))
+	# 碰撞形状。当前实现用可见网格三角面 + 低点数凸包，旧版本才是 BoxShape3D。
+	var collision_bounds: AABB = _shape_aabb(ship.hull_shape)
+	print("\n--- 碰撞形状（%s）---" % ship.hull_shape.get_class())
+	print("  AABB size = ", collision_bounds.size)
+	print("  AABB 体积 = %.2f" % (collision_bounds.size.x * collision_bounds.size.y * collision_bounds.size.z))
 	var cs: CollisionShape3D = null
 	for c in ship.hull_body.get_children():
 		if c is CollisionShape3D:
@@ -85,12 +110,12 @@ func _run() -> void:
 	print("  center   = ", aabb.get_center())
 
 	print("\n--- 对比 ---")
-	print("  碰撞盒 size : (%.2f, %.2f, %.2f)" % [box.size.x, box.size.y, box.size.z])
+	print("  碰撞 AABB  : (%.2f, %.2f, %.2f)" % [collision_bounds.size.x, collision_bounds.size.y, collision_bounds.size.z])
 	print("  模型   size : (%.2f, %.2f, %.2f)" % [aabb.size.x, aabb.size.y, aabb.size.z])
 	print("  覆盖率 X=%.1f%%  Y=%.1f%%  Z=%.1f%%" % [
-		box.size.x / maxf(aabb.size.x, 0.001) * 100.0,
-		box.size.y / maxf(aabb.size.y, 0.001) * 100.0,
-		box.size.z / maxf(aabb.size.z, 0.001) * 100.0])
+		collision_bounds.size.x / maxf(aabb.size.x, 0.001) * 100.0,
+		collision_bounds.size.y / maxf(aabb.size.y, 0.001) * 100.0,
+		collision_bounds.size.z / maxf(aabb.size.z, 0.001) * 100.0])
 
 	print("\n--- 玩家能不能走进飞船 ---")
 	# 把玩家放到飞船正上方 5 米，让它自由落体，看是否会穿过飞船落到地面
@@ -109,11 +134,9 @@ func _run() -> void:
 		await physics_frame
 		var d: float = game.player.global_position.distance_to(ship.global_position)
 		min_dist = minf(min_dist, d)
-		# 判断是否落在碰撞盒内部
+		# 用碰撞形状的 AABB 做保守的穿透诊断
 		var local: Vector3 = ship.global_transform.affine_inverse() * game.player.global_position
-		var half: Vector3 = box.size * 0.5
-		var center: Vector3 = cs.position if cs else Vector3.ZERO
-		if absf(local.x - center.x) < half.x and absf(local.y - center.y) < half.y and absf(local.z - center.z) < half.z:
+		if collision_bounds.has_point(local):
 			inside_frames += 1
 	print("  玩家下落起点 y=%.2f，最终 y=%.2f" % [start_y, game.player.global_position.y])
 	print("  与飞船中心最近距离: %.2f m" % min_dist)

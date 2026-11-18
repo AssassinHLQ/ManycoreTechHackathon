@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://c4bxly0gjnmws"
 path.s3tc="res://.godot/imported/model_glb_2.jpg-03e482d929e13505287ec164e8b1e4db.s3tc.ctex"
+path.etc2="res://.godot/imported/model_glb_2.jpg-03e482d929e13505287ec164e8b1e4db.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/snow-lantern/model_glb_2.jpg"
-dest_files=["res://.godot/imported/model_glb_2.jpg-03e482d929e13505287ec164e8b1e4db.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_glb_2.jpg-03e482d929e13505287ec164e8b1e4db.s3tc.ctex", "res://.godot/imported/model_glb_2.jpg-03e482d929e13505287ec164e8b1e4db.etc2.ctex"]
 
 [params]
 

@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://byeo0h2ski36t"
 path.s3tc="res://.godot/imported/model_glb_1.jpg-46bb206c52e330e20d97a146ca4ebd4f.s3tc.ctex"
+path.etc2="res://.godot/imported/model_glb_1.jpg-46bb206c52e330e20d97a146ca4ebd4f.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/wooden-stool/model_glb_1.jpg"
-dest_files=["res://.godot/imported/model_glb_1.jpg-46bb206c52e330e20d97a146ca4ebd4f.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_glb_1.jpg-46bb206c52e330e20d97a146ca4ebd4f.s3tc.ctex", "res://.godot/imported/model_glb_1.jpg-46bb206c52e330e20d97a146ca4ebd4f.etc2.ctex"]
 
 [params]
 

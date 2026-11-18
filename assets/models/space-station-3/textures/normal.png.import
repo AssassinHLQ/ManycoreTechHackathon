@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://dtp82mul7m7le"
 path.s3tc="res://.godot/imported/normal.png-f781a9d0796a30a31a8f0446e0101786.s3tc.ctex"
+path.etc2="res://.godot/imported/normal.png-f781a9d0796a30a31a8f0446e0101786.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/space-station-3/textures/normal.png"
-dest_files=["res://.godot/imported/normal.png-f781a9d0796a30a31a8f0446e0101786.s3tc.ctex"]
+dest_files=["res://.godot/imported/normal.png-f781a9d0796a30a31a8f0446e0101786.s3tc.ctex", "res://.godot/imported/normal.png-f781a9d0796a30a31a8f0446e0101786.etc2.ctex"]
 
 [params]
 

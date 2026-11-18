@@ -47,26 +47,31 @@ func _run() -> void:
 	print("  飞船 长=%.2f 翼展=%.2f 高=%.2f" % [ship.ship_model_length, ship.ship_model_span, ship.ship_model_height])
 	print("  玩家胶囊身高 1.65 m")
 	print("  机高/玩家身高 = %.2f" % (ship.ship_model_height / 1.65))
-	_check(ship.ship_model_height > 1.65, "机高应当高于玩家身高")
+	_check(ship.ship_model_length > 0.01 and ship.ship_model_span > 0.01 and ship.ship_model_height > 1.65,
+		"程序化或外部飞船都应填充真实网格尺寸")
+	_check(ship._ship_model_root == null, "开场不加载外部大尺寸 GLB")
 
-	print("\n=== 2. 着陆状态下第三人称能不能绕船转 ===")
+	print("\n=== 2. 第三人称相机跟随机头 ===")
 	game.state = "ship"
 	player.visible = false
 	ship.camera.current = true
 	ship.landed = true
 	ship.toggle_third_person()
-	var yaw0: float = ship.orbit_yaw
-	var pitch0: float = ship.orbit_pitch
+	ship._update_third_person_camera(0.0)
+	var forward: Vector3 = -ship.global_transform.basis.z.normalized()
+	var camera_forward: Vector3 = -ship.camera.global_transform.basis.z.normalized()
 	_drag(ship, 60.0)
-	print("  着陆时拖动后 yaw: %.4f -> %.4f" % [yaw0, ship.orbit_yaw])
-	_check(absf(ship.orbit_yaw - yaw0) > 0.001, "landed: dragging the mouse orbits the camera")
+	print("  机头/相机前向夹角余弦 = %.4f" % forward.dot(camera_forward))
+	_check(forward.dot(camera_forward) > 0.98, "third-person camera stays aligned with the ship nose")
 
-	print("\n=== 3. 飞行状态下第三人称能不能绕船转 ===")
+	print("\n=== 3. 飞行状态下第三人称仍跟随机头 ===")
 	ship.landed = false
-	var yaw1: float = ship.orbit_yaw
+	ship._update_third_person_camera(0.0)
+	var forward_flight: Vector3 = -ship.global_transform.basis.z.normalized()
+	var camera_forward_flight: Vector3 = -ship.camera.global_transform.basis.z.normalized()
 	_drag(ship, 60.0)
-	print("  飞行时拖动后 yaw: %.4f -> %.4f" % [yaw1, ship.orbit_yaw])
-	_check(absf(ship.orbit_yaw - yaw1) > 0.001, "flying: dragging the mouse orbits the camera")
+	print("  机头/相机前向夹角余弦 = %.4f" % forward_flight.dot(camera_forward_flight))
+	_check(forward_flight.dot(camera_forward_flight) > 0.98, "flying third-person camera stays aligned")
 
 	print("\n=== 4. 尾焰 ===")
 	ship.landed = true

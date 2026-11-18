@@ -42,12 +42,6 @@ project/assembly_name="借一扇晴天"
 
 [physics]
 
-; 物理插值：开着才不会「按 60Hz 整步跳」。
-; ⚠ 2026-11-11 实测（tests/probe_frame_step.gd，1280x720 窗口）：
-;   渲染 43.8 fps + 物理 60 Hz + 本项关闭
-;   → 飞船每帧位移在 4.85 米 / 9.81 米之间来回跳（1 步 / 2 步），
-;     画面上就是速度忽快忽慢的抖动。开启后渲染侧在两个物理快照之间插值，
-;     任意帧率下位移都连续。
 common/physics_interpolation=true
 
 [rendering]
@@ -58,6 +52,6 @@ textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/size=2048
 anti_aliasing/quality/msaa_3d=2
 limits/opengl/max_lights_per_object=16
+environment/defaults/default_clear_color=Color(0.005, 0.008, 0.025, 1)
 limits/opengl/max_lights_per_object.web=4
 limits/opengl/max_renderable_lights.web=8
-environment/defaults/default_clear_color=Color(0.005, 0.008, 0.025, 1)

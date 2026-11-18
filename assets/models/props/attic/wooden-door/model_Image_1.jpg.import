@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://cwkqc744xhcbj"
 path.s3tc="res://.godot/imported/model_Image_1.jpg-50b844003299e0f0a0c2efc3724a33c1.s3tc.ctex"
+path.etc2="res://.godot/imported/model_Image_1.jpg-50b844003299e0f0a0c2efc3724a33c1.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/wooden-door/model_Image_1.jpg"
-dest_files=["res://.godot/imported/model_Image_1.jpg-50b844003299e0f0a0c2efc3724a33c1.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_Image_1.jpg-50b844003299e0f0a0c2efc3724a33c1.s3tc.ctex", "res://.godot/imported/model_Image_1.jpg-50b844003299e0f0a0c2efc3724a33c1.etc2.ctex"]
 
 [params]
 

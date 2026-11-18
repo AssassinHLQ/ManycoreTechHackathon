@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://b2buwg2i4itdf"
 path.s3tc="res://.godot/imported/base_color.png-0cde8f496f95069d7cdc94fc1e2c79b4.s3tc.ctex"
+path.etc2="res://.godot/imported/base_color.png-0cde8f496f95069d7cdc94fc1e2c79b4.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/ship-fighter/textures/base_color.png"
-dest_files=["res://.godot/imported/base_color.png-0cde8f496f95069d7cdc94fc1e2c79b4.s3tc.ctex"]
+dest_files=["res://.godot/imported/base_color.png-0cde8f496f95069d7cdc94fc1e2c79b4.s3tc.ctex", "res://.godot/imported/base_color.png-0cde8f496f95069d7cdc94fc1e2c79b4.etc2.ctex"]
 
 [params]
 

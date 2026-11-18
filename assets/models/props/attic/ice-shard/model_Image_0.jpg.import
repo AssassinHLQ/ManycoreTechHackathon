@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://cwb03k6hu8pfu"
 path.s3tc="res://.godot/imported/model_Image_0.jpg-55852bd6e210c8b5c4ad57461a58cdfa.s3tc.ctex"
+path.etc2="res://.godot/imported/model_Image_0.jpg-55852bd6e210c8b5c4ad57461a58cdfa.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/ice-shard/model_Image_0.jpg"
-dest_files=["res://.godot/imported/model_Image_0.jpg-55852bd6e210c8b5c4ad57461a58cdfa.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_Image_0.jpg-55852bd6e210c8b5c4ad57461a58cdfa.s3tc.ctex", "res://.godot/imported/model_Image_0.jpg-55852bd6e210c8b5c4ad57461a58cdfa.etc2.ctex"]
 
 [params]
 

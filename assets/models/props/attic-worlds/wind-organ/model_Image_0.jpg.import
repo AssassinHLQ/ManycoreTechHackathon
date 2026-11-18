@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://b0g8msty78clo"
 path.s3tc="res://.godot/imported/model_Image_0.jpg-54dec3f4cf026ab0faf747f89a3fe9d0.s3tc.ctex"
+path.etc2="res://.godot/imported/model_Image_0.jpg-54dec3f4cf026ab0faf747f89a3fe9d0.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic-worlds/wind-organ/model_Image_0.jpg"
-dest_files=["res://.godot/imported/model_Image_0.jpg-54dec3f4cf026ab0faf747f89a3fe9d0.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_Image_0.jpg-54dec3f4cf026ab0faf747f89a3fe9d0.s3tc.ctex", "res://.godot/imported/model_Image_0.jpg-54dec3f4cf026ab0faf747f89a3fe9d0.etc2.ctex"]
 
 [params]
 

@@ -41,16 +41,18 @@ func _run() -> void:
 
 	context.in_station = true
 	await process_frame
-	_check(audio.active_music == "attic" and audio.attic_music.playing, "station switches to the Chopin score")
+	_check(audio.active_music == "station" and audio.station_music.playing and not audio.attic_music.playing,
+		"station switches to the dedicated Chopin score")
 	context.in_station = false
 	context.in_attic = true
 	await process_frame
-	_check(audio.active_music == "attic", "attic shares the station score")
+	_check(audio.active_music == "attic" and audio.attic_music.playing and not audio.station_music.playing,
+		"attic keeps its separate Waltz score")
 
 	context.state = "dying"
 	audio.fade_music_for_death()
 	await create_timer(audio.MUSIC_FADE_OUT_SECONDS + 0.25).timeout
-	_check(not audio.attic_music.playing, "death fades and stops the current score")
+	_check(not audio.attic_music.playing and not audio.station_music.playing, "death fades and stops the current score")
 
 	context.in_attic = false
 	context.state = "walk"

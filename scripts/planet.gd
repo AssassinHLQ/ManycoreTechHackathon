@@ -16,6 +16,10 @@ var _baked_collision_path := ""
 
 var game: Node3D
 var planet_id := ""
+## Real-game streaming proxy. Headless tests keep the full scene path so they
+## continue to validate every baked prop and collision binding.
+var stream_proxy := false
+var stream_loading := false
 var display_name := ""
 var description := ""
 var kind := "rock"
@@ -743,8 +747,11 @@ static var _prop_cache_order: Array = []
 ## 淘汰时必须跳过这些：它们的 Mesh 被 MultiMesh 持有，卸载只会导致
 ## 下次重新载入一份新的，而旧的仍然活着 —— 内存不降反升。
 static var _prop_in_use := {}
-## 每种道具的共享碰撞形状（由可见网格生成，见 _prop_collision_shape）。
-## 同一进程里所有星球复用，简化后的凸碰撞只建一次。
+## 每种道具的共享碰撞形状（由可见网格生成，见 _prop_collision_shapes）。
+## 同一进程里所有星球复用，简化后的空间分块凸包只建一次。
+## 每类道具缓存一组局部凸分解块。
+## 单个 ConvexPolygonShape3D 会把复杂道具的凹槽和空洞全部填满，
+## 所以缓存项同时保存 shape 与它在网格局部空间中的 transform。
 static var _prop_shape_cache := {}
 
 ## Low ground plants participate in the vegetation density setting.
@@ -809,6 +816,12 @@ func _ready() -> void:
 		prop_scale = radius / terrain_reference_radius
 		site_pad_radius *= prop_scale
 	site_height = _raw_terrain_height(site_direction)
+	if stream_proxy:
+		_update_orbit()
+		_build_stream_proxy_visual()
+		runtime_scene_ready = true
+		runtime_scene_ready_finished.emit()
+		return
 	_setup_cave()
 	_update_orbit()
 	if not "--rebake-runtime" in OS.get_cmdline_user_args() and await RuntimeBake.load_generated(self, "planet_" + planet_id, SurfaceBake._signature(self)):
@@ -860,6 +873,29 @@ func _ready() -> void:
 	set_meta("bake_children", get_children())
 	runtime_scene_ready = true
 	runtime_scene_ready_finished.emit()
+
+
+func _build_stream_proxy_visual() -> void:
+	var mesh := SphereMesh.new()
+	mesh.radius = radius
+	mesh.height = radius * 2.0
+	mesh.radial_segments = 20
+	mesh.rings = 10
+	var material := StandardMaterial3D.new()
+	material.albedo_color = base_color
+	material.roughness = 0.82
+	material.metallic = 0.04
+	material.emission_enabled = true
+	material.emission = accent_color * 0.08
+	material.emission_energy_multiplier = 0.35
+	var visual := MeshInstance3D.new()
+	visual.name = "StreamProxyVisual"
+	visual.mesh = mesh
+	visual.material_override = material
+	visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	visual.visibility_range_end = 260000.0
+	add_child(visual)
+	set_meta("stream_proxy", true)
 
 
 func _setup_cave() -> void:
@@ -2471,8 +2507,8 @@ const PROP_COLLIDER_CAP := 260
 func _add_prop_colliders(entries: Array, prop_id: String, mesh: Mesh, aabb: AABB) -> void:
 	if prop_id in GROUND_COVER_PROPS:
 		return
-	var shape: Shape3D = _prop_collision_shape(prop_id, mesh)
-	if shape == null:
+	var shape_parts: Array = _prop_collision_shapes(prop_id, mesh)
+	if shape_parts.is_empty():
 		return
 	var limit: float = site_pad_radius * 2.2
 	var site_dir: Vector3 = site_direction.normalized()
@@ -2500,51 +2536,104 @@ func _add_prop_colliders(entries: Array, prop_id: String, mesh: Mesh, aabb: AABB
 	for e in picked:
 		var dir: Vector3 = e["dir"]
 		var size: float = float(e["size"])
-		var collision := CollisionShape3D.new()
 		var k: float = size / maxf(aabb.size.y, 0.001)
 		var basis := Basis(Quaternion(Vector3.UP, dir))
 		basis = basis.rotated(dir, float(e["yaw"]))
 		basis = basis.scaled(Vector3.ONE * k)
 		var origin: Vector3 = surface_position(dir,
 			float(e["altitude"]) - aabb.position.y * k)
-		collision.shape = shape
-		collision.transform = Transform3D(basis, origin)
-		body.add_child(collision)
+		var instance_transform := Transform3D(basis, origin)
+		for part in shape_parts:
+			var collision := CollisionShape3D.new()
+			collision.shape = part["shape"] as Shape3D
+			collision.transform = instance_transform * (part["transform"] as Transform3D)
+			body.add_child(collision)
 
 
 ## 由可见网格生成共享碰撞形状，全进程每种道具一份。
 ##
 ## 旧版把完整 render mesh 直接做成 ConcavePolygonShape3D。高模上的
 ## 微小三角面会变成玩家脚下的细碎台阶，尤其是站点平台和楼梯最明显。
-## 这里使用引擎自带的清理 + 简化凸包，保留资产的大轮廓，同时把碰撞
-## 顶点数压到适合实时移动的范围。凹陷很深或几何退化时用 AABB 凸包兜底。
-static func _prop_collision_shape(prop_id: String, mesh: Mesh) -> Shape3D:
+## 这里使用 2×2×2 空间分块凸包，保留资产的大轮廓和主要空隙，同时把碰撞
+## 块数压到适合实时移动的范围。几何退化或分解失败时用带中心偏移的盒体兜底。
+static func _prop_collision_shapes(prop_id: String, mesh: Mesh) -> Array:
 	if _prop_shape_cache.has(prop_id):
 		return _prop_shape_cache[prop_id]
-	var shape: Shape3D = null
+	var parts: Array = []
 	if mesh != null:
 		var box := mesh.get_aabb()
 		var has_volume := box.size.x > 0.00001 and box.size.y > 0.00001 and box.size.z > 0.00001
 		if has_volume:
-			var convex := mesh.create_convex_shape(true, true)
-			if convex != null and convex.points.size() >= 4:
-				shape = convex
-		if shape == null and has_volume:
-			if box.size.length_squared() > 0.000001:
-				var fallback := ConvexPolygonShape3D.new()
-				fallback.points = PackedVector3Array([
-					box.position,
-					box.position + Vector3(box.size.x, 0.0, 0.0),
-					box.position + Vector3(0.0, box.size.y, 0.0),
-					box.position + Vector3(0.0, 0.0, box.size.z),
-					box.position + Vector3(box.size.x, box.size.y, 0.0),
-					box.position + Vector3(box.size.x, 0.0, box.size.z),
-					box.position + Vector3(0.0, box.size.y, box.size.z),
-					box.end,
-				])
-				shape = fallback
-	_prop_shape_cache[prop_id] = shape
-	return shape
+			var vertices := _mesh_vertices(mesh)
+			if vertices.size() > 512:
+				parts = _spatial_convex_parts(vertices, box)
+			else:
+				var convex := mesh.create_convex_shape(true, true)
+				if convex != null and convex.points.size() >= 4:
+					parts.append({"shape": convex, "transform": Transform3D.IDENTITY})
+		if parts.is_empty() and box.size.length_squared() > 0.000001:
+			# 退化或分解失败时使用带中心偏移的盒体，避免旧版把 box.position
+			# 当作 shape 原点造成二次偏移。
+			var fallback := BoxShape3D.new()
+			fallback.size = Vector3(maxf(box.size.x, 0.02),
+				maxf(box.size.y, 0.02), maxf(box.size.z, 0.02))
+			parts.append({
+				"shape": fallback,
+				"transform": Transform3D(Basis.IDENTITY, box.get_center()),
+			})
+	_prop_shape_cache[prop_id] = parts
+	return parts
+
+
+## 从网格顶点构造最多 8 个局部凸包。
+## 这是一个线性预处理，避免 HACD 在每个高模道具上重复耗时分解。
+static func _mesh_vertices(mesh: Mesh) -> PackedVector3Array:
+	var vertices := PackedVector3Array()
+	for surface_index in range(mesh.get_surface_count()):
+		var arrays: Array = mesh.surface_get_arrays(surface_index)
+		if arrays.size() <= Mesh.ARRAY_VERTEX or arrays[Mesh.ARRAY_VERTEX] == null:
+			continue
+		var surface_vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		vertices.append_array(surface_vertices)
+	return vertices
+
+
+static func _spatial_convex_parts(vertices: PackedVector3Array, bounds: AABB) -> Array:
+	var bins: Array = []
+	for _i in range(8):
+		bins.append(PackedVector3Array())
+	var inv_size := Vector3(
+		1.0 / maxf(bounds.size.x, 0.0001),
+		1.0 / maxf(bounds.size.y, 0.0001),
+		1.0 / maxf(bounds.size.z, 0.0001))
+	for point in vertices:
+		var uvw := (point - bounds.position) * inv_size
+		var ix := clampi(int(floor(uvw.x * 2.0)), 0, 1)
+		var iy := clampi(int(floor(uvw.y * 2.0)), 0, 1)
+		var iz := clampi(int(floor(uvw.z * 2.0)), 0, 1)
+		var bin_index := ix + iy * 2 + iz * 4
+		var bin: PackedVector3Array = bins[bin_index]
+		bin.append(point)
+		bins[bin_index] = bin
+
+	var parts: Array = []
+	for bin in bins:
+		var points: PackedVector3Array = bin
+		if points.size() < 4:
+			continue
+		# 每块最多保留 192 个点，避免把高模顶点直接带进物理服务器。
+		if points.size() > 192:
+			var sampled := PackedVector3Array()
+			var stride := maxi(1, int(ceil(float(points.size()) / 192.0)))
+			for i in range(0, points.size(), stride):
+				sampled.append(points[i])
+			points = sampled
+		if points.size() < 4:
+			continue
+		var convex := ConvexPolygonShape3D.new()
+		convex.points = points
+		parts.append({"shape": convex, "transform": Transform3D.IDENTITY})
+	return parts
 
 
 ## 把 prop_queue 里排好的道具落成 MultiMeshInstance3D。
@@ -2875,10 +2964,11 @@ func _workshop_collision(model: Node3D, outpost: Node3D, body: StaticBody3D) -> 
 			if walker is Node3D:
 				xf = walker.transform * xf
 			walker = walker.get_parent()
-		var shape := CollisionShape3D.new()
-		shape.shape = _prop_collision_shape("workshop_%s" % mi.mesh.get_rid().get_id(), mi.mesh)
-		shape.transform = xf
-		body.add_child(shape)
+		for part in _prop_collision_shapes("workshop_%s" % mi.mesh.get_rid().get_id(), mi.mesh):
+			var shape := CollisionShape3D.new()
+			shape.shape = part["shape"] as Shape3D
+			shape.transform = xf * (part["transform"] as Transform3D)
+			body.add_child(shape)
 
 
 ## 外星生物布置（见 CREATURE_PROPS）。

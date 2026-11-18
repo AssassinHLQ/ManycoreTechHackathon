@@ -14,11 +14,19 @@ func _run() -> void:
 		quit(2)
 		return
 	# This dedicated generated directory contains no authored assets.
-	var directory := "res://assets/runtime_bakes/"
+	var directory := "res://assets/runtime_bakes/streamed/"
+	var legacy_directory := "res://assets/runtime_bakes/"
+	for filename in DirAccess.get_files_at(legacy_directory):
+		if filename.get_extension() in ["res", "scn"]:
+			var cleanup_error := DirAccess.remove_absolute(ProjectSettings.globalize_path(legacy_directory + filename))
+			if cleanup_error != OK:
+				push_error("Cannot clear legacy runtime bake: " + filename)
+				quit(1)
+				return
 	DirAccess.make_dir_recursive_absolute(directory)
 	for filename in DirAccess.get_files_at(directory):
 		if filename.get_extension() in ["res", "scn"]:
-			var error := DirAccess.remove_absolute(directory + filename)
+			var error := DirAccess.remove_absolute(ProjectSettings.globalize_path(directory + filename))
 			if error != OK:
 				push_error("Cannot clear old runtime bake: " + filename)
 				quit(1)
@@ -81,7 +89,7 @@ func _run() -> void:
 		quit(1)
 		return
 	print("BAKED STATION")
-	error = preload("res://tools/bake_runtime_lods.gd").generate()
+	error = preload("res://tools/bake_runtime_lods.gd").generate(directory)
 	if error != OK:
 		push_error("Visual LOD bake failed: " + error_string(error))
 		quit(1)

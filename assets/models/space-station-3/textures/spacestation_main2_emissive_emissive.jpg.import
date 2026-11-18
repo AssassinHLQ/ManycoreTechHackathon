@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://j32pi4r6i2ju"
 path.s3tc="res://.godot/imported/spacestation_main2_emissive_emissive.jpg-1a22e54aa4402689ef719f0d8f65e25b.s3tc.ctex"
+path.etc2="res://.godot/imported/spacestation_main2_emissive_emissive.jpg-1a22e54aa4402689ef719f0d8f65e25b.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/space-station-3/textures/spacestation_main2_emissive_emissive.jpg"
-dest_files=["res://.godot/imported/spacestation_main2_emissive_emissive.jpg-1a22e54aa4402689ef719f0d8f65e25b.s3tc.ctex"]
+dest_files=["res://.godot/imported/spacestation_main2_emissive_emissive.jpg-1a22e54aa4402689ef719f0d8f65e25b.s3tc.ctex", "res://.godot/imported/spacestation_main2_emissive_emissive.jpg-1a22e54aa4402689ef719f0d8f65e25b.etc2.ctex"]
 
 [params]
 

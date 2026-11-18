@@ -20,11 +20,9 @@ func _run() -> void:
 	await game.await_world_ready()
 	await process_frame
 
-	var ShipScript = load("res://scripts/ship.gd")
-	var sink: float = ShipScript.SHIP_MODEL_GROUND_SINK
-	var rest: float = ShipScript.LANDING_REST_ALT
+	var rest: float = game.ship.ground_rest_altitude()
 	print("=== 常量 ===")
-	print("  SHIP_MODEL_GROUND_SINK = %.2f m   LANDING_REST_ALT = %.2f m" % [sink, rest])
+	print("  当前模型停靠高度 = %.2f m" % rest)
 
 	var home = game.home
 	var normal := Vector3.UP
@@ -44,16 +42,16 @@ func _run() -> void:
 	print("  landed = %s，用了 %d 帧（%.1f 秒）" % [
 		str(game.ship.landed), frames, frames / 60.0])
 
-	# landed 分支每帧会用 LANDING_REST_ALT 重钉位置，再推一帧读最终值
+	# landed 分支每帧会用当前模型停靠高度重钉位置，再推一帧读最终值
 	game.ship._physics_process(1.0 / 60.0)
 	var dir: Vector3 = (game.ship.global_position - home.global_position).normalized()
 	var terrain: float = home.terrain_height(dir)
 	var altitude: float = game.ship.global_position.distance_to(home.global_position) - terrain
-	var belly: float = altitude - sink
+	var belly: float = altitude - rest
 	print("=== 落稳后实测 ===")
 	print("  船体原点离地 = %.2f m（期望 %.2f）" % [altitude, rest])
 	print("  机腹相对地表 = %+.2f m（0=贴地，负数=陷地）" % belly)
-	print("  对照旧常量 2.3：机腹 = %+.2f m" % (2.3 - sink))
+	print("  机腹相对停靠高度 = %+.2f m" % (altitude - rest))
 
 	if FileAccess.file_exists(save):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(save))

@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://d16lhv8txmvya"
 path.s3tc="res://.godot/imported/model_glb_1.jpg-19f4fe0bfb654be64081dcc7e2a59911.s3tc.ctex"
+path.etc2="res://.godot/imported/model_glb_1.jpg-19f4fe0bfb654be64081dcc7e2a59911.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/side-cabinet/model_glb_1.jpg"
-dest_files=["res://.godot/imported/model_glb_1.jpg-19f4fe0bfb654be64081dcc7e2a59911.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_glb_1.jpg-19f4fe0bfb654be64081dcc7e2a59911.s3tc.ctex", "res://.godot/imported/model_glb_1.jpg-19f4fe0bfb654be64081dcc7e2a59911.etc2.ctex"]
 
 [params]
 

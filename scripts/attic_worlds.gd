@@ -79,7 +79,8 @@ func build() -> void:
 		holder.name = "World_%s" % key.capitalize()
 		holder.position = origin
 		add_child(holder)
-		if use_authored_scenes and Authoring.load_world(self, key, holder):
+		if use_authored_scenes and await Authoring.load_world(self, key, holder):
+			await get_tree().process_frame
 			continue
 		# 内容层：按原作尺度缩放并平移对齐。玩家挂在外层 holder（不缩放），
 		# 所以放大场地不会改到玩家的重力、步速与体积。
@@ -148,7 +149,8 @@ func build() -> void:
 			Authoring.add_story_sign(content, key)
 			Authoring.stable_names(content)
 			if use_authored_scenes:
-				Authoring.install(self, key)
+				await Authoring.install(self, key)
+		await get_tree().process_frame
 	set_active_world("")
 	_build_scope_archive()
 
@@ -298,13 +300,16 @@ func _build_return_portal(holder: Node3D, _key: String, color: Color, at: Vector
 	frame.name = "ReturnPortal"
 	frame.position = at
 	holder.add_child(frame)
-	var glow := _mat(color, 1.8)
+	var glow := _mat(color, 1.0)
 	var wood := _mat(Color("4a3627"))
 	for side in [-1.0, 1.0]:
 		_box(frame, Vector3(0.16, 2.2, 0.16), Vector3(side * 0.62, 1.1, 0), wood)
 	_box(frame, Vector3(1.42, 0.16, 0.16), Vector3(0, 2.2, 0), wood)
-	_box(frame, Vector3(1.10, 1.92, 0.05), Vector3(0, 1.06, 0.02), glow)
-	_light(frame, Vector3(0, 1.2, 0.6), color, 1.4, 7.0)
+	for side in [-1.0, 1.0]:
+		_box(frame, Vector3(0.045, 1.86, 0.06), Vector3(side * 0.52, 1.06, 0.055), glow)
+	_box(frame, Vector3(1.08, 0.045, 0.06), Vector3(0, 2.02, 0.055), glow)
+	_box(frame, Vector3(1.08, 0.04, 0.06), Vector3(0, 0.11, 0.055), glow)
+	_light(frame, Vector3(0, 1.2, 0.6), color, 1.0, 6.0)
 	var anchor := _anchor(frame, "WorldAnchor_Return", Vector3(0, 1.0, 1.1))
 	return anchor
 
@@ -630,12 +635,23 @@ func _build_alley(holder: Node3D) -> Dictionary:
 
 # --- 镜界 -------------------------------------------------------------------
 func _build_mirror(holder: Node3D) -> Dictionary:
-	# 镜像阁楼：同样的房间轮廓，但冷色、反向、空无一人。
-	var floor_mat := _mat(Color("3d4450"), 0.16)
-	var wall_mat := _mat(Color("55606e"), 0.20)
-	var glow := _mat(Color("cfe0e6"), 0.6)
+	# 镜界是开放式镜厅，正面入口保持通畅，房间结构本身全部可见。
+	var floor_mat := _mat(Color("353e49"), 0.02)
+	floor_mat.roughness = 0.34
+	floor_mat.metallic = 0.22
+	var wall_mat := _mat(Color("46525e"), 0.02)
+	wall_mat.roughness = 0.58
+	var trim_mat := _mat(Color("78858c"), 0.05)
+	trim_mat.roughness = 0.32
+	trim_mat.metallic = 0.48
+	var brass_mat := _mat(Color("a88d5d"), 0.08)
+	brass_mat.roughness = 0.38
+	brass_mat.metallic = 0.56
+	var glass_mat := _mat(Color("8ca4ad"), 0.04)
+	glass_mat.roughness = 0.44
+	glass_mat.metallic = 0.18
+	var seam_mat := _mat(Color("9dc7c8"), 0.38)
 	var world_collision := _build_ground(holder, floor_mat)
-	# 露天镜面庭院：地板 + 三面墙（正面敞开，方便从外面看进去）
 	var half_x := 6.0
 	var half_z := 5.0
 	var height := 3.4
@@ -645,25 +661,85 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 		var wall_position := Vector3(side * half_x, height * 0.5, 0)
 		_box(holder, side_wall_size, wall_position, wall_mat)
 		_box_collision(world_collision, side_wall_size, wall_position)
-	# 只有背面（-Z）与两侧，正面 +Z 敞开
 	var back_wall_size := Vector3(half_x * 2.0, height, 0.3)
 	var back_wall_position := Vector3(0, height * 0.5, -half_z)
 	_box(holder, back_wall_size, back_wall_position, wall_mat)
 	_box_collision(world_collision, back_wall_size, back_wall_position)
-	# 镜面倒影：地面上一块更亮的区域 + 竖向反光条
-	_box(holder, Vector3(7.4, 0.02, 6.2), Vector3(0, 0.22, 0), glow)
-	for i in range(7):
-		var x := -4.8 + float(i) * 1.6
-		_box(holder, Vector3(0.06, 2.6, 0.06), Vector3(x, 1.5, -half_z + 0.5), glow)
-	# 棱镜之心：悬浮在房间中央的台座上
-	var pedestal := _prop("mirror-plinth", 0.9)
-	if pedestal != null:
-		Placement.fit(pedestal, Vector3(1.5, 0.9, 1.5))
-		pedestal.position = Vector3(0, 0.2, 0)
-		holder.add_child(pedestal)
-	else:
-		pedestal = _cyl(holder, 0.55, 0.75, 0.9, Vector3(0, 0.65, 0), _mat(Color("4a5260")), 10)
+
+	# Dark reflective flooring has a framed edge and an inlaid route to the altar.
+	var mirror_floor_mat := _mat(Color("53616b"), 0.02)
+	mirror_floor_mat.roughness = 0.48
+	mirror_floor_mat.metallic = 0.14
+	_box(holder, Vector3(9.5, 0.024, 7.5), Vector3(0, 0.214, 0), mirror_floor_mat)
+	for side in [-1.0, 1.0]:
+		_box(holder, Vector3(9.5, 0.045, 0.09), Vector3(0, 0.245, side * 3.78), brass_mat)
+		_box(holder, Vector3(0.09, 0.045, 7.5), Vector3(side * 4.78, 0.245, 0), brass_mat)
+	var route_mat := _mat(Color("65747c"), 0.02)
+	route_mat.roughness = 0.3
+	route_mat.metallic = 0.3
+	for z in [4.0, 3.0, 2.0]:
+		_box(holder, Vector3(1.45, 0.035, 0.72), Vector3(0, 0.245, z), route_mat)
+		_box(holder, Vector3(0.045, 0.018, 0.34), Vector3(0, 0.272, z), seam_mat)
+
+	# Wall rails, mullions, and five full mirror panels replace the isolated light bars.
+	_box(holder, Vector3(11.5, 0.14, 0.14), Vector3(0, 0.34, -4.79), trim_mat)
+	_box(holder, Vector3(11.5, 0.12, 0.14), Vector3(0, 3.28, -4.79), trim_mat)
+	var panel_xs := [-4.45, -2.25, 0.0, 2.25, 4.45]
+	for i in range(panel_xs.size()):
+		var x := float(panel_xs[i])
+		var panel_width := 1.5 if i == 2 else 1.25
+		var panel_height := 2.55 if i == 2 else 2.25
+		var panel_y := 1.82 if i == 2 else 1.72
+		var frame_mat: Material = brass_mat if i == 2 else trim_mat
+		var mirror_panel := _box(holder, Vector3(panel_width - 0.16, panel_height - 0.16, 0.05),
+			Vector3(x, panel_y, -4.77), glass_mat)
+		mirror_panel.name = "MirrorPanel_%02d" % i
+		for side in [-1.0, 1.0]:
+			_box(holder, Vector3(0.09, panel_height, 0.13),
+				Vector3(x + side * panel_width * 0.5, panel_y, -4.69), frame_mat)
+		for side in [-1.0, 1.0]:
+			_box(holder, Vector3(panel_width + 0.08, 0.09, 0.13),
+				Vector3(x, panel_y + side * panel_height * 0.5, -4.69), frame_mat)
+		_box(holder, Vector3(panel_width - 0.32, 0.025, 0.018),
+			Vector3(x, panel_y, -4.735), seam_mat)
+
+	# Matching inset panels continue along both side walls without obstructing the gate.
+	for side in [-1.0, 1.0]:
+		for z in [-3.25, 3.25]:
+			_box(holder, Vector3(0.05, 1.95, 1.25), Vector3(side * 5.78, 1.78, z), glass_mat)
+			for edge in [-1.0, 1.0]:
+				_box(holder, Vector3(0.13, 2.08, 0.09),
+					Vector3(side * 5.70, 1.78, z + edge * 0.67), trim_mat)
+			for edge in [-1.0, 1.0]:
+				_box(holder, Vector3(0.13, 0.09, 1.42),
+					Vector3(side * 5.70, 1.78 + edge * 1.04, z), trim_mat)
+	for side in [-1.0, 1.0]:
+		_box(holder, Vector3(0.14, 0.14, 9.5), Vector3(side * 5.79, 0.34, 0), trim_mat)
+		_box(holder, Vector3(0.12, 0.12, 9.5), Vector3(side * 5.79, 3.28, 0), trim_mat)
+
+	# A stepped, octagonal altar remains legible after the collectible is taken.
+	var pedestal := Node3D.new()
 	pedestal.name = "Pedestal"
+	holder.add_child(pedestal)
+	var pedestal_dark := _mat(Color("303942"))
+	pedestal_dark.roughness = 0.3
+	pedestal_dark.metallic = 0.42
+	_cyl(pedestal, 1.02, 1.2, 0.22, Vector3(0, 0.34, 0), pedestal_dark, 8)
+	_cyl(pedestal, 0.72, 1.02, 0.48, Vector3(0, 0.69, 0), wall_mat, 8)
+	_cyl(pedestal, 0.95, 0.72, 0.14, Vector3(0, 1.0, 0), trim_mat, 8)
+	_cyl(pedestal, 0.79, 0.79, 0.055, Vector3(0, 1.095, 0), brass_mat, 8)
+	var altar_halo_mesh := TorusMesh.new()
+	altar_halo_mesh.inner_radius = 1.18
+	altar_halo_mesh.outer_radius = 1.25
+	altar_halo_mesh.rings = 48
+	altar_halo_mesh.ring_segments = 8
+	var altar_halo := MeshInstance3D.new()
+	altar_halo.name = "MirrorHeartHalo"
+	altar_halo.mesh = altar_halo_mesh
+	altar_halo.position = Vector3(0, 1.95, -0.18)
+	altar_halo.rotation.x = PI * 0.5
+	altar_halo.material_override = brass_mat
+	pedestal.add_child(altar_halo)
 
 	# 用 Lux3D 棱镜模型当**外观**，但里面保留一颗强自发光核心 ——
 	# 它是剧情核心物件，必须「看得出发光」，外部模型的 PBR 材质做不到。
@@ -686,24 +762,36 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 	if heart_prop != null:
 		heart_base.scale = Vector3(0.55, 0.7, 0.55)
 	_light(heart_bundle, Vector3(0, 1.9, 0), Color("d9efff"), 3.4, 20.0)
-	_light(holder, Vector3(-4.0, 2.6, 3.0), Color("b9cfe0"), 2.0, 16.0)
-	_light(holder, Vector3(4.0, 2.6, -3.0), Color("b9cfe0"), 2.0, 16.0)
-	_light(holder, Vector3(0, 3.0, 4.2), Color("dfe9f6"), 1.6, 12.0)
+	_light(holder, Vector3(-4.0, 2.6, 3.0), Color("b9cfe0"), 1.5, 14.0)
+	_light(holder, Vector3(4.0, 2.6, -3.0), Color("b9cfe0"), 1.5, 14.0)
+	_light(holder, Vector3(0, 3.0, 4.2), Color("dfe9f6"), 1.15, 11.0)
 	var heart_anchor := _anchor(holder, "WorldAnchor_PrismHeart", Vector3(0, 1.6, 1.2))
 	var portal_anchor := _build_return_portal(holder, "mirror", Color("cfe0e6"), Vector3(0, 0, 8.4))
 	# 镜牢门：镜界东侧一道更高的门，通向镜牢回廊
 	var gate_root := Node3D.new()
 	gate_root.name = "DungeonGate"
-	gate_root.position = Vector3(5.6, 0.0, -1.0)
+	gate_root.position = Vector3(4.25, 0.0, -1.0)
 	holder.add_child(gate_root)
 	var gate_mat := _mat(Color("3a4250"))
-	var gate_glow := _mat(Color("cfe0e6"), 1.2)
+	gate_mat.roughness = 0.3
+	gate_mat.metallic = 0.46
+	var gate_glow := _mat(Color("9bc7cd"), 0.45)
+	var gate_field := StandardMaterial3D.new()
+	gate_field.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	gate_field.albedo_color = Color("35474f", 0.72)
+	gate_field.metallic = 0.3
+	gate_field.roughness = 0.28
 	for side in [-1.0, 1.0]:
 		_box(gate_root, Vector3(0.36, 4.0, 0.5), Vector3(side * 1.3, 2.0, 0), gate_mat)
 	_box(gate_root, Vector3(3.0, 0.5, 0.5), Vector3(0, 4.2, 0), gate_mat)
-	var gate_pane := _box(gate_root, Vector3(2.2, 3.6, 0.06), Vector3(0, 2.0, 0.06), gate_glow)
+	var gate_pane := _box(gate_root, Vector3(2.2, 3.6, 0.06), Vector3(0, 2.0, 0.06), gate_field)
 	gate_pane.name = "DungeonGatePane"
-	_light(gate_root, Vector3(0, 2.2, 0.8), Color("cfe0e6"), 1.8, 12.0)
+	for side in [-1.0, 1.0]:
+		_box(gate_root, Vector3(0.055, 3.35, 0.09), Vector3(side * 1.05, 2.0, 0.13), gate_glow)
+	for bar_x in [-0.5, 0.0, 0.5]:
+		_box(gate_root, Vector3(0.06, 3.25, 0.1), Vector3(bar_x, 2.0, 0.15), gate_mat)
+	_box(gate_root, Vector3(2.0, 0.05, 0.09), Vector3(0, 0.42, 0.14), gate_glow)
+	_light(gate_root, Vector3(0, 2.2, 0.8), Color("9bc7cd"), 0.85, 9.0)
 	var gate_anchor := _anchor(gate_root, "WorldAnchor_DungeonGate", Vector3(0, 1.0, 1.4))
 	return {"spawn": Vector3(0, 1.05, 6.0), "return": portal_anchor,
 		"heart": heart_bundle, "heart_anchor": heart_anchor, "gate_anchor": gate_anchor, "title": "镜界"}
@@ -1007,16 +1095,15 @@ func update_bridge(delta: float) -> void:
 ## 望远镜：望进云海（由 main 接管相机），返回要看的文案
 func use_scope() -> Dictionary:
 	scope_active = true
-	var beacon_on := bool(prop_used.get("cloud_beacon", false))
 	if scope_archive != null:
 		scope_archive.visible = true
+	var beacon_on := bool(prop_used.get("cloud_beacon", false))
 	var message := "循着灯光，飞艇正靠向云港" if beacon_on else "望远镜里，巡游的飞艇正缓缓穿过云层"
 	return {"ok": true, "message": message, "scope": true}
 
 
 func close_scope() -> void:
 	scope_active = false
-
 	if scope_archive != null:
 		scope_archive.visible = false
 
@@ -1073,6 +1160,7 @@ func _build_scope_archive() -> void:
 		label.add_theme_font_size_override("font_size", 18)
 		label.add_theme_color_override("font_color", Color("eee1c0"))
 		card.add_child(label)
+
 
 ## 雪夜炉火：三档循环（照原作 hearthLevel = (level + 1) % 3）
 func use_hearth() -> Dictionary:

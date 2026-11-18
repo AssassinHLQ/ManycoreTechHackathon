@@ -1,6 +1,6 @@
 extends RefCounted
 ## Rebuild visual LOD indices offline. Full-resolution vertices and collision stay unchanged.
-static func generate(directory := "res://assets/runtime_bakes/") -> Error:
+static func generate(directory := "res://assets/runtime_bakes/streamed/") -> Error:
 	for filename in DirAccess.get_files_at(directory):
 		if not filename.begins_with("terrain_") or not filename.ends_with(".res"):
 			continue

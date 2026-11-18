@@ -88,7 +88,7 @@ func _run() -> void:
 	_check(home.find_children("*", "StaticBody3D", true, false).size() == bodies_before, "windmill batching preserves every collision body")
 	var clone = Planet.new()
 	await Bake.prepare_generated(self, "planet_" + home.planet_id)
-	_check(Bake.load_generated(clone, "planet_" + home.planet_id, home.SurfaceBake._signature(home)), "a second copy of the same planet can load")
+	_check(await Bake.load_generated(clone, "planet_" + home.planet_id, home.SurfaceBake._signature(home)), "a second copy of the same planet can load")
 	_check(Bake._prepared_scenes.is_empty(), "prepared snapshots are consumed without retaining a second world")
 	var collision_enabled := true
 	for body in clone.find_children("*", "StaticBody3D", true, false):
@@ -103,6 +103,9 @@ func _run() -> void:
 	var tested := false
 	for i in range(home.interactive_spots.size()):
 		var original: Dictionary = home.interactive_spots[i]
+		if i >= clone.interactive_spots.size():
+			_check(false, "cached planet preserves every interactive point")
+			break
 		var copied: Dictionary = clone.interactive_spots[i]
 		if original.node is MultiMeshInstance3D and int(original.mi) >= 0:
 			var original_mm: MultiMesh = original.node.multimesh
@@ -122,7 +125,7 @@ func _run() -> void:
 	_check(tested, "exercise a real surface prop interaction")
 	clone.free()
 	var invalid := Node3D.new()
-	_check(not Bake.load_generated(invalid, "planet_" + home.planet_id, {"radius": -1}), "changed geometry parameters reject stale snapshots")
+	_check(not (await Bake.load_generated(invalid, "planet_" + home.planet_id, {"radius": -1})), "changed geometry parameters reject stale snapshots")
 	_check(invalid.get_child_count() == 0, "a rejected snapshot leaves no partial scene")
 	invalid.free()
 	game.free()

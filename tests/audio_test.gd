@@ -1,9 +1,17 @@
 extends SceneTree
 
 var failures := 0
+var checks := 0
+
+const SAVE_FILES := ["user://starward_audio_test.json", "user://starward_audio_progress_test.json"]
+
+
+func _initialize() -> void:
+	call_deferred("_run")
 
 
 func _check(condition: bool, message: String) -> void:
+	checks += 1
 	if condition:
 		print("PASS  ", message)
 	else:
@@ -11,57 +19,82 @@ func _check(condition: bool, message: String) -> void:
 		push_error("FAIL  " + message)
 
 
-func _initialize() -> void:
-	call_deferred("_run")
+func _cleanup_saves() -> void:
+	for path in SAVE_FILES:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 func _run() -> void:
+	_cleanup_saves()
 	var game = load("res://scenes/main.tscn").instantiate()
-	game.save_path = "user://starward_audio_test.json"
+	game.save_path = SAVE_FILES[0]
+	game.progress_path = SAVE_FILES[1]
 	root.add_child(game)
 	await game.await_world_ready()
+	var deadline_ms: int = Time.get_ticks_msec() + 180000
+	while (game.planets.size() < 20 or game.world_build_remaining) \
+			and Time.get_ticks_msec() < deadline_ms:
+		await process_frame
+	_check(game.planets.size() == 20 and not game.world_build_remaining,
+		"all background world construction finishes before audio teardown")
 	await process_frame
-	game.start_game()
-	for i in range(6):
-		await physics_frame
 	var audio = game.audio
-	for kind in audio.DISTANT_KINDS:
-		var stream: AudioStreamWAV = audio._distant_stream(kind)
-		print("  ", kind, " len=", stream.get_length(), " stereo=", stream.stereo, " bytes=", stream.data.size())
-	print("AMBIENCE_LEN=", audio.ambience.stream.get_length(), " ROOM_LEN=", audio.room_tone.stream.get_length(), " WIND_LEN=", audio.surface_wind.stream.get_length())
-	print("BUS=", audio.ambience_bus, " effects=", AudioServer.get_bus_effect_count(audio.ambience_bus), " name=", AudioServer.get_bus_name(audio.ambience_bus))
-	_check(audio.ambience != null and audio.ambience.stream.get_length() > 10.0, "deep-space bed is a long loop")
-	_check(audio.room_tone != null and audio.room_tone.stream.get_length() > 5.0, "station room tone exists")
-	_check(audio.surface_wind != null and audio.surface_wind.stream.get_length() > 5.0, "surface wind exists")
-	_check(audio.DISTANT_KINDS.size() >= 4, "distant one-shot variants exist")
-	_check(audio.ambience_bus >= 0 and AudioServer.get_bus_effect_count(audio.ambience_bus) > 0, "ambience reverb bus exists")
+	_check(audio != null and audio.main_music != null and audio.attic_music != null and audio.station_music != null,
+		"all scene music players are created")
+	if audio == null:
+		game.queue_free()
+		await process_frame
+		_cleanup_saves()
+		quit(1)
+		return
+	_check(audio.main_music.stream is AudioStreamMP3 and audio.main_music.stream.loop,
+		"universe music is a looping MP3")
+	_check(audio.attic_music.stream is AudioStreamMP3 and audio.attic_music.stream.loop,
+		"home music is a looping MP3")
+	_check(audio.station_music.stream is AudioStreamMP3 and audio.station_music.stream.loop,
+		"station music is a looping MP3")
+	game.player._set_jetpack_audio(false)
+	game.audio = null
+	game.player._set_jetpack_audio(false)
+	game.audio = audio
+	_check(true, "player accepts the audio service being staged")
+	game.start_game()
+	audio._sync_scene_music()
+	_check(audio.active_music == "main" and audio.main_music.playing and not audio.attic_music.playing,
+		"universe context selects universe music")
 	game.in_station = true
-	audio._update_environment()
-	_check(audio.room_target > -30.0 and audio.wind_target < -40.0, "station selects room tone")
+	audio._sync_scene_music()
+	_check(audio.active_music == "station" and audio.station_music.playing and not audio.main_music.playing and not audio.attic_music.playing,
+		"station context selects station music")
 	game.in_station = false
-	game.state = "walk"
-	audio._update_environment()
-	_check(audio.wind_target > -40.0, "planet walk selects wind")
-	game.state = "ship"
-	audio._update_environment()
-	_check(audio.ambience_target > -20.0, "ship selects deep-space bed")
-	audio.distant_timer = 0.0
-	await process_frame
-	await process_frame
-	_check(audio.distant.stream != null, "distant event stream assigned")
-	_check(audio.door != null and audio.door is AudioStreamPlayer3D, "hub door has a positional effect player")
+	game.in_attic = true
+	audio._sync_scene_music()
+	_check(audio.active_music == "attic" and audio.attic_music.playing and not audio.station_music.playing,
+		"attic context selects attic music")
+	game.in_attic = false
+	audio._sync_scene_music()
+	_check(audio.active_music == "main" and audio.main_music.playing,
+		"returning to the universe restores universe music")
+	_check(audio.ambience_bus >= 0 and AudioServer.get_bus_effect_count(audio.ambience_bus) > 0,
+		"ambience bus and reverb remain available for effects")
+	_check(audio.distant != null and audio.distant.stream == null and not audio.distant.playing,
+		"distant random ambience is removed")
 	audio.play_door(Vector3(3.0, 1.0, -2.0), false)
-	var close_stream: AudioStreamWAV = audio.door.stream
-	_check(close_stream != null and close_stream.get_length() > 0.5, "closing door builds a servo one-shot")
-	_check(close_stream.data.size() > 20000, "door one-shot carries real samples")
-	_check(close_stream.loop_mode == AudioStreamWAV.LOOP_DISABLED, "door one-shot does not loop")
-	audio.play_door(Vector3(3.0, 1.0, -2.0), true)
-	_check(audio.door.stream != close_stream, "opening and closing use separate door variants")
-	_check(audio.door.global_position.is_equal_approx(Vector3(3.0, 1.0, -2.0)), "door sound is placed at the door frame")
-	_check(audio.door.max_distance > 20.0 and audio.door.unit_size > 0.0, "door sound attenuates with distance")
+	_check(audio.door != null and audio.door.stream == null and not audio.door.playing,
+		"airlock door sound is removed")
+	audio.play_ui(470.0)
+	_check(audio.effects.playing, "UI sound starts on its dedicated player")
+	audio._stop_audio_players()
+	var all_stopped := true
+	for player in [audio.distant, audio.engine, audio.jetpack, audio.roast, audio.effects,
+			audio.door, audio.main_music, audio.attic_music, audio.station_music]:
+		all_stopped = all_stopped and not player.playing and player.stream == null
+	_check(all_stopped and audio.tone_cache.is_empty(),
+		"audio shutdown stops playback and releases cached generated streams")
 	game.queue_free()
 	await process_frame
-	if FileAccess.file_exists("user://starward_audio_test.json"):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://starward_audio_test.json"))
-	print("AUDIO TEST COMPLETE: ", failures, " failure(s)")
-	quit(0 if failures == 0 else 1)
+	await process_frame
+	_cleanup_saves()
+	print("AUDIO TEST COMPLETE: %d checks, %d failure(s)" % [checks, failures])
+	quit(1 if failures else 0)

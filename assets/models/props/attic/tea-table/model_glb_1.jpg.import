@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bkp0dfprnpowj"
 path.s3tc="res://.godot/imported/model_glb_1.jpg-de0d3c9051f97bfdebfc61add56a6861.s3tc.ctex"
+path.etc2="res://.godot/imported/model_glb_1.jpg-de0d3c9051f97bfdebfc61add56a6861.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/tea-table/model_glb_1.jpg"
-dest_files=["res://.godot/imported/model_glb_1.jpg-de0d3c9051f97bfdebfc61add56a6861.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_glb_1.jpg-de0d3c9051f97bfdebfc61add56a6861.s3tc.ctex", "res://.godot/imported/model_glb_1.jpg-de0d3c9051f97bfdebfc61add56a6861.etc2.ctex"]
 
 [params]
 

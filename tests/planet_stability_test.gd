@@ -28,14 +28,19 @@ func _idle(count: int) -> Dictionary:
 	var previous := lo
 	var step := 0.0
 	var grounded := 0
+	var previous_floor: bool = game.player.is_on_floor()
 	for i in range(count):
 		await physics_frame
 		var p: Vector3 = game.player.position
+		var on_floor: bool = game.player.is_on_floor()
+		if "--trace-prop" in OS.get_cmdline_user_args() and on_floor != previous_floor:
+			print("PROP FLOOR frame=", i, " position=", p, " velocity=", game.player.velocity)
+		previous_floor = on_floor
 		lo = lo.min(p)
 		hi = hi.max(p)
 		step = maxf(step, p.distance_to(previous))
 		previous = p
-		if game.player.is_on_floor():
+		if on_floor:
 			grounded += 1
 	return {"span": (hi - lo).length(), "step": step, "grounded": grounded,
 		"radial": absf(start.length() - previous.length())}
@@ -65,6 +70,10 @@ func _prop_sample(planet) -> Dictionary:
 	if tangent.length_squared() < 0.1:
 		tangent = direction.cross(Vector3.FORWARD).normalized()
 	var space: PhysicsDirectSpaceState3D = planet.get_world_3d().direct_space_state
+	var body_scale: float = planet.prop_scale if planet.prop_scale > 0.0 else 1.0
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.34 * body_scale
+	capsule.height = 1.65 * body_scale
 	for angle: float in [0.16, -0.16, 0.26, -0.26, 0.08, 0.0]:
 		var d := direction.rotated(tangent, angle)
 		var h: float = planet.terrain_height(d)
@@ -76,6 +85,16 @@ func _prop_sample(planet) -> Dictionary:
 		# The player controller accepts slopes up to 82 degrees; test a face it can stand on.
 		if not hit.is_empty() and String(hit.collider.name).begins_with("PropCollision_") \
 			and (hit.normal as Vector3).dot(world_direction) > 0.14:
+			var query := PhysicsShapeQueryParameters3D.new()
+			query.shape = capsule
+			query.collision_mask = 8
+			query.exclude = [game.player.get_rid()]
+			query.transform = Transform3D(Basis(Quaternion(Vector3.UP, world_direction)),
+				hit.position + world_direction * (0.4 + 0.82 * body_scale))
+			query.motion = -world_direction * (0.55 * body_scale + 0.75)
+			var support_sweep := space.cast_motion(query)
+			if support_sweep.size() < 2 or support_sweep[0] >= 0.99:
+				continue
 			hit["direction"] = d
 			hit["world_direction"] = world_direction
 			return hit
@@ -92,6 +111,9 @@ func _check_prop_contact() -> void:
 	_check(not hit.is_empty(), "sample a walkable face of a real planet asset")
 	if hit.is_empty():
 		return
+	if "--trace-prop" in OS.get_cmdline_user_args():
+		print("PROP SAMPLE collider=", hit.collider.name, " position=", hit.position,
+			" normal=", hit.normal, " radial_dot=", (hit.normal as Vector3).dot(hit.world_direction))
 	game.state = "walk"
 	game.ship.set_physics_process(false)
 	game.player.reparent(planet, false)
@@ -102,6 +124,8 @@ func _check_prop_contact() -> void:
 	game.player.reset_physics_interpolation()
 	await _physics_frames(90)
 	var idle := await _idle(120)
+	if "--trace-prop" in OS.get_cmdline_user_args():
+		print("PROP IDLE start=", game.player.position, " result=", idle)
 	_check(idle.span < 0.04 and idle.grounded >= 110,
 		"asset contact stays still while orbiting (%.5f m, grounded %d/120)" % [idle.span, idle.grounded])
 	await _check_ship_asset_contact(planet)
@@ -187,10 +211,22 @@ func _run() -> void:
 	game.start_game()
 	game.state = "ship"
 	game.ship.set_physics_process(false)
-	while game.planets.size() < 20:
-		await process_frame
+	var focused_prop_contact := "--prop-contact" in OS.get_cmdline_user_args() \
+		or "--prop-contact-helper" in OS.get_cmdline_user_args()
+	var requested_planets: Array[String] = []
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--planet="):
+			for planet_id in argument.trim_prefix("--planet=").split(","):
+				requested_planets.append(planet_id)
+	if focused_prop_contact and not requested_planets.is_empty():
+		while not game.planets.any(func(planet): return requested_planets.has(planet.planet_id)):
+			await process_frame
+	else:
+		while game.planets.size() < 20:
+			await process_frame
 	await _physics_frames(10)
-	await _check_orbits()
+	if not focused_prop_contact:
+		await _check_orbits()
 	if "--orbit-only" in OS.get_cmdline_user_args():
 		print("ORBIT STABILITY TEST COMPLETE: 20 planets, %d failure(s)" % failures)
 		game.queue_free()

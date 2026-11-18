@@ -1,10 +1,5 @@
 extends Node
 
-const AMBIENT_RATE := 8000
-# 远距单发：只登记种类，样本在第一次真的播时再合成（启动阶段不为它们付逐样本合成的钱）。
-const DISTANT_KINDS := ["ping", "creak", "radio", "moan"]
-const DISTANT_PANS := {"ping": -0.55, "creak": -0.32, "radio": 0.38, "moan": 0.12}
-
 var game
 var distant: AudioStreamPlayer
 var engine: AudioStreamPlayer
@@ -14,15 +9,13 @@ var effects: AudioStreamPlayer
 var door: AudioStreamPlayer3D
 var main_music: AudioStreamPlayer
 var attic_music: AudioStreamPlayer
+var station_music: AudioStreamPlayer
 var active_music := ""
 var music_fade: Tween
 var death_fade_active := false
-var door_rng := RandomNumberGenerator.new()
 var engine_target := -48.0
 var jetpack_target := -48.0
 var roast_target := -48.0
-var distant_timer := 7.0
-var distant_rng := RandomNumberGenerator.new()
 var ambience_bus := -1
 var tone_cache: Dictionary = {}
 
@@ -32,10 +25,8 @@ const MUSIC_FADE_OUT_SECONDS := 3.0
 
 func _ready() -> void:
 	_ensure_ambience_bus()
-	distant_rng.seed = 20261102
+	# 保留无声占位节点，兼容旧的场景和测试访问，不再绑定任何音频资源。
 	distant = AudioStreamPlayer.new()
-	distant.volume_db = -18.0
-	distant.bus = "Ambience"
 	add_child(distant)
 	engine = _player(_engine_stream(), -48.0)
 	jetpack = _player(_noise_stream(), -48.0)
@@ -54,20 +45,36 @@ func _ready() -> void:
 		attic_music.stream = music_stream
 	attic_music.volume_db = -17.0
 	add_child(attic_music)
+	station_music = AudioStreamPlayer.new()
+	var station_stream := load("res://assets/audio/chopin_prelude_op28_no6_tolling_bells.mp3") as AudioStreamMP3
+	if station_stream != null:
+		station_stream.loop = true
+		station_music.stream = station_stream
+		station_music.volume_db = -17.0
+		add_child(station_music)
 	effects = AudioStreamPlayer.new()
 	effects.volume_db = -7.0
 	add_child(effects)
-	# 放气门是站内唯一的位置音源：走近才响，隔着枢纽会衰减。
+	# 保留无声占位节点，气闸门不再播放任何音效。
 	door = AudioStreamPlayer3D.new()
-	door.bus = "Ambience"
-	door.volume_db = -7.0
-	door.unit_size = 9.0
-	door.max_distance = 46.0
-	door.max_polyphony = 3
-	door.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
-	door.attenuation_filter_cutoff_hz = 9000.0
 	add_child(door)
-	door_rng.seed = 20261103
+
+
+func _exit_tree() -> void:
+	_stop_audio_players()
+
+
+func _stop_audio_players() -> void:
+	if music_fade != null and music_fade.is_running():
+		music_fade.kill()
+	for player in [distant, engine, jetpack, roast, effects, door, main_music, attic_music, station_music]:
+		if player == null or not is_instance_valid(player):
+			continue
+		player.stop()
+		player.stream = null
+	tone_cache.clear()
+	active_music = ""
+	death_fade_active = false
 
 
 func _ensure_ambience_bus() -> void:
@@ -99,7 +106,6 @@ func _player(stream: AudioStreamWAV, volume: float) -> AudioStreamPlayer:
 
 func _process(delta: float) -> void:
 	_sync_scene_music()
-	_update_distant(delta)
 	if engine != null:
 		engine.volume_db = lerpf(engine.volume_db, engine_target, 1.0 - exp(-delta * 6.0))
 	if jetpack != null:
@@ -109,10 +115,16 @@ func _process(delta: float) -> void:
 
 
 func _context_music() -> String:
-	return "attic" if game != null and (game.in_attic or game.in_station) else "main"
+	if game != null and game.in_station:
+		return "station"
+	if game != null and game.in_attic:
+		return "attic"
+	return "main"
 
 
 func _music_player(track: String) -> AudioStreamPlayer:
+	if track == "station":
+		return station_music
 	return attic_music if track == "attic" else main_music
 
 
@@ -133,6 +145,7 @@ func _start_music(track: String, restart: bool) -> void:
 	if active_music != track:
 		main_music.stop()
 		attic_music.stop()
+		station_music.stop()
 		active_music = track
 	if restart or not player.playing:
 		player.volume_db = MAIN_MUSIC_DB
@@ -160,49 +173,6 @@ func fade_music_for_death() -> void:
 
 func restart_music_for_new_life() -> void:
 	_start_music(_context_music(), true)
-
-
-func _update_distant(delta: float) -> void:
-	if game == null or game.paused:
-		return
-	distant_timer -= delta
-	if distant_timer > 0.0:
-		return
-	_play_distant()
-	var in_station: bool = game.in_station
-	distant_timer = distant_rng.randf_range(18.0, 38.0) if in_station else distant_rng.randf_range(13.0, 31.0)
-
-
-func _distant_stream(kind: String) -> AudioStreamWAV:
-	var key := "distant_" + kind
-	if not tone_cache.has(key):
-		match kind:
-			"ping":
-				tone_cache[key] = _ping_stream(DISTANT_PANS["ping"], 700.0)
-			"creak":
-				tone_cache[key] = _creak_stream(DISTANT_PANS["creak"])
-			"radio":
-				tone_cache[key] = _radio_stream(DISTANT_PANS["radio"])
-			_:
-				tone_cache[key] = _moan_stream(DISTANT_PANS["moan"])
-	return tone_cache[key]
-
-
-func _play_distant() -> void:
-	var in_station: bool = game.in_station
-	var walking: bool = game.state == "walk" and not in_station
-	var allowed: Array = []
-	for kind in DISTANT_KINDS:
-		if (in_station or walking) and kind == "ping":
-			continue
-		allowed.append(kind)
-	if allowed.is_empty():
-		allowed = DISTANT_KINDS.duplicate()
-	var kind: String = allowed[distant_rng.randi_range(0, allowed.size() - 1)]
-	distant.stream = _distant_stream(kind)
-	distant.volume_db = -23.0 if (in_station or walking) else -18.0
-	distant.pitch_scale = distant_rng.randf_range(0.93, 1.07)
-	distant.play()
 
 
 func set_engine(active: bool, level: float) -> void:
@@ -272,182 +242,8 @@ func play_supernova() -> void:
 
 
 func play_door(world_position: Vector3, opening: bool) -> void:
-	if door == null:
-		return
-	var key := "door_open" if opening else "door_close"
-	if not tone_cache.has(key):
-		tone_cache[key] = _door_stream(opening)
-	door.stream = tone_cache[key]
-	door.global_position = world_position
-	door.pitch_scale = door_rng.randf_range(0.95, 1.06)
-	door.volume_db = -7.0 + door_rng.randf_range(-2.0, 1.0)
-	door.play()
-
-
-func _door_stream(opening: bool) -> AudioStreamWAV:
-	# 放气门：泄压嘶声 + 门扇滑行的电机低鸣与伺服扫频 + 到位顿挫。
-	var rate := 22050
-	var duration := 1.05
-	var frames := int(duration * rate)
-	var data := PackedByteArray()
-	data.resize(frames * 2)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 6151 if opening else 6152
-	var air := 0.0
-	var rumble := 0.0
-	var phase := 0.0
-	var slide_start := 0.06
-	var slide_span := 0.58
-	var stop_time := slide_start + slide_span
-	for i in range(frames):
-		var t := float(i) / rate
-		air = lerpf(air, rng.randf_range(-1.0, 1.0), 0.5)
-		var seal := minf(t * 60.0, 1.0) * exp(-maxf(t - 0.012, 0.0) * 20.0)
-		var sample := air * 0.20 * seal
-		var slide := 0.0
-		var progress := 0.0
-		if t > slide_start and t < stop_time:
-			progress = (t - slide_start) / slide_span
-			slide = minf((t - slide_start) * 14.0, 1.0) * minf((stop_time - t) * 14.0, 1.0)
-		rumble = lerpf(rumble, rng.randf_range(-1.0, 1.0), 0.045)
-		var sweep: float = progress if opening else 1.0 - progress
-		var frequency := lerpf(212.0, 388.0, sweep)
-		phase += TAU * frequency * (1.0 + 0.02 * sin(TAU * 8.5 * t)) / rate
-		var motor := 0.8 + 0.2 * sin(TAU * 27.0 * t)
-		sample += rumble * 0.16 * slide * motor
-		sample += sin(phase) * 0.11 * slide * motor
-		sample += sin(phase * 2.0 + 0.6) * 0.035 * slide
-		if t > stop_time:
-			var u := t - stop_time
-			var thud := 0.34 if opening else 0.40
-			sample += sin(TAU * 74.0 * u) * thud * exp(-u * 24.0)
-			sample += sin(TAU * 1180.0 * u + 0.4) * 0.05 * exp(-u * 34.0)
-			sample += rng.randf_range(-1.0, 1.0) * 0.04 * exp(-u * 30.0)
-		data.encode_s16(i * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
-	var stream := _wav(data, rate, frames)
-	stream.loop_mode = AudioStreamWAV.LOOP_DISABLED
-	return stream
-
-
-func _pan_gains(pan: float) -> Vector2:
-	var p := clampf(pan, -1.0, 1.0)
-	return Vector2(sqrt(0.5 * (1.0 - p)), sqrt(0.5 * (1.0 + p)))
-
-
-func _stereo_wav(data: PackedByteArray, rate: int, frames: int) -> AudioStreamWAV:
-	var stream := _wav(data, rate, frames)
-	stream.stereo = true
-	stream.loop_mode = AudioStreamWAV.LOOP_DISABLED
-	return stream
-
-
-func _ping_stream(pan: float, base := 700.0) -> AudioStreamWAV:
-	var rate := AMBIENT_RATE
-	var duration := 3.6
-	var frames := int(duration * rate)
-	var data := PackedByteArray()
-	data.resize(frames * 4)
-	var gains := _pan_gains(pan)
-	for i in range(frames):
-		var t := float(i) / rate
-		var sample := 0.0
-		for echo_index in range(3):
-			var start := float(echo_index) * 0.55
-			if t >= start:
-				var u := t - start
-				var envelope := exp(-u * 1.25) * minf(u * 28.0, 1.0)
-				var frequency := base * (1.0 - 0.05 * float(echo_index))
-				sample += sin(TAU * frequency * u) * 0.2 * envelope
-				sample += sin(TAU * frequency * 1.5 * u + 0.5) * 0.06 * envelope
-		sample += sin(TAU * 48.0 * t) * 0.03 * exp(-t * 0.7)
-		sample = clampf(sample, -1.0, 1.0)
-		data.encode_s16(i * 4, int(sample * gains.x * 32767.0))
-		data.encode_s16(i * 4 + 2, int(sample * gains.y * 32767.0))
-	return _stereo_wav(data, rate, frames)
-
-
-func _creak_stream(pan: float) -> AudioStreamWAV:
-	var rate := AMBIENT_RATE
-	var duration := 2.8
-	var frames := int(duration * rate)
-	var data := PackedByteArray()
-	data.resize(frames * 4)
-	var gains := _pan_gains(pan)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 8123
-	var filtered := 0.0
-	var phase := 0.0
-	for i in range(frames):
-		var t := float(i) / rate
-		filtered = lerpf(filtered, rng.randf_range(-1.0, 1.0), 0.05)
-		var envelope := minf(t * 2.5, 1.0) * exp(-maxf(t - 0.25, 0.0) * 1.1)
-		var frequency := 135.0 - 42.0 * minf(t / duration, 1.0) + 4.0 * sin(TAU * 7.0 * t)
-		phase += TAU * frequency / rate
-		var sample := sin(phase) * 0.16 * envelope
-		sample += sin(phase * 2.7 + 0.4) * 0.05 * envelope
-		sample += filtered * 0.04 * envelope
-		if t > 1.1:
-			var u := t - 1.1
-			sample += sin(TAU * 310.0 * u) * 0.05 * exp(-u * 5.0)
-		sample = clampf(sample, -1.0, 1.0)
-		data.encode_s16(i * 4, int(sample * gains.x * 32767.0))
-		data.encode_s16(i * 4 + 2, int(sample * gains.y * 32767.0))
-	return _stereo_wav(data, rate, frames)
-
-
-func _radio_stream(pan: float) -> AudioStreamWAV:
-	var rate := AMBIENT_RATE
-	var duration := 1.7
-	var frames := int(duration * rate)
-	var data := PackedByteArray()
-	data.resize(frames * 4)
-	var gains := _pan_gains(pan)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 3141
-	var filtered := 0.0
-	for i in range(frames):
-		var t := float(i) / rate
-		filtered = lerpf(filtered, rng.randf_range(-1.0, 1.0), 0.25)
-		var gate := 0.0
-		for start: float in [0.15, 0.55, 0.95]:
-			if t >= start:
-				gate += exp(-(t - start) * 18.0)
-		var sample := filtered * 0.05 * gate
-		sample += sin(TAU * 880.0 * t) * 0.025 * gate
-		sample += sin(TAU * 1320.0 * t + 0.3) * 0.015 * gate
-		sample = clampf(sample, -1.0, 1.0)
-		data.encode_s16(i * 4, int(sample * gains.x * 32767.0))
-		data.encode_s16(i * 4 + 2, int(sample * gains.y * 32767.0))
-	return _stereo_wav(data, rate, frames)
-
-
-func _moan_stream(pan: float) -> AudioStreamWAV:
-	var rate := AMBIENT_RATE
-	var duration := 4.2
-	var frames := int(duration * rate)
-	var data := PackedByteArray()
-	data.resize(frames * 4)
-	var gains := _pan_gains(pan)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 2718
-	var filtered := 0.0
-	var phase_a := 0.0
-	var phase_b := 0.0
-	for i in range(frames):
-		var t := float(i) / rate
-		filtered = lerpf(filtered, rng.randf_range(-1.0, 1.0), 0.03)
-		var envelope := minf(t * 1.5, 1.0) * exp(-maxf(t - 0.4, 0.0) * 0.6) * minf((duration - t) * 1.5, 1.0)
-		var frequency := 46.0 + 3.0 * sin(TAU * t / duration) - 4.0 * t / duration
-		phase_a += TAU * frequency / rate
-		phase_b += TAU * frequency * 0.5 / rate
-		var sample := sin(phase_a) * 0.12 * envelope
-		sample += sin(phase_b + 0.5) * 0.08 * envelope
-		sample += sin(phase_a * 3.02) * 0.03 * envelope
-		sample += filtered * 0.02 * envelope
-		sample = clampf(sample, -1.0, 1.0)
-		data.encode_s16(i * 4, int(sample * gains.x * 32767.0))
-		data.encode_s16(i * 4 + 2, int(sample * gains.y * 32767.0))
-	return _stereo_wav(data, rate, frames)
+	# 气闸门保留接口，实际不再播放声音。
+	return
 
 
 func _engine_stream() -> AudioStreamWAV:

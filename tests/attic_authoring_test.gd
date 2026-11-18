@@ -18,13 +18,13 @@ func _check(ok: bool, message: String) -> void:
 func _run() -> void:
 	var worlds = load("res://scripts/attic_worlds.gd").new()
 	root.add_child(worlds)
-	worlds.build()
+	await worlds.build()
 	var other = load("res://scripts/attic_worlds.gd").new()
 	root.add_child(other)
 	for key in ["cloud", "firefly", "alley", "snow"]:
 		var holder := Node3D.new()
 		other.add_child(holder)
-		_check(worlds.Authoring.load_world(other, key, holder), key + " second instance loads cached scene")
+		_check(await worlds.Authoring.load_world(other, key, holder), key + " second instance loads cached scene")
 		var content: Node3D = worlds.worlds[key]["content"]
 		_check(content.scene_file_path.ends_with(key + ".tscn"), key + " uses the editable scene")
 		_check(content.is_ancestor_of(worlds.return_anchor(key)), key + " return portal rebound")

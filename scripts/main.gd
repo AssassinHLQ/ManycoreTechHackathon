@@ -2,6 +2,7 @@ extends Node3D
 const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 
 const PlanetScript = preload("res://scripts/planet.gd")
+const RuntimeBakeScript = preload("res://scripts/runtime_bake.gd")
 const PlayerScript = preload("res://scripts/player.gd")
 const ShipScript = preload("res://scripts/ship.gd")
 const AnomalyScript = preload("res://scripts/anomaly.gd")
@@ -39,8 +40,17 @@ var world_ready := false
 ## 是否还在后台补建其余行星（world_ready 之后）。
 ## 星图/自动驾驶等界面可用它提示「还有 N 颗在生成」。
 var world_build_remaining := false
-## 世界构建完成时发出；`await_world_ready()` 依赖它。
+var world_areas_ready := false
+var _world_stream_requested := false
+const REMOTE_STREAM_GAP := 1.2
+const STREAM_PREWARM_LAYER := 20
+
+func _stream_prewarm_mask() -> int:
+	return 1 << (STREAM_PREWARM_LAYER - 1)
+## 初始区域可玩时发出。
 signal world_ready_finished
+## 空间站、阁楼等可进入区域准备好时发出。
+signal world_areas_ready_finished
 var paused := false
 var journal_open := false
 var map_open := false
@@ -54,6 +64,17 @@ var visual_time := 0.0
 var loop_count := 1
 var discovered: Dictionary = {}
 var planets: Array = []
+## Real-game remote planets stay as cheap proxies until their full baked scene
+## has been prepared in the background. The staged nodes are invisible and
+## collision-disabled; approaching a planet only activates an already-built node.
+var stream_staging: Node3D
+var stream_prewarm_viewport: SubViewport
+var stream_prewarm_camera: Camera3D
+var _stream_prewarm_queue: Array[Node3D] = []
+var _stream_prewarm_running := false
+var _stream_build_by_id: Dictionary = {}
+var _stream_ready_by_id: Dictionary = {}
+var _stream_activation_requested: Dictionary = {}
 ## 已经建过的行星 id。
 ## ⚠ 2026-11-11 修「母星被建两遍」：_build_planets 分两段调用
 ## （先 home_only=true 建母星、world_ready 后再建其余），
@@ -271,7 +292,33 @@ var _dev_tap_last_ms := 0
 func _ready() -> void:
 	_migrate_legacy_user_data()
 	_build_input_map()
+	stream_staging = Node3D.new()
+	stream_staging.name = "PlanetStreamStaging"
+	stream_staging.visible = true
+	stream_staging.process_mode = Node.PROCESS_MODE_INHERIT
+	add_child(stream_staging)
+	_setup_stream_prewarm_viewport()
 	_build_world_progressive()
+
+
+func _setup_stream_prewarm_viewport() -> void:
+	# A hidden viewport sharing the main World3D lets the renderer upload staged
+	# meshes, textures, and shaders before the planet is shown to the player.
+	stream_prewarm_viewport = SubViewport.new()
+	stream_prewarm_viewport.name = "PlanetStreamPrewarmViewport"
+	stream_prewarm_viewport.size = Vector2i(2, 2)
+	stream_prewarm_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	stream_prewarm_viewport.handle_input_locally = false
+	stream_prewarm_viewport.gui_disable_input = true
+	stream_prewarm_viewport.world_3d = get_viewport().world_3d
+	add_child(stream_prewarm_viewport)
+	stream_prewarm_camera = Camera3D.new()
+	stream_prewarm_camera.name = "PlanetStreamPrewarmCamera"
+	stream_prewarm_camera.cull_mask = _stream_prewarm_mask()
+	stream_prewarm_camera.current = true
+	stream_prewarm_camera.fov = 70.0
+	stream_prewarm_camera.near = 0.1
+	stream_prewarm_viewport.add_child(stream_prewarm_camera)
 
 
 ## 跨帧渐进式建场：每个阶段让出一帧渲染，避免网页版单线程 wasm 在一帧内卡死十几秒。
@@ -279,7 +326,7 @@ func _ready() -> void:
 func _build_world_progressive() -> void:
 	await _yield_frame()
 	_stage_begin()
-	# ⚠ 只建母星（约 2 秒），其余 19 颗在 world_ready 之后补 ——
+	# 开局只建母星；其他行星会在离开初始区域后逐颗准备。
 	#   否则菜单相机要等 44 秒才建得出来，玩家看到纯黑屏。
 	#   详见 _build_planets 头部注释。
 	await _build_planets(true)
@@ -289,6 +336,18 @@ func _build_world_progressive() -> void:
 	_build_environment()
 	_stage_end("environment")
 	await _yield_frame()
+	# The station is part of the initial playable space. Finish its cached
+	# attachment before handing control to the player so boarding cannot hitch.
+	_stage_begin()
+	await RuntimeBakeScript.prepare_generated(get_tree(), "station")
+	_build_station()
+	_stage_end("station initial")
+	await _yield_frame()
+	_stage_begin()
+	_build_distant_stations()
+	_stage_end("distant stations initial")
+	await _yield_frame()
+	_stage_begin()
 	_build_campfire()
 	_build_explorers()
 	_stage_end("campfire+explorers")
@@ -301,18 +360,6 @@ func _build_world_progressive() -> void:
 	_stage_begin()
 	_build_gargantua()
 	_stage_end("gargantua")
-	await _yield_frame()
-	_stage_begin()
-	_build_station()
-	_stage_end("station")
-	await _yield_frame()
-	_stage_begin()
-	_build_distant_stations()
-	_stage_end("distant_stations")
-	await _yield_frame()
-	_stage_begin()
-	_build_attic()
-	_stage_end("attic")
 	await _yield_frame()
 	_stage_begin()
 	settings = SettingsScript.new()
@@ -343,10 +390,6 @@ func _build_world_progressive() -> void:
 	progress.load_progress()
 	voyage_contract.load_data(progress.voyage_contract)
 	_restore_progress()
-	# 口袋世界在 _build_attic() 里就建好了，那时 progress 还没创建；
-	# 这里补上引用，风琴礁等道具才能读到存档状态。
-	if attic_worlds != null:
-		attic_worlds.progress_ref = progress
 	bag = BagPanelScript.new()
 	bag.name = "Bag"
 	add_child(bag)
@@ -397,20 +440,27 @@ func _build_world_progressive() -> void:
 		add_child(probe)
 	world_ready_finished.emit()
 
-	# ── 第二阶段：补建其余 19 颗行星 ────────────────────────────────
-	#
-	# 放在 world_ready **之后**，所以菜单/操作已经可用，玩家能立刻进游戏。
-	# 这里仍然逐颗让出一帧，不会卡住画面；建好一颗就能在星图上看到一颗。
-	#
-	# ⚠ 依赖注意：第二段末尾会跑 _build_extra_anomalies / _build_quantum /
-	#   _build_one_dim_star，它们需要某些行星就位（内部都有 null 保护）。
+	# Delay remote areas until the player leaves the initial planet. They are
+	# prepared ahead of arrival while the ship is in transit.
+	while not _world_stream_requested and state != "ship":
+		await _yield_frame()
+	_world_stream_requested = true
 	world_build_remaining = true
 	await _yield_frame()
 	_stage_begin()
-	print("[BUILD] 开始补建其余行星（当前 %d 颗）" % planets.size())
+	print("[BUILD] 开始准备远端区域（当前 %d 颗行星）" % planets.size())
+	# Station and distant beacons are already present from the initial playable
+	# scene. Start the attic stream without awaiting its expensive collision pass.
+	_build_attic()
+	_stage_end("attic stream started")
+	await _yield_frame()
+	world_areas_ready = true
+	world_areas_ready_finished.emit()
+	await _yield_frame()
+	_stage_begin()
 	await _build_planets(false)
-	print("[BUILD] 补建完成，行星总数 %d" % planets.size())
-	_stage_end("planets remaining")
+	print("[BUILD] 远端区域准备完成，行星总数 %d" % planets.size())
+	_stage_end("remote regions")
 	world_build_remaining = false
 
 
@@ -432,9 +482,11 @@ func _stage_end(label: String) -> void:
 
 ## 等待世界构建完成；已就绪时立即返回，可安全重复调用。
 func await_world_ready() -> void:
-	if world_ready:
-		return
-	await world_ready_finished
+	if not world_ready:
+		await world_ready_finished
+	_world_stream_requested = true
+	if not world_areas_ready:
+		await world_areas_ready_finished
 
 
 func _save_voyage_contract() -> void:
@@ -455,6 +507,7 @@ func _set_voyage_target() -> void:
 		if String(planet.planet_id) != target_id:
 			continue
 		ship.target = planet
+		_request_planet_stream(ship.target)
 		target_index = i
 		map_selected = i
 		_voyage_target_set = true
@@ -641,9 +694,9 @@ func dev_unlock_records() -> void:
 func dev_refill() -> void:
 	if player != null:
 		player.oxygen = 100.0
-		player.fuel = 100.0
+		player.fuel = player.MAX_FUEL
 	if ship != null:
-		ship.fuel = 100.0
+		ship.fuel = ship.MAX_FUEL
 		ship.hull = 100.0
 		ship.fuel_empty_time = 0.0
 	hud.show_toast("氧气 / 燃料 / 船体已补满", 2.4)
@@ -924,10 +977,10 @@ func _build_sun_detail() -> void:
 			tangent = normal.cross(Vector3.RIGHT)
 		tangent = tangent.normalized()
 		var half_span := rng.randf_range(0.08, 0.2)
-		var height := rng.randf_range(26.0, 58.0)
+		var height := rng.randf_range(26.0, 58.0) * SUN_SCALE
 		if i % 5 == 0:
-			height += 22.0
-		var width := rng.randf_range(7.0, 14.0)
+			height += 22.0 * SUN_SCALE
+		var width := rng.randf_range(7.0, 14.0) * SUN_SCALE
 		var prominence := MeshInstance3D.new()
 		prominence.name = "Prominence_%02d" % i
 		prominence.mesh = _prominence_mesh(normal, tangent, half_span, height, width)
@@ -1201,11 +1254,10 @@ func _build_planets(home_only := false) -> void:
 		# the player is inside a local world or has paused the game.
 		while not home_only and (in_attic or paused):
 			await _yield_frame()
-		if not home_only:
-			await PlanetScript.RuntimeBake.prepare_generated(get_tree(), "planet_" + definition.id)
-			# The player may enter a local world while the worker reads the snapshot.
-			while in_attic or paused:
-				await _yield_frame()
+		await RuntimeBakeScript.prepare_generated(get_tree(), "planet_" + definition.id)
+		# The player may enter a local world while the worker reads the snapshot.
+		while in_attic or paused:
+			await _yield_frame()
 		var planet := PlanetScript.new()
 		planet.game = self
 		planet.planet_id = definition.id
@@ -1239,7 +1291,10 @@ func _build_planets(home_only := false) -> void:
 		planet.base_color = definition.color
 		planet.accent_color = definition.accent
 		planet.description = definition.description
+		planet.stream_proxy = not home_only and DisplayServer.get_name() != "headless"
 		add_child(planet)
+		if not planet.runtime_scene_ready:
+			await planet.runtime_scene_ready_finished
 		planets.append(planet)
 		built_planet_ids[planet.planet_id] = true
 		if planet.planet_id == "qinglan":
@@ -1267,17 +1322,26 @@ func _build_planets(home_only := false) -> void:
 				anomaly.transform = tower.transform * Transform3D(Basis.from_scale(Vector3.ONE * 0.3), Vector3(-3.2, 1.76, 9.4))
 		anomalies.append(anomaly)
 		route_link.build_echo(self, planet, anomaly)
+		if not home_only and planet.stream_proxy:
+			_enqueue_planet_prewarm(planet)
 		# 每颗星球建完让出一帧：地形与地标是最贵的一段，逐个分片才能避免长卡顿
 		_stage_end("planet " + planet.planet_id)
 		await _yield_frame()
+		# Keep remote work visibly backgrounded in the real game. Headless probes
+		# skip the wall-clock gap so regression tests stay deterministic and fast.
+		if not OS.has_feature("headless"):
+			await get_tree().create_timer(REMOTE_STREAM_GAP).timeout
 		_stage_begin()
 	# 第一段（只建母星）到此为止：这些收尾步骤需要**全部**行星就位，
 	# 放到第二段末尾统一跑。
 	if home_only:
 		return
 	_create_orbit_lines(definitions)
+	await _yield_frame()
 	_build_extra_anomalies()
+	await _yield_frame()
 	_build_quantum()
+	await _yield_frame()
 	_build_one_dim_star()
 
 
@@ -1361,6 +1425,216 @@ func _planet_by_id(id: String) -> Node3D:
 		if planet.planet_id == id:
 			return planet
 	return null
+
+
+func _enqueue_planet_prewarm(proxy: Node3D) -> void:
+	if proxy == null or not is_instance_valid(proxy) or not proxy.stream_proxy:
+		return
+	if _stream_ready_by_id.has(String(proxy.planet_id)) or _stream_build_by_id.has(String(proxy.planet_id)):
+		return
+	if not _stream_prewarm_queue.has(proxy):
+		_stream_prewarm_queue.append(proxy)
+	call_deferred("_drain_planet_prewarm")
+
+
+func _drain_planet_prewarm() -> void:
+	if _stream_prewarm_running:
+		return
+	_stream_prewarm_running = true
+	while not _stream_prewarm_queue.is_empty():
+		var proxy: Node3D = _stream_prewarm_queue.pop_front()
+		if proxy == null or not is_instance_valid(proxy) or not proxy.stream_proxy:
+			continue
+		await _prepare_planet_staging(proxy)
+		# Leave a render frame between staged scenes. This keeps the prewarm work
+		# spread across play instead of clustering it into one visible hitch.
+		await get_tree().process_frame
+		if not OS.has_feature("headless"):
+			await get_tree().create_timer(REMOTE_STREAM_GAP).timeout
+	_stream_prewarm_running = false
+
+
+func _prepare_planet_staging(proxy: Node3D) -> void:
+	if proxy == null or not is_instance_valid(proxy) or not proxy.stream_proxy:
+		return
+	var planet_id := String(proxy.planet_id)
+	if _stream_ready_by_id.has(planet_id):
+		return
+	if _stream_build_by_id.has(planet_id):
+		var pending: Node3D = _stream_build_by_id[planet_id]
+		while is_instance_valid(pending) and not pending.runtime_scene_ready:
+			await get_tree().process_frame
+		return
+	var full := PlanetScript.new()
+	for field in [
+		"game", "planet_id", "display_name", "radius", "terrain_reference_radius",
+		"lux_model_path", "gravity_strength", "orbit_radius", "orbit_phase",
+		"orbit_speed", "orbit_height", "kind", "base_color", "accent_color",
+		"description", "site_direction", "site_pad_radius"]:
+		full.set(field, proxy.get(field))
+	full.stream_proxy = false
+	full.stream_loading = true
+	_stream_build_by_id[planet_id] = full
+	stream_staging.add_child(full)
+	full.transform = proxy.transform
+	if not full.runtime_scene_ready:
+		await full.runtime_scene_ready_finished
+	if not is_instance_valid(full) or not is_instance_valid(proxy):
+		_stream_build_by_id.erase(planet_id)
+		return
+	# Build the landing collision while the planet is still far away and hidden.
+	# The proximity path then never has to create a large trimesh synchronously.
+	full._ensure_terrain_collision()
+	await get_tree().process_frame
+	await _prewarm_planet_render(full)
+	_set_staged_planet_enabled(full, false)
+	full.stream_loading = false
+	_stream_build_by_id.erase(planet_id)
+	_stream_ready_by_id[planet_id] = full
+	proxy.stream_loading = false
+	if _stream_activation_requested.has(planet_id):
+		call_deferred("_activate_staged_planet", proxy, full)
+
+
+func _set_staged_planet_enabled(planet: Node3D, enabled: bool, restore_collisions := true) -> void:
+	if planet == null or not is_instance_valid(planet):
+		return
+	planet.visible = enabled
+	planet.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
+	if not restore_collisions:
+		return
+	for shape in planet.find_children("*", "CollisionShape3D", true, false):
+		if enabled:
+			if shape.has_meta("_stream_prev_disabled"):
+				shape.disabled = shape.get_meta("_stream_prev_disabled") == true
+		else:
+			shape.set_meta("_stream_prev_disabled", shape.disabled)
+			shape.disabled = true
+	for polygon in planet.find_children("*", "CollisionPolygon3D", true, false):
+		if enabled:
+			if polygon.has_meta("_stream_prev_disabled"):
+				polygon.disabled = polygon.get_meta("_stream_prev_disabled") == true
+		else:
+			polygon.set_meta("_stream_prev_disabled", polygon.disabled)
+			polygon.disabled = true
+
+
+func _set_stream_render_layer(planet: Node3D, layer: int) -> void:
+	if planet == null or not is_instance_valid(planet):
+		return
+	for visual in planet.find_children("*", "VisualInstance3D", true, false):
+		(visual as VisualInstance3D).layers = 1 << (layer - 1)
+
+
+func _set_default_render_layer(planet: Node3D) -> void:
+	if planet == null or not is_instance_valid(planet):
+		return
+	for visual in planet.find_children("*", "VisualInstance3D", true, false):
+		(visual as VisualInstance3D).layers = 1
+
+
+func _prewarm_planet_render(planet: Node3D) -> void:
+	if stream_prewarm_viewport == null or stream_prewarm_camera == null:
+		return
+	if planet == null or not is_instance_valid(planet):
+		return
+	# Keep the staged node in the main scene tree, but render it through a
+	# private cull layer and a 2x2 shared-world viewport. This uploads GPU
+	# resources without exposing the scene through the gameplay camera.
+	_set_stream_render_layer(planet, STREAM_PREWARM_LAYER)
+	planet.visible = true
+	planet.process_mode = Node.PROCESS_MODE_DISABLED
+	var center := planet.global_position
+	var distance := maxf(float(planet.radius) * 3.0, 2000.0)
+	stream_prewarm_camera.global_position = center + Vector3(0.0, 0.0, distance)
+	stream_prewarm_camera.look_at(center, Vector3.UP)
+	stream_prewarm_camera.far = distance + maxf(float(planet.radius) * 2.5, 2000.0)
+	stream_prewarm_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# One frame schedules the draw; the second lets the renderer finish any
+	# deferred material and texture uploads before the node is hidden again.
+	await get_tree().process_frame
+	stream_prewarm_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	await get_tree().process_frame
+	stream_prewarm_viewport.get_texture().get_image()
+	stream_prewarm_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_set_default_render_layer(planet)
+
+
+func _restore_staged_collisions(planet: Node3D) -> void:
+	if planet == null or not is_instance_valid(planet):
+		return
+	var shapes := planet.find_children("*", "CollisionShape3D", true, false)
+	for i in range(shapes.size()):
+		var shape: CollisionShape3D = shapes[i]
+		if shape.has_meta("_stream_prev_disabled"):
+			shape.disabled = shape.get_meta("_stream_prev_disabled") == true
+		if i % 12 == 11:
+			await get_tree().process_frame
+	var polygons := planet.find_children("*", "CollisionPolygon3D", true, false)
+	for i in range(polygons.size()):
+		var polygon: CollisionPolygon3D = polygons[i]
+		if polygon.has_meta("_stream_prev_disabled"):
+			polygon.disabled = polygon.get_meta("_stream_prev_disabled") == true
+		if i % 12 == 11:
+			await get_tree().process_frame
+
+
+func _restore_staged_collisions_next_frame(planet: Node3D) -> void:
+	await get_tree().process_frame
+	await _restore_staged_collisions(planet)
+
+
+func _activate_staged_planet(proxy: Node3D, full: Node3D) -> void:
+	if proxy == null or full == null or not is_instance_valid(proxy) or not is_instance_valid(full):
+		return
+	if planets.find(proxy) < 0 or not full.runtime_scene_ready:
+		return
+	var planet_id := String(proxy.planet_id)
+	# Both nodes are already children of the same game root. Updating the local
+	# transform avoids reparenting a large scene tree on the activation frame.
+	full.transform = proxy.transform
+	for child in proxy.get_children():
+		if child.get_script() == AnomalyScript:
+			proxy.remove_child(child)
+			full.add_child(child)
+	var index := planets.find(proxy)
+	if index >= 0:
+		planets[index] = full
+	if ship != null and ship.target == proxy:
+		ship.target = full
+	if home == proxy:
+		home = full
+	full._orbit_time = elapsed
+	_set_default_render_layer(full)
+	_set_staged_planet_enabled(full, true, false)
+	call_deferred("_restore_staged_collisions_next_frame", full)
+	full.stream_loading = false
+	_stream_ready_by_id.erase(planet_id)
+	_stream_activation_requested.erase(planet_id)
+	proxy.queue_free()
+
+
+func _request_planet_stream(planet: Node3D) -> void:
+	if planet == null or not is_instance_valid(planet):
+		return
+	if not planet.stream_proxy:
+		return
+	var planet_id := String(planet.planet_id)
+	_stream_activation_requested[planet_id] = true
+	if _stream_ready_by_id.has(planet_id):
+		call_deferred("_activate_staged_planet", planet, _stream_ready_by_id[planet_id])
+		return
+	planet.stream_loading = true
+	_enqueue_planet_prewarm(planet)
+
+
+func _stream_planet_proxy(proxy: Node3D) -> void:
+	if proxy == null or not is_instance_valid(proxy) or not proxy.stream_proxy:
+		return
+	await _prepare_planet_staging(proxy)
+	var full: Node3D = _stream_ready_by_id.get(String(proxy.planet_id))
+	if full != null:
+		_activate_staged_planet(proxy, full)
 
 
 ## 3D 世界里的行星轨道线 —— **已停用**（2026-11-11 用户要求去掉）。
@@ -2020,13 +2294,17 @@ func _reset_positions() -> void:
 	player.basis = Basis.looking_at(look_direction, spawn_direction)
 	player.velocity = Vector3.ZERO
 	player.camera.rotation = Vector3.ZERO
-	player.fuel = 100.0
+	player.reset_physics_interpolation()
+	player.fuel = player.MAX_FUEL
 	player.oxygen = 100.0
 	player.visible = true
 	if ship.get_parent() != home:
 		ship.reparent(home, false)
 	ship.position = ship_position
-	ship.basis = Basis(Quaternion(Vector3.UP, ship_direction))
+	var ship_forward: Vector3 = parking_tangent.slide(ship_direction).normalized()
+	var ship_transform := ship.global_transform
+	ship_transform.basis = Basis.looking_at(ship_forward, ship_direction)
+	ship.global_transform = ship_transform
 	ship.velocity = Vector3.ZERO
 	ship.landed = true
 	# 开局停靠点的地表法线 —— landed 分支每帧重钉时用，跟着停靠点走，
@@ -2034,7 +2312,7 @@ func _reset_positions() -> void:
 	ship.landing_normal = ship_direction.normalized()
 	ship.landed_planet = home
 	ship.autopilot = false
-	ship.fuel = 100.0
+	ship.fuel = ship.MAX_FUEL
 	ship.hull = 100.0
 
 
@@ -2054,6 +2332,11 @@ func _process(delta: float) -> void:
 	# 渐进式建场期间世界还不完整（home / menu_camera / 火焰都未创建），先不跑逐帧逻辑。
 	if not world_ready:
 		return
+	if state == "ship" and ship != null and ship.target != null:
+		var target_distance := ship.global_position.distance_to(ship.target.global_position)
+		# Upload the full planet well before final approach so close range stays smooth.
+		if target_distance < ship.target.radius + 60000.0:
+			_request_planet_stream(ship.target)
 	visual_time += delta
 	_update_guide(delta)
 	_update_boat(delta)
@@ -2163,7 +2446,7 @@ func _update_sun_detail() -> void:
 	var fade := 0.0
 	var camera := get_viewport().get_camera_3d()
 	if camera != null and not supernova_active:
-		var distance := camera.global_position.length()
+		var distance := camera.global_position.distance_to(sun_mesh.global_position)
 		fade = clampf((SUN_DETAIL_RANGE - distance) / SUN_DETAIL_FADE, 0.0, 1.0)
 	sun_detail.visible = fade > 0.01
 	sun_material.set_shader_parameter("detail_amount", fade)
@@ -2196,8 +2479,8 @@ func _trigger_supernova() -> void:
 	supernova_active = true
 	supernova_timer = 0.0
 	map_open = false
-	audio.fade_music_for_death()
 	ship.autopilot = false
+	audio.fade_music_for_death()
 	audio.play_supernova()
 
 
@@ -2226,8 +2509,8 @@ func reset_loop(reason := "") -> void:
 	scan_progress = 0.0
 	scan_target = null
 	_reset_positions()
-	audio.restart_music_for_new_life()
 	state = "walk"
+	audio.restart_music_for_new_life()
 	paused = false
 	journal_open = false
 	map_open = false
@@ -2248,8 +2531,8 @@ func begin_death(reason: String, duration := 3.0) -> void:
 	if roast != null:
 		roast.cancel(false)
 	previous_state = state
-	audio.fade_music_for_death()
 	state = "dying"
+	audio.fade_music_for_death()
 	death_timer = 0.0
 	death_duration = duration
 	death_reason = reason
@@ -2298,6 +2581,8 @@ func return_to_menu() -> void:
 	_clear_attic_context()
 	if player != null and player.get_parent() != self:
 		player.reparent(self, true)
+	if player != null:
+		player.reset_physics_interpolation()
 	in_station = false
 	if ship != null:
 		ship.docked = false
@@ -2414,6 +2699,7 @@ func _cycle_map_selection(direction: int) -> void:
 
 func _set_map_target() -> void:
 	ship.target = planets[map_selected]
+	_request_planet_stream(ship.target)
 	target_index = map_selected
 	hud.show_toast("目的地：" + ship.target.display_name, 2.0)
 	audio.play_ui(620.0)
@@ -2611,7 +2897,7 @@ func _planet_interact() -> bool:
 	var host_id := String(host.get("planet_id"))
 	match kind:
 		"crystal":
-			player.fuel = minf(player.fuel + 35.0, 100.0)
+			player.fuel = minf(player.fuel + 35.0, player.MAX_FUEL)
 			var left: int = host.consume_interactive(index)
 			hud.show_toast("采集晶簇 · 喷气燃料 +35%s" % _charges_hint(left), 2.6)
 			audio.play_ui(880.0)
@@ -2644,7 +2930,7 @@ func _planet_interact() -> bool:
 			audio.play_ui(760.0)
 			if total > 0 and done >= total:
 				# 图鉴集满：一次性奖励
-				player.fuel = 100.0
+				player.fuel = player.MAX_FUEL
 				player.oxygen = 100.0
 				hud.show_toast("图鉴集满 · %s 的遗迹全部记录 · 燃料与氧气已充满" % String(host.get("planet_id")), 4.6)
 				audio.play_ui(1180.0)
@@ -2654,7 +2940,7 @@ func _planet_interact() -> bool:
 				return true
 			(host.interactive_spots[index] as Dictionary)["scanned"] = true
 			host.consume_interactive(index)
-			player.fuel = minf(player.fuel + 20.0, 100.0)
+			player.fuel = minf(player.fuel + 20.0, player.MAX_FUEL)
 			player.oxygen = minf(player.oxygen + 20.0, 100.0)
 			hud.show_toast("信标点亮 · 上一艘船留下的补给 · 燃料氧气 +20", 3.4)
 			audio.play_ui(980.0)
@@ -2864,6 +3150,7 @@ func _interact() -> void:
 		if near_ship_to_board():
 			if roast != null:
 				roast.cancel(false)
+			audio.set_jetpack(false)
 			state = "ship"
 			player.visible = false
 			ship.camera.current = true
@@ -2871,7 +3158,7 @@ func _interact() -> void:
 			# 这是**唯一**的氧气补充途径（除了站内/阁楼/篝火那几个安全区），
 			# 站在飞船旁边回不了 —— 见 player.gd 的氧气规则。
 			player.oxygen = 100.0
-			player.fuel = 100.0
+			player.fuel = player.MAX_FUEL
 			hud.show_toast("已登船 · 氧气与喷气燃料已补满", 2.0)
 			audio.play_ui(420.0)
 			return
@@ -2936,6 +3223,7 @@ func exit_ship() -> void:
 	player.velocity = Vector3.ZERO
 	player.oxygen = 100.0
 	player.visible = true
+	player.reset_physics_interpolation()
 	state = "walk"
 	player.camera.current = true
 	audio.play_ui(360.0)
@@ -2958,6 +3246,7 @@ func enter_station() -> void:
 	player.global_transform = target_station.interior_spawn_transform()
 	player.camera.rotation = Vector3.ZERO
 	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
 	player.oxygen = 100.0
 	player.visible = true
 	player.camera.current = true
@@ -2974,6 +3263,7 @@ func _recover_from_station_void() -> void:
 	player.global_transform = target_station.interior_spawn_transform()
 	player.camera.rotation = Vector3.ZERO
 	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
 	audio.play_ui(180.0)
 	if hud != null:
 		hud.show_toast("舱壁失压 · 紧急牵引回中央枢纽", 3.2)
@@ -3105,15 +3395,15 @@ func get_prompt() -> String:
 		if in_pocket():
 			if fishing_phase != "":
 				return ""  # 冰钓时 HUD 自己有说明，别叠两层
-			if near_route_record():
-			return "「互动」返回空间站" if touch_ui_active() else "E 返回空间站"
-		if touch_ui_active():
+			if touch_ui_active():
 				return "「互动」交互 / 上下云舟 / 抛竿　·　「行囊」查看进度"
 			return "WASD 移动 · E 互动 / 读木牌 / 推门 · B 行囊 · H 旅人手册 · Esc 菜单"
 		if near_attic_chest():
 			if touch_ui_active():
 				return "「互动」合上木箱" if attic.chest_open else "「互动」打开木箱"
 			return "E 合上木箱" if attic.chest_open else "E 打开木箱"
+		if near_route_record():
+			return "「互动」返回空间站" if touch_ui_active() else "E 返回空间站"
 		if touch_ui_active():
 			return "「互动」互动 / 推门　·　「行囊」查看进度"
 		# 燕子特写：站在窗台/壁炉边时给出对应提示
@@ -3427,14 +3717,6 @@ func toggle_travel_journal() -> void:
 		_set_mouse_capture()
 
 
-func near_attic_chest() -> bool:
-	if not in_attic or in_pocket() or player == null or attic == null:
-		return false
-	var anchor: Node3D = attic.anchors.get("AtticAnchor_Chest")
-	if anchor == null:
-		return false
-	return player.global_position.distance_to(anchor.global_position) < 1.8
-
 ## 站在阁楼窗台 / 壁炉边的燕子旁
 func near_swallow() -> bool:
 	if not in_attic or player == null or attic == null:
@@ -3444,6 +3726,15 @@ func near_swallow() -> bool:
 	if attic.swallow_node == null or not attic.swallow_node.visible:
 		return false
 	return player.global_position.distance_to(attic.swallow_node.global_position) < 2.6
+
+
+func near_attic_chest() -> bool:
+	if not in_attic or in_pocket() or player == null or attic == null:
+		return false
+	var anchor: Node3D = attic.anchors.get("AtticAnchor_Chest")
+	if anchor == null:
+		return false
+	return player.global_position.distance_to(anchor.global_position) < 1.8
 
 
 ## 招呼燕子
@@ -3496,6 +3787,7 @@ func _enter_scope() -> void:
 		var eye: Vector3 = world.to_global(Vector3(-13.0, 1.62, -33.2))
 		player.global_position = eye
 		player.look_at(world.to_global(Vector3(-26.0, 2.4, -40.0)), Vector3.UP)
+		player.reset_physics_interpolation()
 	scope_active = true
 	hud.show_toast("E / Esc 放下望远镜", 2.4)
 
@@ -3506,6 +3798,7 @@ func _exit_scope() -> void:
 		attic_worlds.close_scope()
 	if player != null and scope_has_return:
 		player.camera.global_transform = scope_return_transform
+		player.camera.reset_physics_interpolation()
 		scope_has_return = false
 	hud.show_toast("放下望远镜", 1.6)
 
@@ -3523,6 +3816,7 @@ func _update_pocket_safety() -> void:
 		return
 	player.global_position = attic_worlds.spawn_position(pocket_key)
 	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
 	hud.show_toast("风把你托了回来", 2.4)
 
 
@@ -3543,6 +3837,7 @@ func _enter_boat_seat() -> void:
 	if attic_worlds != null and player != null and pocket_key != "":
 		var flat: Vector2 = attic_worlds.boat_pos
 		player.global_position = attic_worlds.world_point(pocket_key, Vector3(flat.x, 1.05, flat.y))
+		player.reset_physics_interpolation()
 
 
 ## 下船：把玩家放回栈桥
@@ -3556,6 +3851,7 @@ func _leave_boat_seat(result: Dictionary) -> void:
 		else:
 			player.global_position = local_exit
 		player.velocity = Vector3.ZERO
+		player.reset_physics_interpolation()
 	hud.show_toast(String(result.get("message", "")), 3.2)
 	audio.play_ui(520.0)
 
@@ -3861,23 +4157,26 @@ var fishing_fish_id := ""
 var fishing_reeling := false
 var fishing_hud: CanvasLayer
 var attic_worlds: Node3D
+var attic_ready := false
 
 
 func _build_attic() -> void:
+	attic_ready = false
 	attic = AtticScript.new()
 	attic.name = "Attic"
 	attic.position = ATTIC_ORIGIN
 	add_child(attic)
-	attic.build()
+	await attic.build()
 	# 四扇门与镜界回廊后面的口袋世界
 	attic_worlds = AtticWorldsScript.new()
 	attic_worlds.name = "AtticWorlds"
 	attic_worlds.progress_ref = progress
 	add_child(attic_worlds)
-	attic_worlds.build()
+	await attic_worlds.build()
 	attic.visible = false
 	attic.process_mode = Node.PROCESS_MODE_DISABLED
 	attic_worlds.set_active_world("")
+	attic_ready = true
 
 
 ## 手册里的「重播新手提示」
@@ -3949,6 +4248,10 @@ func _clear_attic_context() -> void:
 func enter_attic() -> void:
 	if not can_visit_attic():
 		return
+	if not attic_ready:
+		if hud != null:
+			hud.show_toast("阁楼正在准备中，请稍后再试", 2.0)
+		return
 	_enter_attic_space()
 
 
@@ -3984,6 +4287,7 @@ func _enter_attic_space() -> void:
 	player.velocity = Vector3.ZERO
 	player.camera.rotation = Vector3.ZERO
 	player.visible = true
+	player.reset_physics_interpolation()
 	player.camera.current = true
 	_set_mouse_capture()
 	audio.set_jetpack(false)
@@ -4018,6 +4322,7 @@ func leave_attic() -> void:
 		player.oxygen = saved.oxygen
 		player.fuel = saved.fuel
 		player.visible = saved.visible
+		player.reset_physics_interpolation()
 		state = saved.state
 		in_station = saved.in_station
 		active_station = saved.active_station
@@ -4132,6 +4437,7 @@ func enter_pocket(key: String) -> void:
 	player.global_position = attic_worlds.spawn_position(key)
 	player.velocity = Vector3.ZERO
 	player.visible = true
+	player.reset_physics_interpolation()
 	player.camera.current = true
 	_set_mouse_capture()
 	audio.set_jetpack(false)
@@ -4159,6 +4465,7 @@ func leave_pocket() -> void:
 				player.reparent(mirror, false)
 				player.global_position = attic_worlds.spawn_position("mirror")
 				player.velocity = Vector3.ZERO
+				player.reset_physics_interpolation()
 				apply_sky("mirror")
 				audio.play_ui(420.0)
 				return
@@ -4173,6 +4480,7 @@ func leave_pocket() -> void:
 	player.global_position = attic.to_global(back)
 	player.velocity = Vector3.ZERO
 	player.visible = true
+	player.reset_physics_interpolation()
 	player.camera.current = true
 	audio.play_ui(420.0)
 
@@ -4486,6 +4794,7 @@ func enter_dungeon() -> void:
 	player.reparent(world, true)
 	player.global_position = attic_worlds.spawn_position("dungeon")
 	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
 	player.camera.current = true
 	audio.play_ui(420.0)
 	if dungeon_controller != null and is_instance_valid(dungeon_controller):
@@ -4600,6 +4909,7 @@ func finish_dungeon(cleared: bool) -> void:
 		pocket_key = "mirror"
 		apply_sky("mirror")
 	player.velocity = Vector3.ZERO
+	player.reset_physics_interpolation()
 
 
 ## 静镜室里：站在哪枚镜印旁（返回序号，-1 表示没有）

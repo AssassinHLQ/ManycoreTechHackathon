@@ -113,6 +113,7 @@ func restore_target(game) -> void:
 			game.target_index = i
 			game.map_selected = i
 			game.ship.target = game.planets[i]
+			game._request_planet_stream(game.planets[i])
 			return
 
 
@@ -126,6 +127,7 @@ func navigate(game, key: String) -> bool:
 		game.target_index = i
 		game.map_selected = i
 		game.ship.target = planet
+		game._request_planet_stream(planet)
 		tracked = key if decoded.has(key) and not verified(game, key) else ""
 		game._save_knowledge()
 		game.hud.show_toast("目的地已设为%s。%s" % [ROUTES[key].place,

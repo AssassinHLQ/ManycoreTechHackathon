@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bmwbdcgcrj1j3"
 path.s3tc="res://.godot/imported/model_Image_0.jpg-94c2a9d5fb1b26b72b6d1292c0bcd888.s3tc.ctex"
+path.etc2="res://.godot/imported/model_Image_0.jpg-94c2a9d5fb1b26b72b6d1292c0bcd888.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/tea-canister/model_Image_0.jpg"
-dest_files=["res://.godot/imported/model_Image_0.jpg-94c2a9d5fb1b26b72b6d1292c0bcd888.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_Image_0.jpg-94c2a9d5fb1b26b72b6d1292c0bcd888.s3tc.ctex", "res://.godot/imported/model_Image_0.jpg-94c2a9d5fb1b26b72b6d1292c0bcd888.etc2.ctex"]
 
 [params]
 

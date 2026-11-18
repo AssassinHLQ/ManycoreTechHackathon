@@ -652,7 +652,7 @@ func _wing_mesh(span: float, root_chord: float, tip_chord: float,
 
 ## 外部飞船模型（CC BY 4.0，见 assets/models/LICENSE_MANIFEST.json）。
 ## 为空串时退回 _build_model() 的程序化几何 —— 保留旧模板，换模型不影响可玩性。
-const SHIP_MODEL_PATH := "res://assets/models/ship-fighter/model.glb"
+const SHIP_MODEL_PATH := ""
 ## 模型的朝向**已经在 GLB 里烘焙好了**（tools/slim_ship.py 按 Godot 约定转成
 ## 机头 -Z、机顶 +Y、翼展 X），运行时**不要再转**。
 ## 旧版本这里写的是绕 X 轴 +90°，那是因为当时的 GLB 是 Y-up；
@@ -690,6 +690,9 @@ var ship_model_span := 0.0
 ##   按「高/2」放会让碰撞盒整体悬在机身**上方** 2.3 米，
 ##   玩家能从底下直接走进模型里。
 var ship_model_center := Vector3.ZERO
+## 当前模型原点离地表的停靠高度。外部 GLB 使用固定下压量，程序化模型
+## 则按起落架等可见网格的实际最低点计算。
+var landing_rest_altitude := SHIP_MODEL_GROUND_SINK
 
 ## GLB 实例根节点与它的 holder（ShipModel），碰撞形状要从这里取顶点。
 ## 见 _build_mesh_collision / _collect_model_faces。
@@ -766,6 +769,7 @@ func _build_external_model() -> bool:
 	#     y ∈ [-GROUND_SINK, height - GROUND_SINK]   （底部抬到 0 再下沉一点点）
 	# 中心就是下面这个。碰撞盒用它当中心才对得上机身。
 	ship_model_center = Vector3(0.0, ship_model_height * 0.5 - SHIP_MODEL_GROUND_SINK, 0.0)
+	landing_rest_altitude = SHIP_MODEL_GROUND_SINK
 	# 外部模型只有网格和贴图，**没有尾焰** —— 程序化几何里那几块发光盘不会自动出现。
 	# 玩家反馈「飞船没尾焰吗」，就是这里缺了。补三束喷焰，坐标用模型局部空间
 	# 挂在 holder 下，自动跟着 factor 缩放。
@@ -807,6 +811,45 @@ func _build_mesh_collision(collider: CollisionShape3D) -> bool:
 		hull_shape = convex
 	_build_planet_asset_sweep_shapes()
 	return true
+
+
+## 程序化回退模型没有外部根节点，直接从已生成的可见网格量尺寸。
+func _finalize_procedural_model_metrics() -> void:
+	var bounds := AABB()
+	var first := true
+	var stack: Array[Node] = [self]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D:
+			var mesh_instance := node as MeshInstance3D
+			if mesh_instance.mesh != null and not _is_effect_mesh(mesh_instance):
+				var box: AABB = _transform_to_ship(mesh_instance) * mesh_instance.get_aabb()
+				bounds = box if first else bounds.merge(box)
+				first = false
+		for child in node.get_children():
+			stack.append(child)
+	if first:
+		ship_model_span = HULL_X * 2.0
+		ship_model_height = HULL_Y * 2.0
+		ship_model_length = HULL_Z * 2.0
+		ship_model_center = Vector3.ZERO
+		landing_rest_altitude = HULL_Y
+		return
+	ship_model_span = absf(bounds.size.x)
+	ship_model_height = absf(bounds.size.y)
+	ship_model_length = absf(bounds.size.z)
+	ship_model_center = bounds.get_center()
+	landing_rest_altitude = maxf(0.35, -bounds.position.y)
+
+
+func _is_effect_mesh(node: MeshInstance3D) -> bool:
+	var effects: Array = []
+	effects.append_array(engine_plumes)
+	effects.append_array(engine_halos)
+	effects.append_array(engine_cores)
+	effects.append_array(ventral_plumes)
+	effects.append_array(ventral_cores)
+	return effects.has(node)
 
 
 func _build_planet_asset_sweep_shapes() -> void:
@@ -858,7 +901,7 @@ func _collect_model_faces() -> PackedVector3Array:
 	var faces := PackedVector3Array()
 	var root: Node3D = _ship_model_root
 	if root == null or not is_instance_valid(root):
-		return faces
+		return _collect_procedural_faces()
 	var holder_xform := Transform3D.IDENTITY
 	if _ship_model_holder != null and is_instance_valid(_ship_model_holder):
 		holder_xform = _ship_model_holder.transform
@@ -902,6 +945,42 @@ func _collect_model_faces() -> PackedVector3Array:
 							faces.append(xform * vpack[k2 + 1])
 							faces.append(xform * vpack[k2 + 2])
 							k2 += 3
+		for child in node.get_children():
+			stack.append(child)
+	return faces
+
+
+func _collect_procedural_faces() -> PackedVector3Array:
+	var faces := PackedVector3Array()
+	var stack: Array[Node] = [self]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is MeshInstance3D:
+			var mesh_instance := node as MeshInstance3D
+			if mesh_instance.mesh != null and not _is_effect_mesh(mesh_instance) and mesh_instance.visible:
+				var xform := _transform_to_ship(mesh_instance)
+				for surface in range(mesh_instance.mesh.get_surface_count()):
+					var arrays: Array = mesh_instance.mesh.surface_get_arrays(surface)
+					if arrays.size() <= Mesh.ARRAY_VERTEX:
+						continue
+					var vertices = arrays[Mesh.ARRAY_VERTEX]
+					if vertices == null:
+						continue
+					var vertex_pack: PackedVector3Array = vertices
+					var indices = arrays[Mesh.ARRAY_INDEX]
+					if indices != null:
+						var index_pack: PackedInt32Array = indices
+						var count: int = index_pack.size() - (index_pack.size() % 3)
+						for i in range(0, count, 3):
+							faces.append(xform * vertex_pack[index_pack[i]])
+							faces.append(xform * vertex_pack[index_pack[i + 1]])
+							faces.append(xform * vertex_pack[index_pack[i + 2]])
+					else:
+						var count_no_index: int = vertex_pack.size() - (vertex_pack.size() % 3)
+						for i in range(0, count_no_index, 3):
+							faces.append(xform * vertex_pack[i])
+							faces.append(xform * vertex_pack[i + 1])
+							faces.append(xform * vertex_pack[i + 2])
 		for child in node.get_children():
 			stack.append(child)
 	return faces
@@ -1501,6 +1580,7 @@ func _build_model() -> void:
 
 	# 批量小件统一提交，减少 draw call
 	_batch_flush()
+	_finalize_procedural_model_metrics()
 
 
 ## 姿态控制：让飞船**平滑地**转向 `aim_basis`（鼠标想看的方向）。
@@ -1839,7 +1919,7 @@ func _physics_process(delta: float) -> void:
 		thrust_level = 0.0
 		# 已由行星父节点携带，直接保存局部停靠点，避免大世界坐标往返舍入。
 		if landed_planet != null and is_instance_valid(landed_planet):
-			var resting_position: Vector3 = landed_planet.surface_position(landing_normal, LANDING_REST_ALT)
+			var resting_position: Vector3 = landed_planet.surface_position(landing_normal, landing_rest_altitude)
 			if get_parent() == landed_planet:
 				position = resting_position
 			else:
@@ -2927,7 +3007,7 @@ var land_touch_alt := 2.3
 ## 停靠时船体原点应离地多高（机腹贴地）。
 ## main.gd 摆放开局停靠点时用它 —— 之前写死 2.3，机长放大后机腹陷地 9.2 m。
 func ground_rest_altitude() -> float:
-	return LANDING_REST_ALT
+	return landing_rest_altitude
 
 
 ## 请求降落。**不再瞬移**，只是进入降落状态机。
@@ -2977,7 +3057,7 @@ func _process_landing(delta: float) -> bool:
 				sink_target = LANDING_APPROACH_MIN_SINK
 			var want_v: Vector3 = -normal * sink_target + ground_v
 			velocity = velocity.move_toward(want_v, delta * 40.0)
-			if altitude <= LANDING_REST_ALT + LANDING_FLARE_ALT:
+			if altitude <= landing_rest_altitude + LANDING_FLARE_ALT:
 				land_phase = LandPhase.FLARE
 				land_flare_start_alt = altitude
 		LandPhase.FLARE:
@@ -2989,18 +3069,18 @@ func _process_landing(delta: float) -> bool:
 			#   改成 rate = clamp(剩余高度 × 0.9, 0.8, 3.2)：
 			#   高度越低速度越慢，指数式逼近，数学上保证一定收敛到地表。
 			var sink_target: float = clampf(
-				(altitude - LANDING_REST_ALT) * 0.9, 0.8, LANDING_FLARE_SINK)
+				(altitude - landing_rest_altitude) * 0.9, 0.8, LANDING_FLARE_SINK)
 			var sink_v: Vector3 = -normal * sink_target
 			velocity = velocity.move_toward(sink_v + ground_v, delta * 28.0)
-			var t: float = clampf(1.0 - (altitude - LANDING_REST_ALT) / LANDING_FLARE_ALT, 0.0, 1.0)
+			var t: float = clampf(1.0 - (altitude - landing_rest_altitude) / LANDING_FLARE_ALT, 0.0, 1.0)
 			_align_belly_to(normal, t, delta)
-			if altitude <= LANDING_REST_ALT + 0.30:
+			if altitude <= landing_rest_altitude + 0.30:
 				# 接地：进入缓冲行程。记下接地高度用于插值（不靠速度积分）。
 				land_phase = LandPhase.TOUCHDOWN
 				land_settle = 0.0
-				land_touch_alt = maxf(altitude, LANDING_REST_ALT)
+				land_touch_alt = maxf(altitude, landing_rest_altitude)
 				game.audio.play_ui(300.0)
-			if altitude > LANDING_REST_ALT + LANDING_FLARE_ALT * 1.4:
+			if altitude > landing_rest_altitude + LANDING_FLARE_ALT * 1.4:
 				land_phase = LandPhase.APPROACH
 		LandPhase.TOUCHDOWN:
 			# ⚠ 缓冲行程**用位置插值**，不靠速度积分。
@@ -3011,7 +3091,7 @@ func _process_landing(delta: float) -> bool:
 			var p: float = clampf(land_settle / LANDING_TOUCHDOWN_TIME, 0.0, 1.0)
 			var ease: float = p * p * (3.0 - 2.0 * p)
 			# 高度从「接地高度」平滑插值到「停靠高度」，永不穿地
-			var alt_now: float = lerpf(land_touch_alt, LANDING_REST_ALT, ease)
+			var alt_now: float = lerpf(land_touch_alt, landing_rest_altitude, ease)
 			global_position = planet.global_position + planet.surface_position(normal, alt_now)
 			velocity = ground_v
 			# 机腹完全贴平
@@ -3068,7 +3148,7 @@ func _finish_landing() -> void:
 	# TOUCHDOWN 已经把高度插值到停靠高度，这里只做父节点切换（不产生可见位移）
 	var normal: Vector3 = (global_position - planet.global_position).normalized()
 	reparent(planet, true)
-	global_position = planet.global_position + planet.surface_position(normal, LANDING_REST_ALT)
+	global_position = planet.global_position + planet.surface_position(normal, landing_rest_altitude)
 	_align_belly_to(normal, 1.0, 1.0)
 	landed = true
 	land_phase = LandPhase.NONE
@@ -3095,7 +3175,7 @@ func land(planet) -> void:
 	landed_planet = planet
 	reparent(planet, true)
 	var normal: Vector3 = (global_position - planet.global_position).normalized()
-	global_position = planet.global_position + planet.surface_position(normal, LANDING_REST_ALT)
+	global_position = planet.global_position + planet.surface_position(normal, landing_rest_altitude)
 	_align_belly_to(normal, 1.0, 1.0)
 	landed = true
 	land_phase = LandPhase.NONE

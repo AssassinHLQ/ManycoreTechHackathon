@@ -10,6 +10,8 @@ var focus := false
 var scope_zoom := 1.0
 const SCOPE_BASE_FOV := 35.0
 const SCOPE_MAX_ZOOM := 8.0
+const SCOPE_BLACK_HOLE_CLIP_NEAR := 30.0
+const SCOPE_BLACK_HOLE_MIN_DISTANCE := 10000.0
 var mouse_sensitivity := 0.0022
 const WEB_LOOK_SCALE := 0.5
 var bob_time := 0.0
@@ -107,13 +109,37 @@ func scope_magnification() -> float:
 	return 74.0 / SCOPE_BASE_FOV * scope_zoom
 
 
+func _target_is_in_camera_view(target: Vector3) -> bool:
+	var viewport := camera.get_viewport()
+	var view_size: Vector2i = viewport.size
+	if view_size.y <= 0:
+		return false
+	var local: Vector3 = camera.global_transform.affine_inverse() * target
+	var depth := -local.z
+	if depth <= camera.near:
+		return false
+	var half_height := tan(deg_to_rad(camera.fov * 0.5))
+	var half_width := half_height * float(view_size.x) / float(view_size.y)
+	return absf(local.x) <= depth * half_width and absf(local.y) <= depth * half_height
+
+
+func _update_scope_clip_distance() -> void:
+	var near_distance := 0.07
+	if focus and scope_zoom >= 4.0 and game.gargantua != null:
+		var target: Vector3 = game.gargantua.global_position
+		var target_distance := camera.global_position.distance_to(target)
+		if target_distance >= SCOPE_BLACK_HOLE_MIN_DISTANCE and _target_is_in_camera_view(target):
+			near_distance = SCOPE_BLACK_HOLE_CLIP_NEAR
+	camera.near = near_distance
+
+
 func _physics_process(delta: float) -> void:
+	_update_scope_clip_distance()
 	if game.state != "walk" or game.paused or game.supernova_active:
-		if game.audio != null:
-			game.audio.set_jetpack(false)
+		_set_jetpack_audio(false)
 		return
 	if game.map_open or game.minigame_open or game.bag_open:
-		game.audio.set_jetpack(false)
+		_set_jetpack_audio(false)
 		return
 	var in_station: bool = game.in_station and game.station != null
 	var planet = null
@@ -262,7 +288,12 @@ func _physics_process(delta: float) -> void:
 	if is_on_floor() and planar_speed > 0.5 * body_scale:
 		bob_time += delta * planar_speed / maxf(body_scale, 0.001) * 1.25
 	camera.position.y = (1.48 + sin(bob_time) * minf(planar_speed / (8.5 * body_scale), 1.0) * 0.035) * body_scale
-	game.audio.set_jetpack(jetting)
+	_set_jetpack_audio(jetting)
+
+
+func _set_jetpack_audio(active: bool) -> void:
+	if game != null and game.audio != null:
+		game.audio.set_jetpack(active)
 
 
 ## 把胶囊与「贴地/台阶」相关的容差按 body_scale 重设。

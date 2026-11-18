@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bss21swys4evg"
 path.s3tc="res://.godot/imported/model_glb_Image_0.jpg-95d5f57e112f3c797f74ab58e3baa357.s3tc.ctex"
+path.etc2="res://.godot/imported/model_glb_Image_0.jpg-95d5f57e112f3c797f74ab58e3baa357.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/props/attic/travel-notebook/model_glb_Image_0.jpg"
-dest_files=["res://.godot/imported/model_glb_Image_0.jpg-95d5f57e112f3c797f74ab58e3baa357.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_glb_Image_0.jpg-95d5f57e112f3c797f74ab58e3baa357.s3tc.ctex", "res://.godot/imported/model_glb_Image_0.jpg-95d5f57e112f3c797f74ab58e3baa357.etc2.ctex"]
 
 [params]
 

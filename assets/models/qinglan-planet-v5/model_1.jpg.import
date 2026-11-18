@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://b23d3bby5xm3l"
 path.s3tc="res://.godot/imported/model_1.jpg-a21b094c67898a443f3c3033ba66b73d.s3tc.ctex"
+path.etc2="res://.godot/imported/model_1.jpg-a21b094c67898a443f3c3033ba66b73d.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/models/qinglan-planet-v5/model_1.jpg"
-dest_files=["res://.godot/imported/model_1.jpg-a21b094c67898a443f3c3033ba66b73d.s3tc.ctex"]
+dest_files=["res://.godot/imported/model_1.jpg-a21b094c67898a443f3c3033ba66b73d.s3tc.ctex", "res://.godot/imported/model_1.jpg-a21b094c67898a443f3c3033ba66b73d.etc2.ctex"]
 
 [params]
 
