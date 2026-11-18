@@ -1,10 +1,128 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="52" fill="#060b1c"/>
-  <circle cx="128" cy="128" r="82" fill="none" stroke="#65d9d0" stroke-width="3" opacity=".35"/>
-  <ellipse cx="128" cy="128" rx="108" ry="42" fill="none" stroke="#eabf7a" stroke-width="5" transform="rotate(-24 128 128)"/>
-  <circle cx="128" cy="128" r="48" fill="#173b4c" stroke="#80e6d9" stroke-width="4"/>
-  <path d="M90 132 Q128 92 166 132 Q128 168 90 132Z" fill="#eabf7a"/>
-  <circle cx="128" cy="130" r="15" fill="#fff5cf"/>
-  <circle cx="211" cy="75" r="7" fill="#fff5cf"/>
-  <circle cx="50" cy="62" r="3" fill="#80e6d9"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Borrowed Sky</title>
+  <desc>A small survey craft passes a vast, blue-green planet in deep space.</desc>
+  <defs>
+    <linearGradient id="space" x1="45" y1="22" x2="438" y2="498" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111a27"/>
+      <stop offset=".46" stop-color="#090f19"/>
+      <stop offset="1" stop-color="#05090f"/>
+    </linearGradient>
+    <radialGradient id="nebula" cx="144" cy="164" r="283" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4d4552" stop-opacity=".34"/>
+      <stop offset=".48" stop-color="#253647" stop-opacity=".19"/>
+      <stop offset="1" stop-color="#101923" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="planet" cx="235" cy="251" r="320" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#b2a99c"/>
+      <stop offset=".27" stop-color="#78888b"/>
+      <stop offset=".59" stop-color="#426872"/>
+      <stop offset=".81" stop-color="#214252"/>
+      <stop offset="1" stop-color="#101c2a"/>
+    </radialGradient>
+    <linearGradient id="limb" x1="117" y1="245" x2="479" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#648894" stop-opacity=".52"/>
+      <stop offset=".48" stop-color="#b1d1c7"/>
+      <stop offset=".78" stop-color="#e0c39b"/>
+      <stop offset="1" stop-color="#d47d59" stop-opacity=".56"/>
+    </linearGradient>
+    <radialGradient id="crater" cx=".3" cy=".25" r=".8">
+      <stop stop-color="#d7d4c7" stop-opacity=".22"/>
+      <stop offset=".57" stop-color="#879e9a" stop-opacity=".12"/>
+      <stop offset=".83" stop-color="#192c39" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#111d2a" stop-opacity=".04"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="101" y1="290" x2="445" y2="429" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d9c5a4" stop-opacity="0"/>
+      <stop offset=".27" stop-color="#e7ddc4" stop-opacity=".58"/>
+      <stop offset=".59" stop-color="#88a9a9" stop-opacity=".43"/>
+      <stop offset="1" stop-color="#728b94" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ring-light" x1="100" y1="321" x2="414" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f6d5aa" stop-opacity="0"/>
+      <stop offset=".4" stop-color="#f3e3c9" stop-opacity=".84"/>
+      <stop offset=".71" stop-color="#b4d5cf" stop-opacity=".54"/>
+      <stop offset="1" stop-color="#8db5bc" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ship" x1="-31" y1="-9" x2="35" y2="10" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#516776"/>
+      <stop offset=".51" stop-color="#d5d2c3"/>
+      <stop offset="1" stop-color="#718c92"/>
+    </linearGradient>
+    <radialGradient id="engine" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="matrix(9 0 0 4 0 0)">
+      <stop stop-color="#f0d9af" stop-opacity=".82"/>
+      <stop offset="1" stop-color="#91d3d0" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile">
+      <rect width="512" height="512" rx="82"/>
+    </clipPath>
+    <clipPath id="world">
+      <circle cx="320" cy="389" r="241"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#space)"/>
+    <rect width="512" height="512" fill="url(#nebula)"/>
+
+    <g fill="#e6e3d6">
+      <circle cx="81" cy="94" r="1.45" opacity=".65"/>
+      <circle cx="134" cy="202" r="1.05" opacity=".51"/>
+      <circle cx="223" cy="80" r="1.25" opacity=".7"/>
+      <circle cx="386" cy="103" r="1.35" opacity=".57"/>
+      <circle cx="455" cy="169" r="1" opacity=".46"/>
+      <circle cx="63" cy="291" r="1.2" opacity=".47"/>
+      <circle cx="168" cy="133" r=".9" opacity=".43"/>
+      <circle cx="445" cy="82" r=".95" opacity=".48"/>
+      <circle cx="102" cy="160" r=".8" opacity=".42"/>
+    </g>
+    <circle cx="319" cy="108" r="1.7" fill="#f4d9b2" opacity=".76"/>
+    <path d="M319 102V114M313 108H325" stroke="#f4d9b2" stroke-opacity=".52" stroke-width=".7"/>
+
+    <!-- The orbit passes behind the planet. -->
+    <g transform="rotate(-17 315 377)" fill="none">
+      <ellipse cx="315" cy="377" rx="300" ry="93" stroke="#738890" stroke-opacity=".25" stroke-width="1.2"/>
+      <ellipse cx="315" cy="377" rx="297" ry="87" stroke="#c6b89f" stroke-opacity=".34" stroke-width="4"/>
+      <ellipse cx="315" cy="377" rx="294" ry="81" stroke="#d4c9b3" stroke-opacity=".18" stroke-width="1.5"/>
+    </g>
+
+    <!-- Rim light rolls across a shadowed planet. -->
+    <circle cx="320" cy="389" r="241" fill="url(#planet)"/>
+    <circle cx="320" cy="389" r="239.7" fill="none" stroke="url(#limb)" stroke-width="3.2" opacity=".92"/>
+    <circle cx="320" cy="389" r="244" fill="none" stroke="url(#limb)" stroke-width="9" opacity=".16"/>
+
+    <g clip-path="url(#world)">
+      <path d="M112 304C122 289 137 283 150 287C159 289 164 300 174 303C184 306 193 299 201 303C211 308 213 319 206 326C197 336 184 333 174 340C163 348 153 345 145 338C136 329 127 334 118 329C107 323 106 314 112 304Z" fill="#e4dbc5" opacity=".11"/>
+      <path d="M241 330C253 318 267 319 275 327C283 335 293 334 300 341C307 349 302 360 292 365C280 372 269 364 261 371C249 382 238 376 233 366C228 357 232 339 241 330Z" fill="#c3d0bf" opacity=".09"/>
+      <path d="M352 301C362 290 374 290 382 297C391 304 399 302 407 307C417 313 415 322 405 328C396 334 389 343 378 341C368 339 366 328 357 325C346 321 345 310 352 301Z" fill="#c4c7b6" opacity=".09"/>
+      <path d="M120 378C131 367 145 368 154 375C163 383 173 380 181 386C189 392 185 401 176 404C165 409 156 402 149 410C139 418 125 412 121 404C116 396 114 384 120 378ZM419 365C428 356 438 356 445 362C452 368 461 366 466 373C471 380 465 388 456 390C447 392 440 400 432 396C423 393 422 384 415 380C410 376 414 369 419 365Z" fill="#9fb5af" opacity=".08"/>
+      <path d="M117 300C124 294 131 291 138 292M169 307Q179 312 185 307M246 334Q256 327 265 330M358 304Q366 298 373 301M428 369Q435 364 441 367" fill="none" stroke="#eee2c8" stroke-opacity=".13" stroke-width=".8" stroke-linecap="round"/>
+      <path d="M288 272L302 267M321 287L334 283M154 360L164 356M395 354L407 350M223 396L236 391M379 408L392 405M110 444L121 438M463 425L473 420" stroke="#d7d9cd" stroke-opacity=".12" stroke-width=".75" stroke-linecap="round"/>
+      <ellipse cx="202" cy="346" rx="7.5" ry="4.2" transform="rotate(-22 202 346)" fill="url(#crater)"/>
+      <ellipse cx="202" cy="346" rx="8" ry="4.4" transform="rotate(-22 202 346)" fill="none" stroke="#e0dfcf" stroke-opacity=".17" stroke-width=".8"/>
+      <ellipse cx="342" cy="374" rx="11" ry="6.4" transform="rotate(-19 342 374)" fill="url(#crater)"/>
+      <ellipse cx="342" cy="374" rx="11.5" ry="6.8" transform="rotate(-19 342 374)" fill="none" stroke="#d6d6c9" stroke-opacity=".14" stroke-width=".8"/>
+      <ellipse cx="434" cy="319" rx="5.3" ry="3" transform="rotate(-21 434 319)" fill="url(#crater)"/>
+      <path d="M172 247Q220 229 275 233T375 227M139 260Q192 245 231 248" fill="none" stroke="#ffe2b3" stroke-opacity=".14" stroke-width=".8"/>
+    </g>
+
+    <!-- The thin front arc separates the orbital rings from the far arc. -->
+    <g transform="rotate(-17 315 377)" fill="none">
+      <path d="M21 377C89 425 198 458 315 470C432 458 541 425 609 377" stroke="#26343a" stroke-opacity=".49" stroke-width="4"/>
+      <path d="M21 377C89 425 198 458 315 470C432 458 541 425 609 377" stroke="url(#ring)" stroke-width="2.1"/>
+      <path d="M29 384C116 437 219 460 315 465C418 459 512 432 600 384" stroke="url(#ring-light)" stroke-width=".75"/>
+    </g>
+
+    <!-- A distant survey craft, kept small against the planetary scale. -->
+    <g transform="translate(165 222) rotate(-24) scale(.76)">
+      <path d="M-30 0L-9-2L1-5L22-4L34 0L22 4L1 5L-9 2Z" fill="#071018" stroke="#17232d" stroke-width="1.1" stroke-linejoin="round"/>
+      <path d="M-26 0L-9-1.6L2-3.5L21-2.8L31 0L21 2.8L2 3.5L-9 1.6Z" fill="url(#ship)"/>
+      <path d="M-7-2L1-7L11-6L8-2M-7 2L1 7L11 6L8 2" fill="#526773" stroke="#a9b4ad" stroke-opacity=".75" stroke-width=".7" stroke-linejoin="round"/>
+      <path d="M0-1.3L14-1.4L19 0L14 1.4L0 1.3Z" fill="#101d29"/>
+      <path d="M-21 0L-10 0" stroke="#f1d6ac" stroke-opacity=".64" stroke-width=".9"/>
+      <ellipse cx="-29" cy="0" rx="8" ry="3.8" fill="url(#engine)"/>
+    </g>
+
+    <path d="M70 206C93 158 129 121 175 96" fill="none" stroke="#b7c3bf" stroke-opacity=".08" stroke-width=".8"/>
+    <path d="M82 211C100 177 124 153 153 135" fill="none" stroke="#c5d0c6" stroke-opacity=".08" stroke-width=".8"/>
+  </g>
 </svg>
