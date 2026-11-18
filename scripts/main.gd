@@ -2196,6 +2196,7 @@ func _trigger_supernova() -> void:
 	supernova_active = true
 	supernova_timer = 0.0
 	map_open = false
+	audio.fade_music_for_death()
 	ship.autopilot = false
 	audio.play_supernova()
 
@@ -2225,6 +2226,7 @@ func reset_loop(reason := "") -> void:
 	scan_progress = 0.0
 	scan_target = null
 	_reset_positions()
+	audio.restart_music_for_new_life()
 	state = "walk"
 	paused = false
 	journal_open = false
@@ -2246,6 +2248,7 @@ func begin_death(reason: String, duration := 3.0) -> void:
 	if roast != null:
 		roast.cancel(false)
 	previous_state = state
+	audio.fade_music_for_death()
 	state = "dying"
 	death_timer = 0.0
 	death_duration = duration

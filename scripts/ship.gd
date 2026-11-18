@@ -10,7 +10,7 @@ var docked := false
 var docked_station
 var target
 var autopilot := false
-var fuel := 100.0
+var fuel := 200.0
 var hull := 100.0
 var focus := false
 var zoom := 1.0
@@ -68,74 +68,27 @@ var repair_active := false
 const HULL_X := 1.75
 const HULL_Y := 1.0
 const HULL_Z := 3.25
+const MAX_FUEL := 200.0
 const AUTOPILOT_ACCEL := 230.0
-## 自动航行的高速制动能力。它只用于远距离自动驾驶的速度剖面，
-## 让巡航速度随剩余距离继续增长，不被手动刹车参数卡住。
+## 自动航行进入减速段时使用的高速制动能力，速度剖面也按它计算。
+## 远距离仍然不设巡航上限，接近目标后才切入强制减速。
 const AUTOPILOT_BRAKE_DECEL := 1200.0
 ## 每改变 1 m/s 速度消耗多少推进剂（自动航行）。
 ##
 ## ⚠ 2026-11-11 场景放大后从 0.008 降到 0.003：
 ##   轨道 ×10 之后一趟单程的速度变化从 ~1800 m/s 涨到 ~7700 m/s，
-##   按原来的系数要烧掉约 62 点油（油箱才 100），远行必然搁浅在半路。
+##   按原来的系数要烧掉约 62 点油（油箱现在为 200），远行仍留有返程余量。
 ##   降到 0.003 后同一趟约 23 点，留得住返程。
 const AUTOPILOT_FUEL_PER_DV := 0.003
-## 自动航行的巡航速度上限（米/秒）。
-##
-## ⚠ 2026-11-11 **第二次调整**。用户截图：高度 9826 米、速度 1259 m/s，
-##   问「自动航行没改减速逻辑吗？」—— 逻辑是对的，但**参数让它来不及停**。
-##
-##   上一版取 4000 的理由是「让 √(2ad) 在 9.2 万米处报到 3800」。
-##   问题是那个 a 用的是**打完折**的 80 m/s²，而实际推力是 230。
-##   结果是：从 4000 刹停需要 10.9 万米，比最远轨道（9.2 万米）还长 ——
-##   等于**整个航程都在加速段，永远进不了刹车段**，直到贴脸才开始减。
-##
-##   现在降到 2000：
-##     · 从 2000 刹停约 2.7 万米（用打折后的 73.5 算）——
-##       在 9.2 万米外就进入刹车段，有充足余量反复修正
-##     · 2000 m/s 横穿星系（15 万米）约 75 秒，玩家不会觉得慢
-const AUTOPILOT_CRUISE := 2600.0
-## 速度剖面按「可用减速度的多少比例」来设计。
-##
-## 剖面假设的刹车能力 = 可用减速度 × 本值。
-##
-## ⚠ 2026-11-11 第四次修正（用户：「减速太慢了，根本没改，我制动减速快多了，
-##   这样子一直拖累自动航行时间」）。
-##
-##   实测旧值有多慢（tools/_sim_autopilot.py 复刻公式 + 60Hz 积分）：
-##     剖面减速度 = (230 − 20) × 0.35 = 73.5 m/s²  ← 只有手动硬刹 260 的 28%
-##     2000 m/s 刹停距离 27,211 米、耗时 27.2 秒
-##     从 4 万米落地总耗时 115.2 秒（快两分钟），且 2.7 万米就开始收油
-##
-##   改成 0.90，并且 `available` 改用**手动制动的减速度**（SHIP_BRAKE_DECEL）
-##   而不是推进加速度 AUTOPILOT_ACCEL：
-##     剖面减速度 = (260 − 20) × 0.90 = 216 m/s²（手动的 83%）
-##     刹停距离 9,259 米、耗时 9.3 秒
-##     从 4 万米落地总耗时 27.3 秒
-##
-##   为什么留 10% 余量而不是 1.0：剖面是「刚好刹住」的临界值，
-##   飞行中还有跟踪误差、地形起伏、目标在动，留一点才不会冲过落点。
-##   要再快就调小 AUTOPILOT_CRUISE（巡航速度），别再动这里。
-const AUTOPILOT_BRAKE_FRACTION := 0.46
+## 自动航行的速度剖面按「可用减速度」和剩余距离实时计算，
+## 不设置固定巡航上限。远距离会继续加速，接近目标后迅速减速。
+const AUTOPILOT_BRAKE_FRACTION := 0.90
 ## 可用减速度的下限。行星引力最大 32，留个地板免得剖面被压成 0 而卡死。
 const AUTOPILOT_BRAKE_FLOOR := 30.0
 ## 末端指数逼近的时间常数（秒）。d/tau 就是最后几米的下降速度。
 const AUTOPILOT_CREEP_TIME := 1.0
-## 「按时间收敛」的保守剖面时间常数（秒）。
-##
-## 用户截图反馈「快到星球才减速」：√(2ad) 在 9826 米处仍允许 1202 m/s，
-## 只剩 8.2 秒落地 —— 视觉上就是一路狂飙、最后猛刹。
-## 这条剖面强制「离地面 d 米时，速度不超过 d / 本值」，
-## 给整段进近一个固定的时间预算。
-##
-## ⚠ 2026-11-11 从 12 秒改成 4 秒（用户：「减速太慢，一直拖累自动航行时间」）。
-##
-##   12 秒时这条剖面在 2 万米以下**全程接管**，把速度一直压在 d/12，
-##   相当于强行规定「落地前至少磨蹭 12 秒」—— 这正是旅行时间被拖长的另一半原因。
-##   刹车能力提到 216 m/s² 之后，动力学剖面本身已经在 9.2 公里处接管，
-##   这条只需要兜住「极高处还保留很大速度」的极端情况，4 秒足够：
-##     3000 m: feasible 1138 vs d/4=750   → 取 750（仍是这条更紧，但不再磨）
-##      500 m: feasible  464 vs d/4=125   → 取 125（近地仍然稳稳收住）
-const AUTOPILOT_APPROACH_TIME := 6.0
+## 按时间收敛的进近剖面。较小的时间常数会更早、更快地减速。
+const AUTOPILOT_APPROACH_TIME := 2.0
 ## 期望停在地表上方多高。留 2.6 米，落点判定（< 3.4 米）之前就已经几乎悬停。
 const AUTOPILOT_TOUCHDOWN_ALT := 2.6
 const MANUAL_FUEL_PER_DV := 0.00625
@@ -1813,7 +1766,7 @@ func _physics_process(delta: float) -> void:
 	if docked:
 		velocity = Vector3.ZERO
 		thrust_level = 0.0
-		fuel = minf(100.0, fuel + delta * 10.0)
+		fuel = minf(MAX_FUEL, fuel + delta * 10.0)
 		hull = minf(100.0, hull + delta * 2.0)
 		fuel_empty_time = 0.0
 		fuel_warning_cooldown = 0.0
@@ -1841,7 +1794,7 @@ func _physics_process(delta: float) -> void:
 				position = resting_position
 			else:
 				global_position = landed_planet.to_global(resting_position)
-		fuel = minf(100.0, fuel + delta * 12.0)
+		fuel = minf(MAX_FUEL, fuel + delta * 12.0)
 		fuel_empty_time = 0.0
 		fuel_warning_cooldown = 0.0
 		# 同 docked：只补能源。氧气 → 上机才回满；船体 → 下船按 F 修理。
@@ -1884,7 +1837,13 @@ func _physics_process(delta: float) -> void:
 		# 期望速度以「地面」为参照系：行星在公转，相对速度才算数。
 		var desired_velocity := desired_direction * desired_speed + target_velocity
 		var before_velocity := velocity
-		velocity = velocity.move_toward(desired_velocity, delta * AUTOPILOT_ACCEL)
+		# 进入刹车段时使用独立的高速制动能力。此前这里只用
+		# AUTOPILOT_ACCEL，导致速度剖面按 1200 m/s² 计算，实际却只有
+		# 230 m/s²，远距离航行时会在目标前刹不住。
+		var relative_velocity := velocity - target_velocity
+		var current_toward_speed := relative_velocity.dot(desired_direction)
+		var control_rate := AUTOPILOT_BRAKE_DECEL if current_toward_speed > desired_speed else AUTOPILOT_ACCEL
+		velocity = velocity.move_toward(desired_velocity, delta * control_rate)
 		var delta_v := velocity.distance_to(before_velocity)
 		if delta_v > 0.0001:
 			if fuel > 0.0:
@@ -2514,10 +2473,8 @@ func _station_rest(at_position: Vector3) -> Dictionary:
 ##   · 末端蠕行 d/tau —— 指数逼近。`v = d/tau` 对应的减速度是 `d/tau²`，
 ##     在 d 附近才需要用力，所以最后几米是「贴」上去的，接触速度约为 d/tau。
 ##
-## 两条线的交点在 d = 2*a*tau²，那里 `d/tau = 2*a*tau`、需要的减速度恰好是 2*a。
-## 也就是说只要 `a <= 可用减速度 / 2`，整条剖面就是可行的 ——
-## 这正是 AUTOPILOT_BRAKE_FRACTION 必须小于 0.5 的原因。
-## 取 0.35 时最坏情况用掉 70% 的机动能力，剩下 30% 是跟踪余量。
+## 两条线取较小者会保持连续，刹车比例越高，自动航行就越接近手动制动的力度。
+## 当前取 0.90，优先缩短进近阶段的等待时间。
 func _autopilot_desired_speed(altitude: float, gravity: Vector3) -> float:
 	# 可用减速度 = 机动能力 - 引力。下降时引力是反向的，会吃掉一部分减速能力。
 	# ⚠ 2026-11-11 改成「一路加速 + 末端急刹」，不再全程缓慢减速。
@@ -2526,11 +2483,8 @@ func _autopilot_desired_speed(altitude: float, gravity: Vector3) -> float:
 	#   于是自动驾驶**全程都在反推**压制速度 —— 玩家看到的是「一直缓慢减速」，
 	#   燃料也全耗在这上面（用户：「这样子太消耗燃料了」）。
 	#
-	#   新逻辑：
-	#     · 距离还很远 → 目标速度直接给巡航上限，**全力加速，不反向修正**
-	#     · 进入刹车距离（用真实可用减速度反算）→ 目标速度沿 √(2ad) 下降，
-	#       这一段就等价于「按住 S 硬刹」
-	#   刹车距离用**稍保守**的减速度算（BRAKE_FRACTION），留出跟踪余量。
+	#   新逻辑：目标速度始终由剩余距离和可用刹车能力计算，
+	#   远距离继续加速，接近目标后沿 √(2ad) 迅速下降。
 	#
 	# ⚠ 2026-11-11 第三次修正（用户截图：9826 米高度、1259 m/s，问「没改减速逻辑吗」）。
 	#
@@ -2545,24 +2499,19 @@ func _autopilot_desired_speed(altitude: float, gravity: Vector3) -> float:
 	#   取 6 秒：9826 米处 → 1638，仍不生效（因为 feasible 更紧）；
 	#   真正起作用是在 1 万~3 万米这一段，让收油明显提前。
 	#   两条剖面取小，所以只是「更保守」，绝不会比动力学允许的更快。
-	# ⚠ 2026-11-11：可用减速度改用**手动制动的减速度**，
-	#   而不是推进加速度 —— 自动航行刹车的上限本来就该是「玩家按住 S 能刹多快」。
-	#   旧版用 AUTOPILOT_ACCEL(230) 再乘 0.35，等于只用了 28% 的刹车能力。
+	# 可用减速度与上面的实际高速制动能力保持一致，
+	# 这样速度剖面计算出的刹车距离不会超过控制器真正能刹住的距离。
 	var available: float = maxf(AUTOPILOT_BRAKE_DECEL - gravity.length(), AUTOPILOT_BRAKE_FLOOR)
 	var brake: float = available * AUTOPILOT_BRAKE_FRACTION
 	var d: float = maxf(altitude - AUTOPILOT_TOUCHDOWN_ALT, 0.0)
-	# 从巡航速度刹停所需的距离
-	var stop_dist: float = (AUTOPILOT_CRUISE * AUTOPILOT_CRUISE) / (2.0 * brake)
-	if d > stop_dist:
-		# 还早：全力加速到巡航，不做任何减速修正
-		return AUTOPILOT_CRUISE
-	# 进入刹车段：按真实能力反算允许速度，并留一点下限保证能落地
+	# 速度只由剩余距离和可用减速度决定，不设固定巡航上限。
+	# 这会让远距离航段继续加速，进入目标附近后按刹车剖面迅速收速。
 	var feasible: float = sqrt(2.0 * brake * d)
 	# 按时间的保守剖面：越远也留出「至少 X 秒到地面」的余量，
 	# 让减速在更远处就开始，而不是全压在最后几秒。
 	var gentle: float = d / AUTOPILOT_APPROACH_TIME
 	var creep: float = d / AUTOPILOT_CREEP_TIME
-	return clampf(minf(minf(feasible, gentle), creep), 1.0, AUTOPILOT_CRUISE)
+	return maxf(minf(minf(feasible, gentle), creep), 1.0)
 
 
 ## 当前目标脚下地面的高度（米）。

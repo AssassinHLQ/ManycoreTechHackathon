@@ -6,35 +6,32 @@ const DISTANT_KINDS := ["ping", "creak", "radio", "moan"]
 const DISTANT_PANS := {"ping": -0.55, "creak": -0.32, "radio": 0.38, "moan": 0.12}
 
 var game
-var ambience: AudioStreamPlayer
-var room_tone: AudioStreamPlayer
-var surface_wind: AudioStreamPlayer
 var distant: AudioStreamPlayer
 var engine: AudioStreamPlayer
 var jetpack: AudioStreamPlayer
 var roast: AudioStreamPlayer
 var effects: AudioStreamPlayer
 var door: AudioStreamPlayer3D
+var main_music: AudioStreamPlayer
 var attic_music: AudioStreamPlayer
+var active_music := ""
+var music_fade: Tween
+var death_fade_active := false
 var door_rng := RandomNumberGenerator.new()
 var engine_target := -48.0
 var jetpack_target := -48.0
 var roast_target := -48.0
-var ambience_target := -16.0
-var room_target := -48.0
-var wind_target := -48.0
 var distant_timer := 7.0
 var distant_rng := RandomNumberGenerator.new()
 var ambience_bus := -1
 var tone_cache: Dictionary = {}
 
+const MAIN_MUSIC_DB := -17.0
+const MUSIC_FADE_OUT_SECONDS := 3.0
+
 
 func _ready() -> void:
 	_ensure_ambience_bus()
-	ambience = _player(_void_stream(), -16.0)
-	room_tone = _player(_room_stream(), -48.0)
-	surface_wind = _player(_wind_stream(), -48.0)
-	ambience.bus = "Ambience"
 	distant_rng.seed = 20261102
 	distant = AudioStreamPlayer.new()
 	distant.volume_db = -18.0
@@ -43,6 +40,13 @@ func _ready() -> void:
 	engine = _player(_engine_stream(), -48.0)
 	jetpack = _player(_noise_stream(), -48.0)
 	roast = _player(_crackle_stream(), -48.0)
+	main_music = AudioStreamPlayer.new()
+	var main_stream := load("res://assets/audio/borodin_string_quartet_2_allegro_moderato.mp3") as AudioStreamMP3
+	if main_stream != null:
+		main_stream.loop = true
+		main_music.stream = main_stream
+	main_music.volume_db = MAIN_MUSIC_DB
+	add_child(main_music)
 	attic_music = AudioStreamPlayer.new()
 	var music_stream := load("res://assets/audio/chopin_waltz_op70_no3.mp3") as AudioStreamMP3
 	if music_stream != null:
@@ -94,10 +98,7 @@ func _player(stream: AudioStreamWAV, volume: float) -> AudioStreamPlayer:
 
 
 func _process(delta: float) -> void:
-	_update_environment()
-	ambience.volume_db = lerpf(ambience.volume_db, ambience_target, 1.0 - exp(-delta * 0.55))
-	room_tone.volume_db = lerpf(room_tone.volume_db, room_target, 1.0 - exp(-delta * 1.4))
-	surface_wind.volume_db = lerpf(surface_wind.volume_db, wind_target, 1.0 - exp(-delta * 0.8))
+	_sync_scene_music()
 	_update_distant(delta)
 	if engine != null:
 		engine.volume_db = lerpf(engine.volume_db, engine_target, 1.0 - exp(-delta * 6.0))
@@ -107,23 +108,58 @@ func _process(delta: float) -> void:
 		roast.volume_db = lerpf(roast.volume_db, roast_target, 1.0 - exp(-delta * 5.0))
 
 
-func _update_environment() -> void:
-	if game == null:
+func _context_music() -> String:
+	return "attic" if game != null and (game.in_attic or game.in_station) else "main"
+
+
+func _music_player(track: String) -> AudioStreamPlayer:
+	return attic_music if track == "attic" else main_music
+
+
+func _sync_scene_music() -> void:
+	if game == null or game.state in ["dying", "supernova", "end"]:
 		return
-	var in_station: bool = game.in_station
-	var walking: bool = game.state == "walk" and not in_station
-	if in_station:
-		ambience_target = -25.0
-		room_target = -19.0
-		wind_target = -48.0
-	elif walking:
-		ambience_target = -21.0
-		room_target = -48.0
-		wind_target = -27.0
+	var desired := _context_music()
+	if desired == active_music and _music_player(desired).playing:
+		return
+	_start_music(desired, false)
+
+
+func _start_music(track: String, restart: bool) -> void:
+	if music_fade != null and music_fade.is_running():
+		music_fade.kill()
+	death_fade_active = false
+	var player := _music_player(track)
+	if active_music != track:
+		main_music.stop()
+		attic_music.stop()
+		active_music = track
+	if restart or not player.playing:
+		player.volume_db = MAIN_MUSIC_DB
+		player.play(0.0)
 	else:
-		ambience_target = -16.0
-		room_target = -48.0
-		wind_target = -48.0
+		player.volume_db = MAIN_MUSIC_DB
+
+
+func fade_music_for_death() -> void:
+	var player := _music_player(active_music) if active_music != "" else null
+	if player == null or not player.playing or death_fade_active:
+		return
+	death_fade_active = true
+	if music_fade != null and music_fade.is_running():
+		music_fade.kill()
+	music_fade = create_tween()
+	music_fade.tween_property(player, "volume_db", -60.0, MUSIC_FADE_OUT_SECONDS)
+	music_fade.finished.connect(func():
+		if game != null and game.state in ["dying", "supernova"]:
+			player.stop()
+			active_music = ""
+		death_fade_active = false
+	)
+
+
+func restart_music_for_new_life() -> void:
+	_start_music(_context_music(), true)
 
 
 func _update_distant(delta: float) -> void:
@@ -209,13 +245,14 @@ func play_chime() -> void:
 
 
 func play_attic_music() -> void:
-	if attic_music != null and attic_music.stream != null and not attic_music.playing:
-		attic_music.play()
+	_start_music("attic", false)
 
 
 func stop_attic_music() -> void:
 	if attic_music != null:
 		attic_music.stop()
+		if active_music == "attic":
+			active_music = ""
 
 
 func play_impact() -> void:
@@ -290,73 +327,6 @@ func _door_stream(opening: bool) -> AudioStreamWAV:
 	var stream := _wav(data, rate, frames)
 	stream.loop_mode = AudioStreamWAV.LOOP_DISABLED
 	return stream
-
-
-func _void_stream() -> AudioStreamWAV:
-	var rate := AMBIENT_RATE
-	var duration := 12.0
-	var frames := int(duration * rate)
-	var data := PackedByteArray()
-	data.resize(frames * 2)
-	for i in range(frames):
-		var t := float(i) / rate
-		var swell := 0.62 + 0.2 * sin(TAU * t / duration) + 0.08 * sin(TAU * 3.0 * t / duration + 1.1)
-		var shimmer := 0.5 + 0.5 * sin(TAU * 2.0 * t / duration + 0.7)
-		var sample := sin(TAU * 36.0 * t) * 0.16
-		sample += sin(TAU * 36.5 * t + 0.4) * 0.12
-		sample += sin(TAU * 54.0 * t + 1.1) * 0.07
-		sample += sin(TAU * 55.0 * t) * 0.06
-		sample += sin(TAU * 39.0 * t + 2.2) * 0.05
-		sample += sin(TAU * 81.0 * t) * 0.028
-		sample += sin(TAU * 82.5 * t + 0.8) * 0.04
-		sample += sin(TAU * 108.0 * t + 0.3) * 0.012
-		sample += sin(TAU * 110.0 * t + 1.7) * 0.03
-		sample += sin(TAU * 165.0 * t) * 0.015
-		sample += sin(TAU * 220.0 * t) * 0.008 * shimmer
-		sample += sin(TAU * 233.0 * t + 0.9) * 0.006 * shimmer
-		sample += sin(TAU * 440.0 * t) * 0.012 * shimmer
-		sample += sin(TAU * 660.0 * t + 0.7) * 0.006 * shimmer
-		sample += sin(TAU * 880.0 * t + 1.4) * 0.004 * shimmer
-		sample *= swell
-		data.encode_s16(i * 2, int(clampf(sample * 0.9, -1.0, 1.0) * 32767.0))
-	return _wav(data, rate, frames)
-
-
-func _room_stream() -> AudioStreamWAV:
-	var rate := AMBIENT_RATE
-	var duration := 6.0
-	var frames := int(duration * rate)
-	var data := PackedByteArray()
-	data.resize(frames * 2)
-	for i in range(frames):
-		var t := float(i) / rate
-		var air := 0.5 + 0.5 * sin(TAU * 4.0 * t / duration)
-		var sample := sin(TAU * 50.0 * t) * 0.12
-		sample += sin(TAU * 100.0 * t + 0.4) * 0.045
-		sample += sin(TAU * 150.0 * t) * 0.02
-		sample += sin(TAU * 180.0 * t + 1.2) * 0.006 * air
-		sample += sin(TAU * 300.0 * t + 0.6) * 0.004 * air
-		data.encode_s16(i * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
-	return _wav(data, rate, frames)
-
-
-func _wind_stream() -> AudioStreamWAV:
-	var rate := AMBIENT_RATE
-	var duration := 6.0
-	var frames := int(duration * rate)
-	var data := PackedByteArray()
-	data.resize(frames * 2)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 5501
-	var filtered := 0.0
-	for i in range(frames):
-		var t := float(i) / rate
-		filtered = lerpf(filtered, rng.randf_range(-1.0, 1.0), 0.035)
-		var gust := 0.35 + 0.3 * (0.5 - 0.5 * cos(TAU * t / duration)) + 0.12 * sin(TAU * 3.0 * t / duration)
-		var sample := filtered * 0.18 * gust
-		sample += sin(TAU * 420.0 * t) * 0.004 * gust
-		data.encode_s16(i * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
-	return _wav(data, rate, frames)
 
 
 func _pan_gains(pan: float) -> Vector2:

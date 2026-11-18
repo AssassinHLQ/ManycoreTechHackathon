@@ -17,6 +17,7 @@
 | Pixel UI Sci-Fi Free 图标 | heyheythere / Spyridon Pikoulas | CC BY 4.0；来源和修改说明见 3.6 |
 | UI Minimalism SciFi 面板贴图 | Wenrexa | CC0 1.0；自愿致谢，见 3.5 |
 | 星野文楷 / Noto Sans Symbols 2 字体子集 | LXGW / The Klee Project Authors / The Noto Project Authors | SIL OFL 1.1；保留版权与许可全文，修改版字体说明见 3.4 |
+| 菜单、星球与航行音乐；空间站与阁楼音乐 | The Musopen Kickstarter Project（录音）；Classicals.de（来源） | CC PDM 1.0；建议署名 Classicals.de，曲目与录音来源见 3.8 |
 | Godot Engine 运行时 | Godot Engine contributors、Juan Linietsky、Ariel Manzur | MIT；保留版权与许可全文，见 3.3 |
 | Lux3D 生成的星球、家具和道具 | Aholo Lux3D（群核科技） | 平台服务条款与参赛协议；本清单不另行授予商用或再分发权，见 3.2.1–3.2.5 |
 | 早期 HTML 原型内嵌的 Three.js | three.js authors | MIT；版权与许可全文见 3.1 |
@@ -330,6 +331,20 @@ HUD 里船体／推进剂等小图标来自 **heyheythere（Spyridon Pikoulas）
 
 ---
 
+### 3.8 音乐：Classicals.de / Musopen
+
+两首录音均来自 Classicals.de 的下载包；随包许可说明将录音制作与发布归于 The Musopen Kickstarter Project，
+并标记为 Creative Commons Public Domain Mark 1.0 Universal（CC PDM 1.0）。按来源文件的要求，
+项目署名 Classicals.de；作曲者与录音制作方分别列示，不将录音来源误写为作曲者。
+
+| 曲目 / 项目用途 | 作曲者 | 录音来源 | 来源与标记 |
+|---|---|---|---|
+| *Waltz Op. 70 no. 3 in D-flat major*（归航站、阁楼） | Frédéric Chopin | The Musopen Kickstarter Project | [Classicals.de](https://www.classicals.de)；[CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/) |
+| *String Quartet No. 2 in D Major: I. Allegro moderato*（主菜单、星球与航行） | Alexander Borodin | The Musopen Kickstarter Project | [Classicals.de](https://www.classicals.de)；[CC PDM 1.0](https://creativecommons.org/publicdomain/mark/1.0/) |
+
+音频文件保存在 `assets/audio/`，游戏内可从主菜单「授权与署名」查看以上信息。CC PDM 是公有领域标记，
+并非授予许可的许可证；项目保留此标记与来源记录，不暗示 Musopen 或 Classicals.de 为本项目背书。
+
 ## 4. 免责与纠错
 
 - 本文件按“现状”提供，不构成法律意见；涉及商用、对外发行或专利申请时，请咨询专业法务。
@@ -352,6 +367,7 @@ HUD 里船体／推进剂等小图标来自 **heyheythere（Spyridon Pikoulas）
 | Noto Sans Symbols 2 子集（`assets/ui_symbols.ttf`） | SIL OFL 1.1 | 同上 |
 | Wenrexa「UI Minimalism SciFi」贴图（`assets/ui/wenrexa/`） | CC0 1.0 | 公共领域，无需署名；此处列出仅为致谢 |
 | Pixel UI Sci-Fi Free 图标（`assets/ui/icons/`） | CC BY 4.0 | **需署名**，见 3.6 |
+| Classicals.de / Musopen 录音（`assets/audio/`） | CC PDM 1.0 | 来源与建议署名见 3.8 |
 | A Windy Day / Black Hole / Space Station / Space Station 3 / SpaceShip Fighter  - Version 1 [MESHY 6] | CC BY 4.0 | **需署名并注明修改**，作者、原作链接及用途见 3.2.6 |
 | Aholo Lux3D 生成的星球模型（`assets/models/*-lux3d*`） | 平台条款 | **非本仓库可再许可**，见 3.2.2 |
 | Aholo Lux3D 生成的阁楼/世界摆件（`assets/models/props/attic*`） | 平台条款 | 同上，见 3.2.3 |
