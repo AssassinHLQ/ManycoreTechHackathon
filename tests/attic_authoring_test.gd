@@ -29,6 +29,9 @@ func _run() -> void:
 		_check(content.scene_file_path.ends_with(key + ".tscn"), key + " uses the editable scene")
 		_check(content.is_ancestor_of(worlds.return_anchor(key)), key + " return portal rebound")
 		_check(content.get_node("StorySign/Text").text == worlds.Authoring.LINES[key], key + " sign text")
+		var story_sign := content.get_node("StorySign") as Node3D
+		_check(story_sign.scale.is_equal_approx(Vector3.ONE * 0.45), key + " story sign is scaled down")
+		_check(is_equal_approx(story_sign.rotation.y, PI), key + " story sign faces away from the route")
 		for id in worlds.prop_ids_in(key):
 			_check(content.is_ancestor_of(worlds.prop_anchor(id)), key + " prop anchor " + id)
 		for index in range(3):
@@ -58,6 +61,18 @@ func _run() -> void:
 	_check(worlds.worlds.cloud.content.is_ancestor_of(worlds.boat_node), "boat uses editable node")
 	worlds.update_airship(0.1)
 	_check(worlds.worlds.cloud.content.is_ancestor_of(worlds.airship_node), "airship uses editable node")
+	_check(worlds.scope_archive != null, "telescope archive is built")
+	var archive_grid: GridContainer = worlds.scope_archive.get_node("Screen/ArchiveGrid")
+	_check(archive_grid.get_child_count() == 4, "telescope archive has all four inscriptions")
+	for key in worlds.SCOPE_ARCHIVE_ORDER:
+		var archive_label: Label = archive_grid.get_node("Archive_%s/Text" % String(key).capitalize())
+		_check(archive_label.text == "%s · %s" % [worlds.SCOPE_ARCHIVE_NAMES[key], worlds.Authoring.LINES[key]],
+			"telescope archive preserves the %s inscription" % key)
+	_check(not worlds.scope_archive.visible, "telescope archive starts hidden")
+	worlds.use_scope()
+	_check(worlds.scope_archive.visible, "using the telescope reveals the archive")
+	worlds.close_scope()
+	_check(not worlds.scope_archive.visible, "leaving the telescope hides the archive")
 	# The editable source includes the complete scenery hierarchy.
 	var path := "res://scenes/attic_worlds/firefly.tscn"
 	var scene: PackedScene = load(path)

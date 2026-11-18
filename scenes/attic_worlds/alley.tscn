@@ -2030,7 +2030,7 @@ mesh = SubResource("ArrayMesh_lqocj")
 metadata/detail_pieces = 616
 
 [node name="StorySign" type="Node3D" parent="." unique_id=1019551698]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -14)
+transform = Transform3D(-0.45, 0, 0, 0, 0.45, 0, 0, 0, -0.45, 0, 0, -14)
 
 [node name="PostLeft" type="MeshInstance3D" parent="StorySign" unique_id=1478959158]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.1, 0.8, 0)
@@ -2064,8 +2064,8 @@ outline_size = 5
 [node name="SignLight" type="OmniLight3D" parent="StorySign" unique_id=930164381]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.8, 1)
 light_color = Color(1, 0.8745098, 0.64705884, 1)
-light_energy = 0.55
-omni_range = 6.0
+light_energy = 0.12
+omni_range = 3.5
 
 [node name="PlayerSpawn" type="Marker3D" parent="." unique_id=1302934288]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.05, 7.3999996)

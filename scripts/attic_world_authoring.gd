@@ -137,7 +137,9 @@ static func _decode(value, content: Node3D, holder: Node3D, status: Dictionary):
 static func add_story_sign(content: Node3D, key: String) -> void:
 	var sign_root := Node3D.new()
 	sign_root.name = "StorySign"
-	# Beyond the disk, facing inward. Cloud uses the edge of its central island.
+	# Keep the writing turned away from the normal route and readable only through the telescope.
+	sign_root.rotation.y = PI
+	sign_root.scale = Vector3.ONE * 0.45
 	sign_root.position = Vector3(0, 0, -14.0)
 	if key == "cloud":
 		sign_root.position = Vector3(0, 0, -5.9)
@@ -168,8 +170,8 @@ static func add_story_sign(content: Node3D, key: String) -> void:
 	light.name = "SignLight"
 	light.position = Vector3(0, 2.8, 1.0)
 	light.light_color = Color("ffdfa5")
-	light.light_energy = 0.55
-	light.omni_range = 6.0
+	light.light_energy = 0.12
+	light.omni_range = 3.5
 	sign_root.add_child(light)
 
 

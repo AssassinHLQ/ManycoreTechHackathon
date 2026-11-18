@@ -12,6 +12,13 @@ const Authoring = preload("res://scripts/attic_world_authoring.gd")
 var use_authored_scenes := true
 
 const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror", "dungeon"]
+const SCOPE_ARCHIVE_ORDER := ["cloud", "firefly", "alley", "snow"]
+const SCOPE_ARCHIVE_NAMES := {
+	"cloud": "云海",
+	"firefly": "萤火",
+	"alley": "雨巷",
+	"snow": "雪夜",
+}
 
 ## 镜牢回廊的门禁碰撞（每道隔墙一个），战斗室清空前挡住门洞
 var _dungeon_door_blockers: Array = []
@@ -39,6 +46,7 @@ const WORLD_GAP := 400.0
 
 var worlds: Dictionary = {}
 var player = null
+var scope_archive: CanvasLayer
 
 ## 每个世界里「小事」的三个装置状态：world_key -> [bool, bool, bool]
 var device_states: Dictionary = {}
@@ -142,6 +150,7 @@ func build() -> void:
 			if use_authored_scenes:
 				Authoring.install(self, key)
 	set_active_world("")
+	_build_scope_archive()
 
 
 ## Keep inactive particles and lights out of the shared viewport and simulation.
@@ -983,6 +992,8 @@ func update_bridge(delta: float) -> void:
 func use_scope() -> Dictionary:
 	scope_active = true
 	var beacon_on := bool(prop_used.get("cloud_beacon", false))
+	if scope_archive != null:
+		scope_archive.visible = true
 	var message := "循着灯光，飞艇正靠向云港" if beacon_on else "望远镜里，巡游的飞艇正缓缓穿过云层"
 	return {"ok": true, "message": message, "scope": true}
 
@@ -990,6 +1001,62 @@ func use_scope() -> Dictionary:
 func close_scope() -> void:
 	scope_active = false
 
+	if scope_archive != null:
+		scope_archive.visible = false
+
+
+func _build_scope_archive() -> void:
+	scope_archive = CanvasLayer.new()
+	scope_archive.name = "ScopeArchive"
+	scope_archive.layer = 4
+	scope_archive.visible = false
+	add_child(scope_archive)
+	var screen := Control.new()
+	screen.name = "Screen"
+	screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scope_archive.add_child(screen)
+	var grid := GridContainer.new()
+	grid.name = "ArchiveGrid"
+	grid.columns = 2
+	grid.anchor_left = 0.5
+	grid.anchor_top = 0.5
+	grid.anchor_right = 0.5
+	grid.anchor_bottom = 0.5
+	grid.offset_left = -386.0
+	grid.offset_top = -77.0
+	grid.offset_right = 386.0
+	grid.offset_bottom = 77.0
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 10)
+	screen.add_child(grid)
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.045, 0.043, 0.039, 0.9)
+	panel_style.border_color = Color("76664b")
+	panel_style.set_border_width_all(1)
+	panel_style.set_corner_radius_all(2)
+	panel_style.content_margin_left = 12.0
+	panel_style.content_margin_right = 12.0
+	panel_style.content_margin_top = 8.0
+	panel_style.content_margin_bottom = 8.0
+	var font := load("res://assets/ui_font.ttf") as Font
+	for index in range(SCOPE_ARCHIVE_ORDER.size()):
+		var key: String = SCOPE_ARCHIVE_ORDER[index]
+		var card := PanelContainer.new()
+		card.name = "Archive_%s" % key.capitalize()
+		card.custom_minimum_size = Vector2(380.0, 72.0)
+		card.add_theme_stylebox_override("panel", panel_style)
+		grid.add_child(card)
+		var label := Label.new()
+		label.name = "Text"
+		label.text = "%s · %s" % [SCOPE_ARCHIVE_NAMES[key], Authoring.LINES[key]]
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.add_theme_font_override("font", font)
+		label.add_theme_font_size_override("font_size", 18)
+		label.add_theme_color_override("font_color", Color("eee1c0"))
+		card.add_child(label)
 
 ## 雪夜炉火：三档循环（照原作 hearthLevel = (level + 1) % 3）
 func use_hearth() -> Dictionary:
