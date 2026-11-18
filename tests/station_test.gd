@@ -124,7 +124,7 @@ func _run() -> void:
 		await physics_frame
 	_check(door_partial, "the hub door slides open instead of popping")
 	_check(station.door_openness(0) > 0.98, "the hub door finishes opening in front of the player")
-	_check(game.audio.door.stream != null and game.audio.door.stream.get_length() > 0.5, "the opening hub door triggers its servo sound")
+	_check(game.audio.door.stream == null, "the hub door opens silently")
 	_check(station.door_openness(1) < 0.02 and station.door_openness(2) < 0.02, "the other hub doors stay shut until approached")
 	var leaf_local: Vector3 = (station.door_panels[0].get_child(0) as Node3D).position
 	_check(absf(leaf_local.z) > 3.0, "the opened leaf parks beside the doorway")
@@ -316,6 +316,7 @@ func _run() -> void:
 	for i in range(60):
 		await physics_frame
 	_check(station.door_openness(0) < 0.02, "the hub door closes behind the player inside the corridor")
+	_check(game.audio.door.stream == null, "the hub door closes silently")
 	# 站在门洞里回头看枢纽，门不许合上夹住玩家。
 	var outward: Vector3 = station.global_transform.basis.x.normalized()
 	game.player.global_transform = Transform3D(Basis.looking_at(-outward, station.up_direction()), station.to_global(Vector3(30.0, -1.6, 0.0)))

@@ -90,7 +90,6 @@ var corridor_shapes: Array = []
 var corridor_collision_state: Array[bool] = []
 var door_panels: Array[Node3D] = []
 var door_open: Array[float] = []
-var door_state: Array[int] = []
 var merge_reports: Dictionary = {}
 # 会被代码改动的材质（信标闪烁）。合并时它们必须当分块的代表材质，否则合完就不闪了。
 var merge_live_materials: Array = []
@@ -249,13 +248,6 @@ func _update_doors(delta: float, in_station: bool, idx: int) -> void:
 			# 站在门洞里时不许关门，免得门扇夹住玩家。
 			if distance <= DOOR_SAFETY_RANGE or (i == idx and distance <= reach):
 				target = 1.0
-		# 开合指令翻转的那一帧放一次放气门音效，音源贴在门框上。
-		var want_open := 1 if target > 0.5 else 0
-		if want_open != door_state[i]:
-			door_state[i] = want_open
-			if has_player and game.audio != null:
-				var frame := door_panels[i].get_parent() as Node3D
-				game.audio.play_door(frame.global_position, want_open == 1)
 		var previous := door_open[i]
 		door_open[i] = move_toward(previous, target, delta / DOOR_TRAVEL_TIME)
 		if is_equal_approx(previous, door_open[i]):
@@ -1196,6 +1188,7 @@ func _build_hub() -> void:
 		_box(hub_root, Vector3(26.0, 0.02, 0.05), Vector3(cos(seam) * 15.0, FLOOR_TOP + 0.045, sin(seam) * 15.0), _mat_dark, Vector3(0.0, -seam, 0.0))
 	_build_hub_power_column()
 	_cylinder(hub_root, 2.4, 2.8, 1.0, Vector3(0.0, FLOOR_TOP + 0.5, -10.0), _mat_dark, 20)
+	_add_hub_cylinder_collider(2.8, 1.0, Vector3(0.0, FLOOR_TOP + 0.5, -10.0))
 	_cylinder(hub_root, 2.5, 2.5, 0.1, Vector3(0.0, FLOOR_TOP + 1.02, -10.0), _mat_glass, 32)
 	_torus(hub_root, 2.0, 2.4, Vector3(0.0, FLOOR_TOP + 1.2, -10.0), _mat_teal, Vector3.ZERO, 8, 32)
 	_cylinder(hub_root, 0.16, 0.16, 1.2, Vector3(0.0, FLOOR_TOP + 1.13, -10.0), _mat_glow, 8)
@@ -1269,7 +1262,6 @@ func _build_hub() -> void:
 			_add_static_shape(panel_body, panel_shape, Vector3(0.0, 0.4, 0.0))
 		door_panels.append(leaf)
 		door_open.append(0.0)
-		door_state.append(0)
 		_box(door, Vector3(0.2, 0.12, 6.2), Vector3(-0.14, -1.72, 0.0), _mat_orange)
 		for k in range(8):
 			_box(door, Vector3(1.4, 0.02, 0.42), Vector3(-0.95, FLOOR_TOP + 0.04, -3.15 + float(k) * 0.9),
