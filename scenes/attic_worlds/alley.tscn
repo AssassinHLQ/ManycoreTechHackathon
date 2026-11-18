@@ -2002,8 +2002,7 @@ mesh = SubResource("ArrayMesh_lqocj")
 metadata/detail_pieces = 616
 
 [node name="StorySign" type="Node3D" parent="." unique_id=1019551698]
-transform = Transform3D(-0.45, 0, 0, 0, 0.45, 0, 0, 0, -0.45, 0, 0, -14)
-visible = false
+transform = Transform3D(0.32, 0, 0, 0, 0.32, 0, 0, 0, 0.32, 0, 0, -13)
 
 [node name="PostLeft" type="MeshInstance3D" parent="StorySign" unique_id=1478959158]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.1, 0.8, 0)

@@ -7,6 +7,12 @@ const LINES := {
 	"alley": "逝者如斯夫，不会回来",
 	"snow": "若你来自人类，请告诉我，家还在吗？",
 }
+const SIGN_POSITIONS := {
+	"cloud": Vector3(10.5, 0.0, -4.7),
+	"firefly": Vector3(-6.0, 0.0, -8.0),
+	"alley": Vector3(0.0, 0.0, -13.0),
+	"snow": Vector3(-2.0, 0.0, -11.8),
+}
 const KEYED_FIELDS := ["device_states", "device_values", "device_nodes", "world_done", "minigame_anchors"]
 # These roots are visual-only. In particular, the return portal's glowing
 # pane must stay passable, otherwise its generated mesh collider becomes an
@@ -165,12 +171,9 @@ static func _decode(value, content: Node3D, holder: Node3D, status: Dictionary):
 static func add_story_sign(content: Node3D, key: String) -> void:
 	var sign_root := Node3D.new()
 	sign_root.name = "StorySign"
-	# Keep the sign physically discoverable while its reversed placement hides the writing.
-	sign_root.rotation.y = PI
-	sign_root.scale = Vector3.ONE * 0.45
-	sign_root.position = Vector3(0, 0, -14.0)
-	if key == "cloud":
-		sign_root.position = Vector3(0, 0, -5.9)
+	# Hide the board from the direct approach while keeping its reading face reachable.
+	sign_root.scale = Vector3.ONE * 0.32
+	sign_root.position = SIGN_POSITIONS.get(key, Vector3(0, 0, -14.0))
 	content.add_child(sign_root)
 	var wood := StandardMaterial3D.new()
 	wood.albedo_color = Color("302b28")

@@ -1394,8 +1394,7 @@ mesh = SubResource("ArrayMesh_afdq0")
 metadata/detail_pieces = 11
 
 [node name="StorySign" type="Node3D" parent="." unique_id=650842614]
-transform = Transform3D(-0.45, 0, 0, 0, 0.45, 0, 0, 0, -0.45, 0, 0, -14)
-visible = false
+transform = Transform3D(0.32, 0, 0, 0, 0.32, 0, 0, 0, 0.32, -2, 0, -11.8)
 
 [node name="PostLeft" type="MeshInstance3D" parent="StorySign" unique_id=1047470148]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.1, 0.8, 0)
@@ -1421,7 +1420,7 @@ mesh = SubResource("BoxMesh_2piad")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0.125)
 pixel_size = 0.0055
 modulate = Color(0.95686275, 0.89411765, 0.7372549, 1)
-text = "这里真的是家吗？"
+text = "若你来自人类，请告诉我，家还在吗？"
 font = ExtResource("8_cvsno")
 font_size = 64
 outline_size = 5
