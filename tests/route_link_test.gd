@@ -61,6 +61,26 @@ func _scan(key: String) -> void:
 	_check(game.discovered.has(echo.anomaly_id), "%s requires and accepts an actual completed F scan" % key)
 
 
+func _check_scan_guidance_range() -> void:
+	var origin: Vector3 = game.get_active_position()
+	var saved_positions: Array[Vector3] = []
+	var close_target: Node3D = game.anomalies[0]
+	var distant_target: Node3D = game.anomalies[1]
+	for index in range(game.anomalies.size()):
+		var anomaly: Node3D = game.anomalies[index]
+		saved_positions.append(anomaly.global_position)
+		anomaly.global_position = origin + Vector3(5000.0 + index * 300.0, 0.0, 0.0)
+	close_target.global_position = origin + Vector3(0.0, 0.0, -300.0)
+	distant_target.global_position = origin + Vector3(0.0, 0.0, -1300.0)
+	var guidance = game.hud.drawing._scan_guidance_target(origin)
+	_check(guidance == close_target, "scan guidance selects the nearest eligible signal within 1200 m")
+	close_target.global_position = origin + Vector3(0.0, 0.0, -1500.0)
+	_check(game.hud.drawing._scan_guidance_target(origin) == null,
+		"scan guidance does not point across interplanetary distances beyond 1200 m")
+	for index in range(game.anomalies.size()):
+		(game.anomalies[index] as Node3D).global_position = saved_positions[index]
+
+
 func _run() -> void:
 	_cleanup()
 	await _boot()
@@ -72,6 +92,7 @@ func _run() -> void:
 	_check(game.state == "menu" and not game.in_attic, "title request cannot bypass the physical station entrance")
 	game.start_game()
 	game.player.set_physics_process(false)
+	_check_scan_guidance_range()
 	var cloud: Node3D = game.route_link.echoes.cloud
 	_aim_at(cloud)
 	await physics_frame

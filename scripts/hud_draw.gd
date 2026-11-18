@@ -19,6 +19,7 @@ const MAP_BG := Color("050a14")
 const MAP_INK := Color("6fdde0")
 const MAP_SOFT := Color(0.52, 0.74, 0.75, 0.62)
 const MAP_GOLD := Color("ffc56e")
+const SCAN_GUIDANCE_RANGE := 1200.0
 
 
 func _ready() -> void:
@@ -199,6 +200,7 @@ func _draw_markers() -> void:
 			draw_string(font, screen + Vector2(12, -12), anomaly.title, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, color)
 		if distance < 75.0:
 			draw_string(font, screen + Vector2(12, 5), _distance(distance), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(color, 0.8))
+	_draw_scan_guidance(camera, active_position)
 	if game.state == "walk":
 		var point: Vector3 = game.ship.global_position
 		if active_position.distance_to(point) > 8.0 and not camera.is_position_behind(point):
@@ -206,6 +208,81 @@ func _draw_markers() -> void:
 			if Rect2(Vector2(30, 70), size - Vector2(60, 150)).has_point(screen):
 				draw_rect(Rect2(screen - Vector2(5, 5), Vector2(10, 10)), Color("78dce8"), false, 1.3)
 				draw_string(font, screen + Vector2(12, 5), "飞船 · " + _distance(active_position.distance_to(point)), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("9cebf2"))
+
+
+func _scan_guidance_target(origin: Vector3, max_range: float = SCAN_GUIDANCE_RANGE) -> Node3D:
+	if game == null or game.route_link == null:
+		return null
+	var nearest: Node3D
+	var nearest_distance := max_range
+	var tracked: Node3D
+	for anomaly in game.anomalies:
+		if not is_instance_valid(anomaly) or not game.route_link.can_scan(anomaly.anomaly_id):
+			continue
+		if game.discovered.has(anomaly.anomaly_id):
+			continue
+		var point: Vector3 = anomaly.scan_position() if anomaly.has_method("scan_position") \
+			else anomaly.global_position + anomaly.global_transform.basis.y * 3.0
+		var distance := origin.distance_to(point)
+		if distance > max_range:
+			continue
+		if game.route_link.tracked != "" and anomaly.anomaly_id == game.route_link.echo_id(game.route_link.tracked):
+			tracked = anomaly
+		elif distance < nearest_distance:
+			nearest_distance = distance
+			nearest = anomaly
+	return tracked if tracked != null else nearest
+
+
+func _draw_scan_guidance(camera: Camera3D, origin: Vector3) -> void:
+	var target := _scan_guidance_target(origin)
+	if target == null:
+		return
+	var point: Vector3 = target.scan_position() if target.has_method("scan_position") \
+		else target.global_position + target.global_transform.basis.y * 3.0
+	var distance := origin.distance_to(point)
+	var color: Color = Color("ffe0a0") if game.route_link.tracked != "" \
+		and target.anomaly_id == game.route_link.echo_id(game.route_link.tracked) else target.accent_color
+	var on_screen := not camera.is_position_behind(point)
+	var screen := camera.unproject_position(point) if on_screen else Vector2.ZERO
+	on_screen = on_screen and Rect2(Vector2(40, 70), size - Vector2(80, 140)).has_point(screen)
+	if on_screen:
+		draw_arc(screen, 20.0, 0.0, TAU, 40, Color(color, 0.9), 2.4, true)
+		draw_arc(screen, 27.0, -PI * 0.5, PI * 1.5, 40, Color(color, 0.36), 1.0, true)
+		draw_line(screen + Vector2(-34, 0), screen + Vector2(-24, 0), color, 1.6, true)
+		draw_line(screen + Vector2(24, 0), screen + Vector2(34, 0), color, 1.6, true)
+		draw_line(screen + Vector2(0, -34), screen + Vector2(0, -24), color, 1.6, true)
+		draw_line(screen + Vector2(0, 24), screen + Vector2(0, 34), color, 1.6, true)
+		var label_x := clampf(screen.x + 30.0, 12.0, maxf(12.0, size.x - 248.0))
+		var label_y := clampf(screen.y - 25.0, 92.0, size.y - 42.0)
+		_draw_scan_guidance_label(label_x, label_y, target.title, distance, color, "朝标记靠近")
+		return
+	var local: Vector3 = camera.global_transform.affine_inverse() * point
+	var direction := Vector2(local.x, -local.y)
+	if local.z > 0.0:
+		direction = -direction
+	if direction.length_squared() < 0.001:
+		direction = Vector2.UP
+	direction = direction.normalized()
+	var center := size * 0.5
+	var half_bounds := Vector2(maxf(1.0, center.x - 48.0), maxf(1.0, center.y - 112.0))
+	var scale := minf(half_bounds.x / maxf(absf(direction.x), 0.001), half_bounds.y / maxf(absf(direction.y), 0.001))
+	var anchor := center + direction * scale
+	var side := Vector2(-direction.y, direction.x)
+	var arrow := PackedVector2Array([anchor + direction * 11.0, anchor - direction * 8.0 + side * 7.0, anchor - direction * 8.0 - side * 7.0])
+	draw_colored_polygon(arrow, color)
+	draw_arc(anchor, 17.0, 0.0, TAU, 32, Color(color, 0.75), 1.8, true)
+	var label_x := clampf(anchor.x + (18.0 if direction.x >= 0.0 else -230.0), 12.0, maxf(12.0, size.x - 248.0))
+	var label_y := clampf(anchor.y - 7.0, 84.0, size.y - 35.0)
+	_draw_scan_guidance_label(label_x, label_y, target.title, distance, color, "朝箭头方向")
+
+
+func _draw_scan_guidance_label(x: float, baseline_y: float, title: String, distance: float, color: Color, instruction: String) -> void:
+	var panel := Rect2(Vector2(x - 7.0, baseline_y - 16.0), Vector2(238.0, 40.0))
+	draw_rect(panel, Color(0.015, 0.025, 0.035, 0.88))
+	draw_rect(panel, Color(color, 0.78), false, 1.0)
+	draw_string(font, Vector2(x, baseline_y), "扫描点 · " + title, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, color)
+	draw_string(font, Vector2(x, baseline_y + 19.0), "%d m · %s" % [int(distance), instruction], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(color, 0.9))
 
 
 func _draw_cockpit() -> void:
