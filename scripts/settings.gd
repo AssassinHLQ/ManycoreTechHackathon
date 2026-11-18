@@ -28,7 +28,7 @@ var collected := false
 
 func load_and_apply() -> void:
 	load_settings()
-	apply_all()
+	apply_all(true)
 
 
 func load_settings() -> void:
@@ -66,8 +66,8 @@ func save_settings() -> void:
 		file.store_string(JSON.stringify(values, "\t"))
 
 
-func apply_all() -> void:
-	_apply_resolution()
+func apply_all(startup := false) -> void:
+	_apply_resolution(startup)
 	if DisplayServer.get_name() != "headless" and not OS.has_feature("web"):
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if values.vsync else DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = int(values.fps_limit)
@@ -80,7 +80,7 @@ func apply_all() -> void:
 	_apply_volume()
 
 
-func _apply_resolution() -> void:
+func _apply_resolution(startup := false) -> void:
 	if OS.has_feature("web"):
 		var viewport: Viewport = game.get_viewport()
 		if not viewport.size_changed.is_connected(_apply_web_render_scale):
@@ -91,6 +91,9 @@ func _apply_resolution() -> void:
 	if "--no-capture" in OS.get_cmdline_user_args():
 		return
 	if DisplayServer.get_name() == "headless":
+		return
+	if startup:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
 		return
 	if int(values.resolution) == 3:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
