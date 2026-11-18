@@ -1322,8 +1322,10 @@ func _build_planets(home_only := false) -> void:
 				anomaly.transform = tower.transform * Transform3D(Basis.from_scale(Vector3.ONE * 0.3), Vector3(-3.2, 1.76, 9.4))
 		anomalies.append(anomaly)
 		route_link.build_echo(self, planet, anomaly)
-		if not home_only and planet.stream_proxy:
-			_enqueue_planet_prewarm(planet)
+		# 远端行星保持轻量代理，完整场景只在目的地被选中或接近时预热。
+		# 启动阶段把 19 颗星球全部实例化会连续占用主线程，碰撞网格也会
+		# 在玩家仍停留在母星时逐颗生成，最终表现成反复“未响应”。
+		# `_request_planet_stream()` 会在地图选中目的地或飞船接近目标时入队。
 		# 每颗星球建完让出一帧：地形与地标是最贵的一段，逐个分片才能避免长卡顿
 		_stage_end("planet " + planet.planet_id)
 		await _yield_frame()
