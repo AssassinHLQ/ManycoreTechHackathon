@@ -112,15 +112,9 @@ func _run() -> void:
 		"return preserves time and original suit resources")
 	game.exit_station_to_ship()
 	var voyage: Transform3D = game.player.transform
-	game.start_demo()
-	_check(game.demo_active and game.in_attic, "voyage can start a non-playable preview")
-	game.stop_demo()
-	_check(not game.in_attic and game.state == "ship" and game.player.transform.is_equal_approx(voyage),
-		"preview exit restores the original voyage without granting home access")
 	game.return_to_menu()
-	game.start_demo()
-	game.demo_finished()
-	_check(game.state == "menu" and not game.in_attic, "automatic preview completion returns to title")
+	_check(game.state == "menu" and not game.in_attic,
+		"return to title keeps the physical home gate closed")
 	_check(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED, "all checks respect --no-capture")
 	game.queue_free()
 	await process_frame

@@ -156,25 +156,6 @@ func _run() -> void:
 	await _capture("02e_attic_swallow")
 	await _frames(2)
 
-	# --- 2f 自动演示（跑到中段拍两张）---
-	game.start_demo()
-	if game.attic_worlds != null:
-		game.attic_worlds.freeze_airship_at(0.6)
-	await _frames(6)
-	# 演示层每帧会自己推进 clock，截图前先停住，否则镜头位置会飘
-	game.demo.clock = 6.4
-	game.demo.tick(0.0)
-	game.demo.clock_paused = true
-	await _frames(8)
-	await _capture("02f_demo_start")
-	game.demo.clock = 34.0
-	game.demo.tick(0.0)
-	await _frames(14)
-	await _capture("02g_demo_cloud")
-	game.demo.clock_paused = false
-	game.stop_demo()
-	await _frames(6)
-
 	# --- 3 旅行小册 ---
 	game.toggle_travel_journal()
 	await _frames(10)

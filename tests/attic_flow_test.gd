@@ -140,19 +140,13 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_check(game.elapsed > clock, "universe timer resumes after title restart")
-	# A title preview returns to title; it does not grant playable home access.
 	game.return_to_menu()
+	var has_demo_button := false
 	for node in game.hud.menu.find_children("*", "Button", true, false):
-		if node.text.begins_with("自动演示"):
-			node.pressed.emit()
-			break
-	_check(game.demo_active and game.in_attic, "title demo button enters the attic demo")
-	var cancel := InputEventAction.new()
-	cancel.action = "ui_cancel"
-	cancel.pressed = true
-	game._unhandled_input(cancel)
-	_check(not game.demo_active and not game.in_attic and game.state == "menu",
-		"Esc exits the title preview back to title without granting home access")
+		if (node as Button).text.contains("演示"):
+			has_demo_button = true
+	_check(not has_demo_button, "title menu no longer offers a timed demo")
+	_check(not game.in_attic and game.state == "menu", "return to title stays in the menu")
 	_check(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED, "all transitions respect --no-capture")
 	game.queue_free()
 	await process_frame

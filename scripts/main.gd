@@ -377,10 +377,6 @@ func _build_world_progressive() -> void:
 	run_summary.name = "RunSummary"
 	add_child(run_summary)
 	run_summary.setup(self)
-	demo = DemoScript.new()
-	demo.name = "Demo"
-	add_child(demo)
-	demo.setup(self)
 	_stage_end("hud")
 	await _yield_frame()
 	_stage_begin()
@@ -665,7 +661,7 @@ func dev_trigger_supernova() -> void:
 	_trigger_supernova()
 
 
-## 把可能接管画面的东西收干净：正在跑的演示 / 超新星 / 望远镜 / 各种浮层。
+## 把可能接管画面的东西收干净：超新星 / 望远镜 / 各种浮层。
 ## 收不干净的后果是「按了 F4 却没有结局」——比如超新星会在一秒后把状态改回去。
 func _dev_clear_overlays() -> void:
 	supernova_active = false
@@ -676,8 +672,6 @@ func _dev_clear_overlays() -> void:
 		sun_material.set_shader_parameter("heat", 0.0)
 	if sun_light != null:
 		sun_light.light_energy = 3.0
-	if demo_active:
-		stop_demo()
 	if scope_active:
 		_exit_scope()
 	if bag_open and bag != null:
@@ -2442,9 +2436,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		if route_board_open:
 			close_route_board()
 			return
-		if demo_active:
-			stop_demo()
-			return
 		if scope_active:
 			_exit_scope()
 			return
@@ -3106,9 +3097,6 @@ func get_prompt() -> String:
 		return ""
 	# 阁楼线与小世界：用自己的一套提示，别继续显示星际原型的按键
 	if in_attic:
-		# 演示期间由演示层自己出字幕，别再叠一行按键提示
-		if demo_active:
-			return ""
 		if in_pocket():
 			if fishing_phase != "":
 				return ""  # 冰钓时 HUD 自己有说明，别叠两层
@@ -3321,7 +3309,6 @@ const CodexScript = preload("res://scripts/codex.gd")
 const TravelJournalScript = preload("res://scripts/travel_journal.gd")
 const GuideScript = preload("res://scripts/guide.gd")
 const RunSummaryScript = preload("res://scripts/run_summary.gd")
-const DemoScript = preload("res://scripts/demo.gd")
 
 const ATTIC_ORIGIN := Vector3(0.0, -40000.0, 0.0)
 const ATTIC_GRAVITY := 18.0
@@ -3430,161 +3417,6 @@ func toggle_travel_journal() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	else:
 		_set_mouse_capture()
-
-
-## ---------------------------------------------------------------------------
-## 自动演示用到的接口（demo.gd 调这些）
-## ---------------------------------------------------------------------------
-
-## 开始演示：进阁楼、把相机交出去
-func start_demo() -> void:
-	if demo == null or demo_active:
-		return
-	_demo_preview = not in_attic
-	_demo_return_menu = state == "menu"
-	if not in_attic:
-		_enter_attic_space()
-	demo_active = true
-	if player != null:
-		player.set_physics_process(false)
-		player.set_process_input(false)
-	# 存下原相机状态，退出时恢复
-	var cam := demo_camera()
-	if cam != null:
-		demo.saved_camera_transform = cam.global_transform
-		demo.saved_camera_fov = cam.fov
-		demo.has_saved_camera = true
-	if hud != null:
-		hud.hud_root.visible = false
-	demo.start()
-
-
-## 退出演示：相机还回去、恢复玩家
-func stop_demo() -> void:
-	if demo == null:
-		return
-	demo_active = false
-	demo.stop()
-	var cam := demo_camera()
-	if cam != null and demo.has_saved_camera:
-		cam.global_transform = demo.saved_camera_transform
-		cam.fov = demo.saved_camera_fov
-		demo.has_saved_camera = false
-	# 回到阁楼，别把玩家留在演示最后那个世界
-	if in_pocket():
-		leave_pocket()
-	if player != null:
-		player.set_physics_process(true)
-		player.set_process_input(true)
-		player.velocity = Vector3.ZERO
-	if hud != null and hud.hud_root != null:
-		hud.hud_root.visible = true
-	# A preview grants no playable home access. Restore the launch context on exit.
-	if _demo_preview:
-		_demo_preview = false
-		leave_attic()
-		if _demo_return_menu:
-			return_to_menu()
-	_demo_return_menu = false
-
-
-func demo_finished() -> void:
-	stop_demo()
-	hud.show_toast("自动演示结束 · 回家请前往归航站中央枢纽。", 4.0)
-
-
-## 演示用的相机
-func demo_camera() -> Camera3D:
-	if player != null and player.camera != null:
-		return player.camera
-	return null
-
-
-## 演示相机要按哪个容器的坐标算（阁楼 / 当前口袋世界）
-func demo_world_container() -> Node3D:
-	if in_pocket() and attic_worlds != null:
-		return attic_worlds.world_node(pocket_key)
-	return attic
-
-
-## 演示：把窗外天气切到指定档（不动玩家）
-func demo_set_weather(target_key: String) -> void:
-	if attic == null:
-		return
-	var order: Array = attic.WEATHER_ORDER
-	var index := order.find(target_key)
-	if index < 0:
-		return
-	attic.set_dial(index)
-
-
-## 演示：进某个世界
-func demo_enter_world(key: String) -> void:
-	if in_pocket():
-		leave_pocket()
-	if attic == null:
-		return
-	var by_key := {"cloud": "cloud", "firefly": "firefly", "alley": "alley", "snow": "snow"}
-	if not by_key.has(key):
-		return
-	if attic.current_weather() != key:
-		demo_set_weather(key)
-	enter_pocket(key)
-	if player != null:
-		player.set_physics_process(false)
-		player.set_process_input(false)
-
-
-## 演示：回阁楼
-func demo_leave_to_attic() -> void:
-	if not demo_active:
-		return
-	if in_pocket():
-		leave_pocket()
-	if not in_attic:
-		_enter_attic_space()
-	if player != null:
-		player.set_physics_process(false)
-		player.set_process_input(false)
-
-
-## 演示：用一次道具
-func demo_use_prop(id: String) -> void:
-	if attic_worlds == null:
-		return
-	attic_worlds.use_prop(id)
-
-
-## 演示：转一下某个世界的第 index 个装置（走正常的设备流程，会顺带点亮/收集纪念）
-func demo_turn_device(world_key: String, index: int) -> void:
-	if attic_worlds == null:
-		return
-	var result: Dictionary = attic_worlds.activate_device(world_key, index)
-	if not bool(result.get("changed", false)):
-		return
-	var message := String(result.get("message", ""))
-	if bool(result.get("solved", false)):
-		if message != "":
-			hud.show_toast(message, 2.6)
-		collect_keepsake(world_key)
-		return
-	if message != "":
-		hud.show_toast("%s · %d / 3" % [message, int(result.get("aligned", 0))], 2.2)
-
-
-## 演示：让燕子出现在窗台
-func demo_show_swallow() -> void:
-	if attic != null and attic.show_swallow():
-		hud.show_toast("窗台上，一只避雨的燕子收起了翅膀", 3.0)
-
-
-## 演示：招呼燕子
-func demo_greet_swallow() -> void:
-	if attic == null:
-		return
-	var result: Dictionary = attic.greet_swallow()
-	if String(result.get("message", "")) != "":
-		hud.show_toast(String(result.get("message", "")), 2.6)
 
 
 ## 站在阁楼窗台 / 壁炉边的燕子旁
@@ -3973,11 +3805,6 @@ var travel_journal: CanvasLayer
 var journal_book_open := false
 ## 镜牢结算画面
 var run_summary: CanvasLayer
-## 自动演示
-var demo: CanvasLayer
-var demo_active := false
-var _demo_preview := false
-var _demo_return_menu := false
 ## 是否坐在云舟上（相机与位置跟随船）
 var boat_seated := false
 ## 望远镜：是否在看 / 看之前的相机变换
@@ -4079,8 +3906,6 @@ func _sync_guide_step() -> void:
 func _clear_attic_context() -> void:
 	if not in_attic and pocket_key == "":
 		return
-	if demo_active:
-		stop_demo()
 	if scope_active:
 		_exit_scope()
 	boat_seated = false
@@ -4112,7 +3937,7 @@ func enter_attic() -> void:
 
 
 func _enter_attic_space() -> void:
-	# Shared scene transition for the physical home door and non-playable demo.
+	# Shared scene transition for the physical home door.
 	if attic == null or player == null:
 		return
 	if in_attic:
@@ -4200,7 +4025,7 @@ func _capture_attic_return() -> void:
 
 
 func can_visit_attic() -> bool:
-	if supernova_active or demo_active:
+	if supernova_active:
 		return false
 	if in_attic and state == "walk":
 		return true
@@ -4256,7 +4081,7 @@ func near_route_record() -> bool:
 
 
 func open_route_board() -> void:
-	if state not in ["walk", "ship"] or demo_active or route_board_open:
+	if state not in ["walk", "ship"] or route_board_open:
 		return
 	_dev_clear_overlays()
 	_route_board_was_paused = paused

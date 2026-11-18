@@ -501,7 +501,6 @@ func _build_menu() -> void:
 	menu_attic.disabled = true
 	menu_attic.custom_minimum_size.y = 44
 	menu_attic.visible = false
-	_button(box, "自动演示 · 约 2 分半", func(): game.start_demo()).custom_minimum_size.y = 44
 	_button(box, "设置", show_settings).custom_minimum_size.y = 42
 	_button(box, "操作与生存指南", show_help).custom_minimum_size.y = 44
 	_button(box, "退出", func(): get_tree().quit()).custom_minimum_size.y = 38
