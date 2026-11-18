@@ -2992,6 +2992,8 @@ func exit_station_to_ship() -> void:
 
 
 func cycle_target() -> void:
+	if ship == null or planets.is_empty():
+		return
 	target_index = (target_index + 1) % planets.size()
 	ship.target = planets[target_index]
 	hud.show_toast("目的地：" + ship.target.display_name, 1.8)
