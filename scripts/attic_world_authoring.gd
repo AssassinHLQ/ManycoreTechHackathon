@@ -5,10 +5,15 @@ const LINES := {
 	"cloud": "这里真的是家吗？",
 	"firefly": "伪装的温柔为我点了一盏灯。",
 	"alley": "逝者如斯夫，不会回来",
-	"snow": "这里真的是家吗？",
+	"snow": "若你来自人类，请告诉我，家还在吗？",
 }
 const KEYED_FIELDS := ["device_states", "device_values", "device_nodes", "world_done", "minigame_anchors"]
-const COLLISION_EXCLUDED_ROOTS := ["Airship", "CloudBoat", "CloudSea", "Ground", "Snowfall", "Fireflies", "Rain"]
+# These roots are visual-only. In particular, the return portal's glowing
+# pane must stay passable, otherwise its generated mesh collider becomes an
+# invisible wall directly in front of the interaction anchor.
+const COLLISION_EXCLUDED_ROOTS := [
+	"Airship", "CloudBoat", "CloudSea", "Ground", "Snowfall", "Fireflies", "Rain", "ReturnPortal"
+]
 const COLLISION_EXCLUDED_NODES := ["Ember", "Flame", "LanternGlow", "LampGlow", "Moon", "Puddle"]
 const WORLD_FIELDS := {
 	"snow": ["fishing_holes", "hearth_node", "hearth_light"],
@@ -23,8 +28,25 @@ static func load_world(worlds: Node3D, key: String, holder: Node3D) -> bool:
 	var path := DIRECTORY + key
 	if not WORLD_FIELDS.has(key) or not ResourceLoader.exists(path + "_bindings.tres"):
 		return false
-	var scene := load(path + ".tscn") as PackedScene
-	var data := load(path + "_bindings.tres") as Resource
+	var tree := Engine.get_main_loop() as SceneTree
+	var scene_path := path + ".tscn"
+	var bindings_path := path + "_bindings.tres"
+	var scene_request := ResourceLoader.load_threaded_request(scene_path, "PackedScene")
+	var bindings_request := ResourceLoader.load_threaded_request(bindings_path, "Resource")
+	if scene_request != OK and scene_request != ERR_BUSY:
+		return false
+	if bindings_request != OK and bindings_request != ERR_BUSY:
+		return false
+	while true:
+		var scene_status := ResourceLoader.load_threaded_get_status(scene_path)
+		var bindings_status := ResourceLoader.load_threaded_get_status(bindings_path)
+		if scene_status == ResourceLoader.THREAD_LOAD_FAILED or bindings_status == ResourceLoader.THREAD_LOAD_FAILED:
+			return false
+		if scene_status == ResourceLoader.THREAD_LOAD_LOADED and bindings_status == ResourceLoader.THREAD_LOAD_LOADED:
+			break
+		await tree.process_frame
+	var scene := ResourceLoader.load_threaded_get(scene_path) as PackedScene
+	var data := ResourceLoader.load_threaded_get(bindings_path) as Resource
 	if scene == null or data == null:
 		return false
 	var content := scene.instantiate() as Node3D
@@ -41,8 +63,11 @@ static func load_world(worlds: Node3D, key: String, holder: Node3D) -> bool:
 	for node in content.find_children("*", "GeometryInstance3D", true, false):
 		if status.materials.has(node.material_override):
 			node.material_override = status.materials[node.material_override]
-	_install_static_mesh_collisions(content)
+	# Attach authored visuals immediately. Collision extraction continues as a
+	# resumable coroutine so inactive pocket worlds never block gameplay.
 	holder.add_child(content)
+	content.set_meta("collision_ready", false)
+	_install_static_mesh_collisions(content)
 	worlds.worlds[key] = decoded.world
 	for field in decoded.keyed:
 		worlds.get(field)[key] = decoded.keyed[field]
@@ -140,8 +165,7 @@ static func _decode(value, content: Node3D, holder: Node3D, status: Dictionary):
 static func add_story_sign(content: Node3D, key: String) -> void:
 	var sign_root := Node3D.new()
 	sign_root.name = "StorySign"
-	# The telescope archive is the only presentation for these inscriptions.
-	sign_root.visible = false
+	# Keep the sign physically discoverable while its reversed placement hides the writing.
 	sign_root.rotation.y = PI
 	sign_root.scale = Vector3.ONE * 0.45
 	sign_root.position = Vector3(0, 0, -14.0)
@@ -257,8 +281,13 @@ static func install(worlds: Node3D, key: String) -> void:
 	old.free()
 
 
+
 static func _install_static_mesh_collisions(content: Node3D) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
 	for prop_root in content.get_children():
+		await tree.process_frame
+		if not is_instance_valid(content) or not is_instance_valid(prop_root):
+			return
 		if not prop_root is Node3D or prop_root is CollisionObject3D:
 			continue
 		if COLLISION_EXCLUDED_ROOTS.has(String(prop_root.name)):
@@ -266,7 +295,9 @@ static func _install_static_mesh_collisions(content: Node3D) -> void:
 		if not prop_root.find_children("*", "CollisionObject3D", true, false).is_empty():
 			continue
 		var faces := PackedVector3Array()
-		_collect_collision_faces(prop_root, Transform3D.IDENTITY, true, faces)
+		await _collect_collision_faces(prop_root, Transform3D.IDENTITY, true, faces, tree)
+		if not is_instance_valid(content) or not is_instance_valid(prop_root):
+			return
 		if faces.size() < 3:
 			continue
 		var mesh_shape := ConcavePolygonShape3D.new()
@@ -281,10 +312,14 @@ static func _install_static_mesh_collisions(content: Node3D) -> void:
 		collision_shape.shape = mesh_shape
 		collision_body.add_child(collision_shape)
 		prop_root.add_child(collision_body)
+	if is_instance_valid(content):
+		content.set_meta("collision_ready", true)
 
 
 static func _collect_collision_faces(node: Node, node_transform: Transform3D,
-		parent_visible: bool, faces: PackedVector3Array) -> void:
+		parent_visible: bool, faces: PackedVector3Array, tree: SceneTree) -> void:
+	if not is_instance_valid(node):
+		return
 	if COLLISION_EXCLUDED_NODES.has(String(node.name)):
 		return
 	var visible := parent_visible
@@ -292,14 +327,21 @@ static func _collect_collision_faces(node: Node, node_transform: Transform3D,
 		visible = visible and (node as GeometryInstance3D).visible
 	if visible and node is MeshInstance3D:
 		var mesh_node := node as MeshInstance3D
-		if mesh_node.mesh != null:
-			for vertex in mesh_node.mesh.get_faces():
-				faces.append(node_transform * vertex)
+		if mesh_node.mesh != null and is_instance_valid(mesh_node.mesh) and mesh_node.mesh.get_surface_count() > 0:
+			var mesh_faces := mesh_node.mesh.get_faces()
+			for index in range(mesh_faces.size()):
+				if not is_instance_valid(node):
+					return
+				faces.append(node_transform * mesh_faces[index])
+				if index % 4096 == 4095:
+					await tree.process_frame
 	for child in node.get_children():
+		if not is_instance_valid(child):
+			continue
 		var child_transform := node_transform
 		if child is Node3D:
 			child_transform = node_transform * (child as Node3D).transform
-		_collect_collision_faces(child, child_transform, visible, faces)
+		await _collect_collision_faces(child, child_transform, visible, faces, tree)
 
 
 static func _missing_reference(value, old: Node, nodes: Dictionary) -> bool:

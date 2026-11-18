@@ -62,7 +62,7 @@ func _ray_hits_mesh(holder: Node3D, body: StaticBody3D) -> bool:
 func _run() -> void:
 	var worlds = AtticWorlds.new()
 	root.add_child(worlds)
-	worlds.build()
+	await worlds.build()
 	await physics_frame
 
 	for key in WORLD_KEYS:
@@ -84,6 +84,10 @@ func _run() -> void:
 		if key == "mirror":
 			_check(shape_count == 4, "mirror collision contains only its floor and three visible walls")
 			var content: Node3D = worlds.worlds[key]["content"]
+			var mirror_panels := content.find_children("MirrorPanel_*", "MeshInstance3D", true, false)
+			_check(mirror_panels.size() == 5, "mirror hall has five framed mirror panels")
+			_check(content.find_child("MirrorHeartHalo", true, false) != null,
+				"mirror altar keeps its halo after the heart is collected")
 			var space := holder.get_world_3d().direct_space_state
 			var exclude := _exclude_other_bodies(holder, collision)
 			var back_query := PhysicsRayQueryParameters3D.create(
@@ -106,6 +110,11 @@ func _run() -> void:
 				"mirror courtyard opening has no invisible perimeter wall")
 		else:
 			_check(not has_tall_wall, key + " has no tall invisible perimeter wall")
+		var return_portal := holder.find_child("ReturnPortal", true, false)
+		_check(return_portal != null, key + " has a visible return portal")
+		if return_portal != null:
+			_check(return_portal.find_children("MeshSelfCollision", "StaticBody3D", true, false).is_empty(),
+				key + " return portal remains passable")
 		if key == "snow":
 			var drift := holder.find_child("Prop_snow-drift", true, false) as Node3D
 			var drift_collision := drift.get_node_or_null("MeshSelfCollision") as StaticBody3D if drift != null else null
