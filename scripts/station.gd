@@ -18,6 +18,7 @@ const Placement := preload("res://scripts/prop_placement.gd")
 const Precision = preload("res://scripts/procedural_dressing.gd")
 const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 const RuntimeBake = preload("res://scripts/runtime_bake.gd")
+const HOME_STATION_MODEL := "res://assets/models/space-station-3/model.glb"
 
 const STATION_PROP_DIR := "res://assets/models/props/station/"
 var _prop_placer := Placement.new()
@@ -81,6 +82,7 @@ var hub_root: Node3D
 var hub_body: StaticBody3D
 var exterior_body: StaticBody3D
 var exterior_hub_shell: Node3D
+var exterior_model_root: Node3D
 var orbit_planet: Node3D
 var orbit_phase := 0.0
 var orbit_radius := 2600.0
@@ -126,6 +128,8 @@ func _ready() -> void:
 	# 提前移动父节点会让玩家相对物理服务器上一快照的地板反复升降。
 	process_physics_priority = 10
 	if not "--rebake-runtime" in OS.get_cmdline_user_args() and await RuntimeBake.load_generated(self, "station"):
+		_build_imported_exterior()
+		_hide_legacy_exterior_visuals()
 		runtime_scene_ready = true
 		runtime_scene_ready_finished.emit()
 		return
@@ -138,6 +142,8 @@ func _ready() -> void:
 	_build_hub()
 	Precision.station_exterior(exterior_hub_shell, ring_root)
 	_merge_exterior_meshes()
+	_build_imported_exterior()
+	_hide_legacy_exterior_visuals()
 	set_meta("bake_children", get_children())
 	runtime_scene_ready = true
 	runtime_scene_ready_finished.emit()
@@ -205,6 +211,8 @@ func _physics_process(delta: float) -> void:
 		hub_root.visible = in_station
 		if exterior_hub_shell != null:
 			exterior_hub_shell.visible = not in_station
+		if exterior_model_root != null:
+			exterior_model_root.visible = not in_station
 		for pod in end_pods:
 			pod.visible = not in_station
 		var idx := -1
@@ -706,6 +714,42 @@ func _build_exterior() -> void:
 	_build_shuttle(Vector3(55.0, -12.0, 34.0), 0.3)
 	_build_shuttle(Vector3(130.0, -14.0, -34.0), -0.4)
 	_build_shuttle(Vector3(0.0, 24.0, -55.0), 2.2)
+
+
+func _build_imported_exterior() -> void:
+	var packed := load(HOME_STATION_MODEL) as PackedScene
+	if packed == null:
+		push_warning("归航站外部模型缺失：%s" % HOME_STATION_MODEL)
+		return
+	exterior_model_root = Node3D.new()
+	exterior_model_root.name = "ImportedExteriorModel"
+	exterior_model_root.scale = Vector3.ONE * 0.62
+	exterior_model_root.rotation.y = deg_to_rad(18.0)
+	add_child(exterior_model_root)
+	var model := packed.instantiate() as Node3D
+	exterior_model_root.add_child(model)
+	for node in exterior_model_root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		for surface in range(mesh_instance.mesh.get_surface_count()):
+			var material := mesh_instance.get_active_material(surface)
+			if material is StandardMaterial3D:
+				var adjusted := (material as StandardMaterial3D).duplicate() as StandardMaterial3D
+				adjusted.cull_mode = BaseMaterial3D.CULL_DISABLED
+				adjusted.metallic = clampf(adjusted.metallic, 0.0, 0.82)
+				adjusted.roughness = clampf(adjusted.roughness, 0.3, 1.0)
+				mesh_instance.set_surface_override_material(surface, adjusted)
+
+
+func _hide_legacy_exterior_visuals() -> void:
+	# 旧程序化外壳仍保留碰撞和尺寸基准，但由导入模型负责可见外观。
+	# 内部根节点和新模型保留可见，其余站外节点只隐藏渲染，不影响物理碰撞。
+	for child in get_children():
+		if child == interior_root or child == hub_root or child == exterior_model_root:
+			continue
+		if child.name == "StationHub" or child.name == "Interior" or child.name.begins_with("CorridorContainer"):
+			continue
+		if child is Node3D:
+			(child as Node3D).visible = false
 
 
 func _make_open_tube_mesh(length: float, half_height: float, half_width: float) -> ArrayMesh:
