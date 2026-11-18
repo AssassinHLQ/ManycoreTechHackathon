@@ -71,8 +71,8 @@ const HULL_Z := 3.25
 const MAX_FUEL := 200.0
 const AUTOPILOT_ACCEL := 230.0
 ## 自动航行进入减速段时使用的高速制动能力，速度剖面也按它计算。
-## 远距离仍然不设巡航上限，接近目标后才切入强制减速。
-const AUTOPILOT_BRAKE_DECEL := 1200.0
+## 在上一版高速刹车基础上提高 4 倍，避免无上限巡航接近目标时刹不住。
+const AUTOPILOT_BRAKE_DECEL := 1200.0 * 4.0
 ## 每改变 1 m/s 速度消耗多少推进剂（自动航行）。
 ##
 ## ⚠ 2026-11-11 场景放大后从 0.008 降到 0.003：
@@ -1820,6 +1820,7 @@ func _physics_process(delta: float) -> void:
 	# 卡冈图雅的牵引。它比行星重得多，所以先算它，再和行星重力叠一起。
 	gravity += _black_hole_pull(delta)
 	var thrusting := false
+	var braking := false
 
 	if autopilot and target != null:
 		# 自动驾驶也要吃引力。
@@ -1837,12 +1838,17 @@ func _physics_process(delta: float) -> void:
 		# 期望速度以「地面」为参照系：行星在公转，相对速度才算数。
 		var desired_velocity := desired_direction * desired_speed + target_velocity
 		var before_velocity := velocity
-		# 进入刹车段时使用独立的高速制动能力。此前这里只用
-		# AUTOPILOT_ACCEL，导致速度剖面按 1200 m/s² 计算，实际却只有
-		# 230 m/s²，远距离航行时会在目标前刹不住。
 		var relative_velocity := velocity - target_velocity
 		var current_toward_speed := relative_velocity.dot(desired_direction)
-		var control_rate := AUTOPILOT_BRAKE_DECEL if current_toward_speed > desired_speed else AUTOPILOT_ACCEL
+		# 先按当前接近速度计算刹停距离，再决定是否进入刹车段。
+		# 这样高速飞行时会提前刹车，不会等到目标贴脸才反推。
+		var available_braking := maxf(AUTOPILOT_BRAKE_DECEL - gravity.length(), AUTOPILOT_BRAKE_FLOOR)
+		var closing_speed := maxf(current_toward_speed, 0.0)
+		var stopping_distance := closing_speed * closing_speed / maxf(2.0 * available_braking, 0.001)
+		var braking_margin := maxf(150.0, closing_speed * 0.25)
+		var distance_requires_braking := target_altitude <= stopping_distance + braking_margin
+		braking = current_toward_speed > desired_speed + 0.5 or distance_requires_braking
+		var control_rate := AUTOPILOT_BRAKE_DECEL if braking else AUTOPILOT_ACCEL
 		velocity = velocity.move_toward(desired_velocity, delta * control_rate)
 		var delta_v := velocity.distance_to(before_velocity)
 		if delta_v > 0.0001:
@@ -1859,7 +1865,8 @@ func _physics_process(delta: float) -> void:
 		var transform := global_transform
 		transform.basis = transform.basis.slerp(desired_basis, clampf(delta * 3.0, 0.0, 1.0)).orthonormalized()
 		global_transform = transform
-		thrusting = autopilot and delta_v > 0.02
+		# 自动刹车使用反推力，不点亮后方前进尾焰，也不让前进引擎声持续播放。
+		thrusting = autopilot and not braking and delta_v > 0.02
 		thrust_level = 0.8 if thrusting else 0.0
 	else:
 		# ── 姿态：飞船缓慢转向期望朝向，机头始终对着屏幕中心 ──
@@ -1952,8 +1959,7 @@ func _physics_process(delta: float) -> void:
 			var brake_dv := velocity.distance_to(before_brake)
 			if brake_dv > 0.0001:
 				fuel = maxf(0.0, fuel - brake_dv * MANUAL_FUEL_PER_DV * bh_fuel_multiplier)
-				thrusting = true
-				thrust_level = 0.35
+				braking = true
 
 		# ── 速度矢量缓慢转向机头 ──
 		#
