@@ -37,7 +37,7 @@ func _run() -> void:
 	var expected_anchors := [
 		"AtticAnchor_Window", "AtticAnchor_Mirror", "AtticAnchor_Booklet",
 		"AtticAnchor_Kettle", "AtticAnchor_Tea", "AtticAnchor_Shelf",
-		"AtticAnchor_Lantern", "AtticAnchor_Record",
+		"AtticAnchor_Lantern", "AtticAnchor_Record", "AtticAnchor_Chest",
 		"AtticAnchor_Door_Snow", "AtticAnchor_Door_Cloud",
 		"AtticAnchor_Door_Firefly", "AtticAnchor_Door_Alley",
 	]
@@ -46,6 +46,12 @@ func _run() -> void:
 		if not attic.anchors.has(name):
 			missing.append(name)
 	_check(missing.is_empty(), "every interaction anchor exists %s" % str(missing))
+
+	var gables: Array = attic.find_children("Gable_*", "CSGPolygon3D", true, false)
+	_check(gables.size() == 2, "both roof ends have solid gable walls")
+	for gable in gables:
+		_check(gable.depth >= 0.23 and gable.use_collision,
+			"gable overlaps the roof and blocks passage (depth=%s collision=%s)" % [str(gable.depth), str(gable.use_collision)])
 
 	_check(attic.doors.size() == 4, "four doors to faraway places")
 	var keys: Array = []
@@ -67,6 +73,13 @@ func _run() -> void:
 
 	var lights: Array = attic.find_children("*", "OmniLight3D", true, false)
 	_check(lights.size() >= 3, "attic is lit (%d lights)" % lights.size())
+
+	_check(not attic.chest_open, "wooden chest starts closed")
+	_check(attic.chest_closed_visual.visible and not attic.chest_open_visual.visible, "closed chest uses its original model")
+	_check(attic.toggle_chest(), "wooden chest opens")
+	_check(not attic.chest_closed_visual.visible and attic.chest_open_visual.visible, "open chest shows its cavity and lid")
+	_check(not attic.toggle_chest(), "wooden chest closes")
+	_check(attic.chest_closed_visual.visible and not attic.chest_open_visual.visible, "closed chest restores its original model")
 
 	print("ATTIC TEST COMPLETE: %d checks, %d failure(s)" % [checks, failures])
 	attic.queue_free()
@@ -99,6 +112,15 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	_check(is_equal_approx(game.elapsed, before_elapsed), "loop clock pauses while in the attic")
+
+	var chest_anchor: Node3D = game.attic.anchors.get("AtticAnchor_Chest")
+	game.player.global_position = chest_anchor.global_position
+	_check(game.near_attic_chest(), "chest interaction range is detected")
+	game._interact()
+	_check(game.attic.chest_open, "E opens the attic chest")
+	_check(game.get_prompt().contains("合上木箱"), "HUD offers to close the open chest")
+	game._interact()
+	_check(not game.attic.chest_open, "E closes the attic chest")
 
 	game.leave_attic()
 	await process_frame

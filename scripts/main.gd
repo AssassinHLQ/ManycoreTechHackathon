@@ -2705,6 +2705,11 @@ func _interact() -> void:
 		return
 	if state == "walk":
 		if in_attic:
+			if near_attic_chest():
+				var opened: bool = attic.toggle_chest()
+				hud.show_toast("木箱打开了" if opened else "木箱合上了", 1.8)
+				audio.play_ui(520.0 if opened else 440.0)
+				return
 			if near_route_record():
 				open_route_board()
 				return
@@ -3103,6 +3108,10 @@ func get_prompt() -> String:
 			if touch_ui_active():
 				return "「互动」交互 / 上下云舟 / 抛竿　·　「行囊」查看进度"
 			return "WASD 移动 · E 互动 / 读木牌 / 推门 · B 行囊 · H 旅人手册 · Esc 菜单"
+		if near_attic_chest():
+			if touch_ui_active():
+				return "「互动」合上木箱" if attic.chest_open else "「互动」打开木箱"
+			return "E 合上木箱" if attic.chest_open else "E 打开木箱"
 		if touch_ui_active():
 			return "「互动」互动 / 推门　·　「行囊」查看进度"
 		if near_route_record():
@@ -3418,6 +3427,14 @@ func toggle_travel_journal() -> void:
 	else:
 		_set_mouse_capture()
 
+
+func near_attic_chest() -> bool:
+	if not in_attic or in_pocket() or player == null or attic == null:
+		return false
+	var anchor: Node3D = attic.anchors.get("AtticAnchor_Chest")
+	if anchor == null:
+		return false
+	return player.global_position.distance_to(anchor.global_position) < 1.8
 
 ## 站在阁楼窗台 / 壁炉边的燕子旁
 func near_swallow() -> bool:

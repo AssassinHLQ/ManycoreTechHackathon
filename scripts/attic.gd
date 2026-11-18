@@ -40,6 +40,11 @@ var anchors: Dictionary = {}   # 交互锚点：锚点名 -> Node3D
 var swallow_node: Node3D
 ## 燕子的飞行进度：0 = 在窗台，1 = 落到壁炉边
 var swallow_flight := -1.0
+var chest_open := false
+var chest_closed_visual: Node3D
+var chest_open_visual: Node3D
+var chest_lid_pivot: Node3D
+var chest_lid_tween: Tween
 var root: Node3D
 var body: StaticBody3D
 
@@ -249,24 +254,23 @@ func _build_shell() -> void:
 			rafter.rotation.z = roof.rotation.z
 	_box(root, Vector3(0.20, 0.20, ROOM_HALF_Z * 2.0 + 0.1),
 		Vector3(0, RIDGE_HEIGHT - 0.08, 0), _wood_dark)
-	# Triangular end walls meet the slopes, without oversized filler slabs.
+	# Solid gables overlap the roof slopes and end-wall edges.
 	for side in [-1.0, 1.0]:
-		var tool := SurfaceTool.new()
-		tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var a := Vector3(-ROOM_HALF_X - 0.04, WALL_HEIGHT - 0.04, side * ROOM_HALF_Z)
-		var b := Vector3(ROOM_HALF_X + 0.04, WALL_HEIGHT - 0.04, side * ROOM_HALF_Z)
-		var c := Vector3(0, RIDGE_HEIGHT + 0.04, side * ROOM_HALF_Z)
-		for v in [a, b, c, c, b, a]:
-			tool.add_vertex(v)
-		tool.generate_normals()
-		var gable := MeshInstance3D.new()
+		var gable := CSGPolygon3D.new()
 		gable.name = "Gable_Front" if side > 0 else "Gable_Back"
-		gable.mesh = tool.commit()
-		gable.material_override = _plaster
+		gable.mode = CSGPolygon3D.MODE_DEPTH
+		gable.polygon = PackedVector2Array([
+			Vector2(-ROOM_HALF_X - 0.12, WALL_HEIGHT - 0.04),
+			Vector2(0, RIDGE_HEIGHT + 0.12),
+			Vector2(ROOM_HALF_X + 0.12, WALL_HEIGHT - 0.04),
+		])
+		gable.depth = 0.24
+		gable.position.z = side * ROOM_HALF_Z
+		gable.material = _plaster
+		gable.use_collision = true
+		gable.collision_layer = 1
+		gable.collision_mask = 0
 		root.add_child(gable)
-		var gable_collision := CollisionShape3D.new()
-		gable_collision.shape = gable.mesh.create_trimesh_shape()
-		body.add_child(gable_collision)
 	for side in [-1.0, 1.0]:
 		_box(root, Vector3(ROOM_HALF_X * 2.0, 0.16, 0.08),
 			Vector3(0, 0.08, side * (ROOM_HALF_Z - 0.09)), _wood)
@@ -675,14 +679,20 @@ func _build_furniture() -> void:
 		root.add_child(rug)
 	else:
 		_box(root, Vector3(2.6, 0.012, 1.9), Vector3(0.6, 0.007, 0.95), _cloth)
-	var chest := prop("wooden-chest", 0.62)
-	if chest != null:
-		chest.position = Vector3(-2.2, 0, 1.95)
-		root.add_child(chest)
-		_collide_prop(chest)
+	var chest_position := Vector3(-2.2, 0, 1.95)
+	var chest_model := prop("wooden-chest", 0.62)
+	chest_closed_visual = Node3D.new()
+	chest_closed_visual.name = "ChestClosedVisual"
+	chest_closed_visual.position = chest_position
+	root.add_child(chest_closed_visual)
+	if chest_model != null:
+		chest_closed_visual.add_child(chest_model)
+		_collide_prop(chest_model)
 	else:
-		_box(root, Vector3(0.9, 0.62, 0.55), Vector3(-2.2, 0.31, 1.95), _wood)
-		_box_collider(Vector3(0.9, 0.62, 0.55), Vector3(-2.2, 0.31, 1.95))
+		_box(chest_closed_visual, Vector3(0.9, 0.62, 0.55), Vector3(0, 0.31, 0), _wood)
+		_box_collider(Vector3(0.9, 0.62, 0.55), chest_position + Vector3(0, 0.31, 0))
+	_build_open_chest(chest_position)
+	_anchor("AtticAnchor_Chest", chest_position + Vector3(0, 0.38, 0.33))
 	var cabinet := prop("side-cabinet", 0.52)
 	var cabinet_z := ROOM_HALF_Z - 0.08 - 0.20
 	if cabinet != null:
@@ -741,6 +751,68 @@ func _build_furniture() -> void:
 	record_label.rotation.y = PI * 0.5
 	root.add_child(record_label)
 	_anchor("AtticAnchor_HearthPerch", record_at + Vector3(0, 0.66, 0.25))
+
+
+func _build_open_chest(chest_position: Vector3) -> void:
+	chest_open_visual = Node3D.new()
+	chest_open_visual.name = "ChestOpenVisual"
+	chest_open_visual.position = chest_position
+	chest_open_visual.visible = false
+	root.add_child(chest_open_visual)
+
+	var wood := _material(Color("61452f"))
+	PrecisionGeometry.surface(wood, "wood")
+	var plank := _material(Color("745439"))
+	PrecisionGeometry.surface(plank, "wood")
+	var cavity := _material(Color("21170f"))
+	_box(chest_open_visual, Vector3(0.82, 0.46, 0.54), Vector3(0, 0.23, 0), wood)
+	_box(chest_open_visual, Vector3(0.72, 0.02, 0.40), Vector3(0, 0.47, 0), cavity)
+	_box(chest_open_visual, Vector3(0.82, 0.16, 0.04), Vector3(0, 0.54, 0.25), wood)
+	_box(chest_open_visual, Vector3(0.82, 0.16, 0.04), Vector3(0, 0.54, -0.25), wood)
+	for side in [-1.0, 1.0]:
+		_box(chest_open_visual, Vector3(0.04, 0.16, 0.50), Vector3(side * 0.39, 0.54, 0), wood)
+	for row in range(3):
+		var y := 0.08 + float(row) * 0.15
+		var board_material: Material = wood if row % 2 == 0 else plank
+		_box(chest_open_visual, Vector3(0.74, 0.14, 0.018), Vector3(0, y, 0.28), board_material)
+		_box(chest_open_visual, Vector3(0.74, 0.14, 0.018), Vector3(0, y, -0.28), board_material)
+		for side in [-1.0, 1.0]:
+			_box(chest_open_visual, Vector3(0.018, 0.14, 0.46), Vector3(side * 0.42, y, 0), board_material)
+	for side in [-1.0, 1.0]:
+		for end in [-1.0, 1.0]:
+			_box(chest_open_visual, Vector3(0.035, 0.46, 0.022),
+				Vector3(side * 0.36, 0.23, end * 0.29), _brass)
+
+	chest_lid_pivot = Node3D.new()
+	chest_lid_pivot.name = "ChestLidPivot"
+	chest_lid_pivot.position = Vector3(0, 0.62, -0.25)
+	chest_open_visual.add_child(chest_lid_pivot)
+	_box(chest_lid_pivot, Vector3(0.86, 0.08, 0.56), Vector3(0, 0, 0.28), wood)
+	for index in range(3):
+		var z := 0.09 + float(index) * 0.185
+		var lid_material: Material = plank if index == 1 else wood
+		_box(chest_lid_pivot, Vector3(0.84, 0.012, 0.17), Vector3(0, 0.047, z), lid_material)
+	for side in [-1.0, 1.0]:
+		_box(chest_lid_pivot, Vector3(0.035, 0.014, 0.52), Vector3(side * 0.29, 0.05, 0.28), _brass)
+	_box(chest_lid_pivot, Vector3(0.13, 0.08, 0.03), Vector3(0, -0.01, 0.55), _brass)
+
+
+func toggle_chest() -> bool:
+	chest_open = not chest_open
+	if chest_lid_tween != null:
+		chest_lid_tween.kill()
+	if chest_open:
+		chest_closed_visual.visible = false
+		chest_open_visual.visible = true
+		chest_lid_pivot.rotation.x = 0.0
+		chest_lid_tween = create_tween()
+		chest_lid_tween.tween_property(chest_lid_pivot, "rotation:x", -1.35, 0.32) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	else:
+		chest_open_visual.visible = false
+		chest_closed_visual.visible = true
+		chest_lid_pivot.rotation.x = 0.0
+	return chest_open
 
 
 # --- 灯光：一盏吊灯、窗光、提灯与棱镜小灯 -----------------------------------------
