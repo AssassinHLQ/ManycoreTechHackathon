@@ -67,6 +67,13 @@ func _run() -> void:
 	_check(not space.intersect_shape(probe_query, 1).is_empty(), "continuous square ring band collides")
 	probe_query.transform = Transform3D(Basis.IDENTITY, station.to_global(Vector3(cos(PI / 6.0), 0.0, sin(PI / 6.0)) * 220.0))
 	_check(space.intersect_shape(probe_query, 1).is_empty(), "ring hole stays open")
+	var pedestal_probe := SphereShape3D.new()
+	pedestal_probe.radius = 0.2
+	var pedestal_query := PhysicsShapeQueryParameters3D.new()
+	pedestal_query.shape = pedestal_probe
+	pedestal_query.collision_mask = 1
+	pedestal_query.transform = Transform3D(Basis.IDENTITY, station.to_global(Vector3(0.0, -1.5, -10.0)))
+	_check(not space.intersect_shape(pedestal_query, 1).is_empty(), "central hologram display base blocks the player")
 	_check(station.orbit_planet == game.home, "station orbits the nearest planet")
 	var orbit_offset: Vector3 = station.global_position - station.orbit_planet.global_position
 	_check(orbit_offset.length() > float(station.orbit_planet.radius) + 1000.0, "station keeps a distant orbit")
