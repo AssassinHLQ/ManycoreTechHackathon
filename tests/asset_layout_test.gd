@@ -21,7 +21,7 @@ func _check(ok: bool, label: String) -> void:
 func _run() -> void:
 	var attic := Attic.new()
 	root.add_child(attic)
-	attic.build()
+	await attic.build()
 	var worlds := Worlds.new()
 	root.add_child(worlds)
 	worlds.build()

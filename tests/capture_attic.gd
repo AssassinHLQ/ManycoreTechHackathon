@@ -52,7 +52,7 @@ func _run() -> void:
 
 	attic = AtticScript.new()
 	world.add_child(attic)
-	attic.build()
+	await attic.build()
 
 	camera = Camera3D.new()
 	camera.near = 0.05

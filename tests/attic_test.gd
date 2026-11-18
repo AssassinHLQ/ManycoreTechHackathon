@@ -25,7 +25,7 @@ func _run() -> void:
 	var attic = AtticScript.new()
 	attic.name = "Attic"
 	root.add_child(attic)
-	attic.build()
+	await attic.build()
 	await process_frame
 
 	var nodes: Array = attic.find_children("*", "", true, false)
@@ -75,11 +75,16 @@ func _run() -> void:
 	_check(lights.size() >= 3, "attic is lit (%d lights)" % lights.size())
 
 	_check(not attic.chest_open, "wooden chest starts closed")
-	_check(attic.chest_closed_visual.visible and not attic.chest_open_visual.visible, "closed chest uses its original model")
+	_check(attic.chest_closed_visual.visible and attic.chest_lid_pivot != null,
+		"closed chest uses its split source mesh")
 	_check(attic.toggle_chest(), "wooden chest opens")
-	_check(not attic.chest_closed_visual.visible and attic.chest_open_visual.visible, "open chest shows its cavity and lid")
+	await attic.chest_lid_tween.finished
+	_check(attic.chest_closed_visual.visible and attic.chest_lid_pivot.rotation.x < -1.3,
+		"open chest rotates the source lid mesh")
 	_check(not attic.toggle_chest(), "wooden chest closes")
-	_check(attic.chest_closed_visual.visible and not attic.chest_open_visual.visible, "closed chest restores its original model")
+	await attic.chest_lid_tween.finished
+	_check(attic.chest_closed_visual.visible and absf(attic.chest_lid_pivot.rotation.x) < 0.01,
+		"closed chest restores the source lid mesh")
 
 	print("ATTIC TEST COMPLETE: %d checks, %d failure(s)" % [checks, failures])
 	attic.queue_free()

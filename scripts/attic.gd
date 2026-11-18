@@ -229,14 +229,21 @@ func build() -> void:
 	PrecisionGeometry.surface(_brass, "metal")
 
 	_build_shell()
+	await get_tree().process_frame
 	_build_window()
+	await get_tree().process_frame
 	_build_window_scenes()
+	await get_tree().process_frame
 	_build_dial()
 	_build_doors()
+	await get_tree().process_frame
 	_build_mirror_corridor()
+	await get_tree().process_frame
 	_build_tea_table()
 	_build_shelf()
+	await get_tree().process_frame
 	_build_furniture()
+	await get_tree().process_frame
 	_build_lighting()
 	Precision.attic(root)
 
@@ -722,11 +729,14 @@ func _build_furniture() -> void:
 	root.add_child(chest_closed_visual)
 	if chest_model != null:
 		chest_closed_visual.add_child(chest_model)
+		chest_lid_pivot = chest_model.find_child("ChestLidPivot", true, false) as Node3D
 		_collide_prop(chest_model)
+		if chest_lid_pivot == null:
+			_build_open_chest(chest_position)
 	else:
 		_box(chest_closed_visual, Vector3(0.9, 0.62, 0.55), Vector3(0, 0.31, 0), _wood)
 		_box_collider(Vector3(0.9, 0.62, 0.55), chest_position + Vector3(0, 0.31, 0))
-	_build_open_chest(chest_position)
+		_build_open_chest(chest_position)
 	_anchor("AtticAnchor_Chest", chest_position + Vector3(0, 0.38, 0.33))
 	var cabinet := prop("side-cabinet", 0.52)
 	var cabinet_z := ROOM_HALF_Z - 0.08 - 0.20
@@ -836,17 +846,17 @@ func toggle_chest() -> bool:
 	chest_open = not chest_open
 	if chest_lid_tween != null:
 		chest_lid_tween.kill()
-	if chest_open:
+	if chest_lid_pivot != null:
+		chest_lid_tween = create_tween()
+		var target_angle := -1.35 if chest_open else 0.0
+		chest_lid_tween.tween_property(chest_lid_pivot, "rotation:x", target_angle, 0.32) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	elif chest_open:
 		chest_closed_visual.visible = false
 		chest_open_visual.visible = true
-		chest_lid_pivot.rotation.x = 0.0
-		chest_lid_tween = create_tween()
-		chest_lid_tween.tween_property(chest_lid_pivot, "rotation:x", -1.35, 0.32) \
-			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	else:
 		chest_open_visual.visible = false
 		chest_closed_visual.visible = true
-		chest_lid_pivot.rotation.x = 0.0
 	return chest_open
 
 
