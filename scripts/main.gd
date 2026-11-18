@@ -3972,6 +3972,7 @@ func _enter_attic_space() -> void:
 	_set_mouse_capture()
 	audio.set_jetpack(false)
 	apply_sky("attic")
+	audio.play_attic_music()
 	# 新手引导：第一次进阁楼时排上，0.9 秒后开始（照原作）
 	if guide_card != null and not guide_card.active:
 		var seen := progress != null and bool(progress.guide_done)
@@ -3983,6 +3984,7 @@ func leave_attic() -> void:
 	if not in_attic:
 		return
 	_close_route_context()
+	audio.stop_attic_music()
 	_clear_attic_context()
 	if _attic_return.is_empty() or not is_instance_valid(_attic_return.get("parent")):
 		_reset_positions()

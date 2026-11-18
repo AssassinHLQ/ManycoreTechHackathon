@@ -15,6 +15,7 @@ var jetpack: AudioStreamPlayer
 var roast: AudioStreamPlayer
 var effects: AudioStreamPlayer
 var door: AudioStreamPlayer3D
+var attic_music: AudioStreamPlayer
 var door_rng := RandomNumberGenerator.new()
 var engine_target := -48.0
 var jetpack_target := -48.0
@@ -42,6 +43,13 @@ func _ready() -> void:
 	engine = _player(_engine_stream(), -48.0)
 	jetpack = _player(_noise_stream(), -48.0)
 	roast = _player(_crackle_stream(), -48.0)
+	attic_music = AudioStreamPlayer.new()
+	var music_stream := load("res://assets/audio/chopin_waltz_op70_no3.mp3") as AudioStreamMP3
+	if music_stream != null:
+		music_stream.loop = true
+		attic_music.stream = music_stream
+	attic_music.volume_db = -17.0
+	add_child(attic_music)
 	effects = AudioStreamPlayer.new()
 	effects.volume_db = -7.0
 	add_child(effects)
@@ -198,6 +206,16 @@ func play_chime() -> void:
 	effects.stream = tone_cache["chime"]
 	effects.volume_db = -6.0
 	effects.play()
+
+
+func play_attic_music() -> void:
+	if attic_music != null and attic_music.stream != null and not attic_music.playing:
+		attic_music.play()
+
+
+func stop_attic_music() -> void:
+	if attic_music != null:
+		attic_music.stop()
 
 
 func play_impact() -> void:
