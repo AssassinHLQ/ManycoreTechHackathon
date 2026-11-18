@@ -19,7 +19,9 @@ const MAP_BG := Color("050a14")
 const MAP_INK := Color("6fdde0")
 const MAP_SOFT := Color(0.52, 0.74, 0.75, 0.62)
 const MAP_GOLD := Color("ffc56e")
-const SCAN_GUIDANCE_RANGE := 1200.0
+# 行星扫描目标在接近阶段也要保持可见。此前 1200 米的上限会让
+# 5.6 km 外的目标只剩行星名称，扫描高亮直接消失。
+const SCAN_GUIDANCE_RANGE := 20000.0
 
 
 func _ready() -> void:

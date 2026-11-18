@@ -90,7 +90,7 @@ func _ready() -> void:
 	Precision.scanner(self, accent_color)
 	for child in get_children():
 		if child is GeometryInstance3D:
-			child.visibility_range_end = 1100.0
+		child.visibility_range_end = 20000.0
 
 	var body := StaticBody3D.new()
 	body.collision_layer = 8
