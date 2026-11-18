@@ -37,7 +37,7 @@ func _run() -> void:
 	game.ship.reparent(game, true)
 	game.ship.landed = false
 	game.ship.autopilot = true
-	game.ship.fuel = 100.0
+	game.ship.fuel = game.ship.MAX_FUEL
 	game.ship.hull = 100.0
 	var eye = game.planets[4]
 	game.ship.target = eye

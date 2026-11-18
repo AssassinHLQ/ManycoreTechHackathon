@@ -167,7 +167,14 @@ func set_engine(active: bool, level: float) -> void:
 
 
 func set_jetpack(active: bool) -> void:
+	if jetpack == null:
+		return
 	jetpack_target = -20.0 if active else -48.0
+	if active:
+		if not jetpack.playing:
+			jetpack.play()
+	else:
+		jetpack.stop()
 
 
 func set_roast(active: bool, intensity := 0.0) -> void:

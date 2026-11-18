@@ -71,16 +71,15 @@ func _run() -> void:
 
 	print("")
 	print("=== 自动驾驶：飞到最远星球 ===")
-	var cruise: float = game.ship.AUTOPILOT_CRUISE
 	var per_dv: float = game.ship.AUTOPILOT_FUEL_PER_DV
 	var farthest := 0.0
 	for p in game.planets:
 		farthest = maxf(farthest, float(p.orbit_radius))
-	print("  巡航上限 = %.0f m/s，油耗 = %.4f/（m/s）" % [cruise, per_dv])
-	print("  最远单程约 %.0f 米 —— 至少 %.0f 秒（理想全速）" % [farthest, farthest / cruise])
-	# 加速到巡航 + 减速回来的 Δv ≈ 2 × cruise
-	print("  加速+减速的 Δv ≈ %.0f m/s → 约 %.1f 点推进剂（油箱 100）" % [
-		2.0 * cruise, 2.0 * cruise * per_dv])
+	var far_speed: float = float(game.ship._autopilot_desired_speed(farthest, Vector3.ZERO))
+	print("  最远距离剖面速度 = %.0f m/s，油耗 = %.4f/（m/s）" % [far_speed, per_dv])
+	print("  最远单程约 %.0f 米 —— 约 %.0f 秒（当前剖面起点）" % [farthest, farthest / maxf(far_speed, 1.0)])
+	print("  加速+减速的 Δv ≈ %.0f m/s → 约 %.1f 点推进剂（油箱 %.0f）" % [
+		2.0 * far_speed, 2.0 * far_speed * per_dv, game.ship.MAX_FUEL])
 
 	print("")
 	print("=== 归航站 ===")

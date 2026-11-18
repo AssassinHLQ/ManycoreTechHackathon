@@ -180,9 +180,9 @@ func finish(auto_burned := false) -> void:
 		ratio = 0.75
 	else:
 		ratio = 0.15
-	var gain := 100.0 * ratio
+	var gain: float = float(game.player.MAX_FUEL) * ratio
 	game.player.oxygen = minf(100.0, game.player.oxygen + gain)
-	game.player.fuel = minf(100.0, game.player.fuel + gain)
+	game.player.fuel = minf(game.player.MAX_FUEL, game.player.fuel + gain)
 	if ratio >= 0.999:
 		game.hud.show_toast("棉花糖外脆内软。氧气与喷气燃料已补满。", 3.5)
 		game.audio.play_chime()

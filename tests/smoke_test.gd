@@ -561,7 +561,7 @@ func _run() -> void:
 	dev_refill.physical_keycode = KEY_F6
 	dev_refill.pressed = true
 	game._unhandled_input(dev_refill)
-	_check(game.player.oxygen == 100.0 and game.ship.fuel == 100.0 and game.ship.hull == 100.0, "F6 refills suit and ship")
+	_check(game.player.oxygen == 100.0 and game.ship.fuel == game.ship.MAX_FUEL and game.ship.hull == 100.0, "F6 refills suit and ship")
 	var dev_nova := InputEventKey.new()
 	dev_nova.physical_keycode = KEY_F7
 	dev_nova.pressed = true

@@ -3,7 +3,8 @@ extends CharacterBody3D
 var game
 var camera: Camera3D
 var lamp: SpotLight3D
-var fuel := 100.0
+const MAX_FUEL := 200.0
+var fuel := MAX_FUEL
 var oxygen := 100.0
 var focus := false
 var scope_zoom := 1.0
@@ -108,6 +109,8 @@ func scope_magnification() -> float:
 
 func _physics_process(delta: float) -> void:
 	if game.state != "walk" or game.paused or game.supernova_active:
+		if game.audio != null:
+			game.audio.set_jetpack(false)
 		return
 	if game.map_open or game.minigame_open or game.bag_open:
 		game.audio.set_jetpack(false)
@@ -168,7 +171,7 @@ func _physics_process(delta: float) -> void:
 			#   现在 9.5 × 2.24 ≈ 21 m/s，跳起高度约 4.6 米（1g 下），
 			#   正好够翻过一架楼梯、跳上小平台，不会一按就上云。
 			vertical_speed = 9.5 * sqrt(maxf(body_scale, 0.001))
-		fuel = minf(100.0, fuel + delta * 14.0)
+		fuel = minf(MAX_FUEL, fuel + delta * 14.0)
 	else:
 		if in_station or game.in_attic:
 			# 站内与阁楼都是室内：恒定重力，不做随高度衰减。
