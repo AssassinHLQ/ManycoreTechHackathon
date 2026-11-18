@@ -1051,6 +1051,11 @@ static func _add_collision(root: Node3D) -> void:
 		var mesh_instance := node as MeshInstance3D
 		if mesh_instance.mesh == null:
 			continue
+		# A convex hull fills the hole in a torus and turns decorative rings
+		# into solid discs. Those discs can span a doorway at walking height.
+		# Floors and walls have explicit colliders where a ring needs support.
+		if mesh_instance.mesh is TorusMesh:
+			continue
 		var relative_transform := Transform3D.IDENTITY
 		var current: Node = mesh_instance
 		while current != root:
