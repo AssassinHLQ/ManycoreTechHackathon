@@ -8,6 +8,8 @@ const LINES := {
 	"snow": "这里真的是家吗？",
 }
 const KEYED_FIELDS := ["device_states", "device_values", "device_nodes", "world_done", "minigame_anchors"]
+const COLLISION_EXCLUDED_ROOTS := ["Airship", "CloudBoat", "CloudSea", "Ground", "Snowfall", "Fireflies", "Rain"]
+const COLLISION_EXCLUDED_NODES := ["Ember", "Flame", "LanternGlow", "LampGlow", "Moon", "Puddle"]
 const WORLD_FIELDS := {
 	"snow": ["fishing_holes", "hearth_node", "hearth_light"],
 	"cloud": ["bridge_node", "boat_node", "buoy_nodes", "airship_node"],
@@ -39,6 +41,7 @@ static func load_world(worlds: Node3D, key: String, holder: Node3D) -> bool:
 	for node in content.find_children("*", "GeometryInstance3D", true, false):
 		if status.materials.has(node.material_override):
 			node.material_override = status.materials[node.material_override]
+	_install_static_mesh_collisions(content)
 	holder.add_child(content)
 	worlds.worlds[key] = decoded.world
 	for field in decoded.keyed:
@@ -242,6 +245,7 @@ static func install(worlds: Node3D, key: String) -> void:
 			replacement.free()
 			return
 	var parent := old.get_parent()
+	_install_static_mesh_collisions(replacement)
 	parent.remove_child(old)
 	parent.add_child(replacement)
 	replacement.name = "Content"
@@ -250,6 +254,51 @@ static func install(worlds: Node3D, key: String) -> void:
 			worlds.set(property.name, _rebind(worlds.get(property.name), nodes, resources))
 	_sync_authored_positions(worlds, key, replacement)
 	old.free()
+
+
+static func _install_static_mesh_collisions(content: Node3D) -> void:
+	for prop_root in content.get_children():
+		if not prop_root is Node3D or prop_root is CollisionObject3D:
+			continue
+		if COLLISION_EXCLUDED_ROOTS.has(String(prop_root.name)):
+			continue
+		if not prop_root.find_children("*", "CollisionObject3D", true, false).is_empty():
+			continue
+		var faces := PackedVector3Array()
+		_collect_collision_faces(prop_root, Transform3D.IDENTITY, true, faces)
+		if faces.size() < 3:
+			continue
+		var mesh_shape := ConcavePolygonShape3D.new()
+		mesh_shape.backface_collision = true
+		mesh_shape.set_faces(faces)
+		var collision_body := StaticBody3D.new()
+		collision_body.name = "MeshSelfCollision"
+		collision_body.collision_layer = 1
+		collision_body.collision_mask = 0
+		var collision_shape := CollisionShape3D.new()
+		collision_shape.name = "CollisionShape3D"
+		collision_shape.shape = mesh_shape
+		collision_body.add_child(collision_shape)
+		prop_root.add_child(collision_body)
+
+
+static func _collect_collision_faces(node: Node, node_transform: Transform3D,
+		parent_visible: bool, faces: PackedVector3Array) -> void:
+	if COLLISION_EXCLUDED_NODES.has(String(node.name)):
+		return
+	var visible := parent_visible
+	if node is GeometryInstance3D:
+		visible = visible and (node as GeometryInstance3D).visible
+	if visible and node is MeshInstance3D:
+		var mesh_node := node as MeshInstance3D
+		if mesh_node.mesh != null:
+			for vertex in mesh_node.mesh.get_faces():
+				faces.append(node_transform * vertex)
+	for child in node.get_children():
+		var child_transform := node_transform
+		if child is Node3D:
+			child_transform = node_transform * (child as Node3D).transform
+		_collect_collision_faces(child, child_transform, visible, faces)
 
 
 static func _missing_reference(value, old: Node, nodes: Dictionary) -> bool:

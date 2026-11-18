@@ -35,6 +35,30 @@ func _exclude_other_bodies(holder: Node, keep: CollisionObject3D) -> Array[RID]:
 	return excluded
 
 
+func _ray_hits_mesh(holder: Node3D, body: StaticBody3D) -> bool:
+	var collision := body.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision == null or not collision.shape is ConcavePolygonShape3D:
+		return false
+	var faces := (collision.shape as ConcavePolygonShape3D).get_faces()
+	var space := holder.get_world_3d().direct_space_state
+	for i in range(0, faces.size(), 3):
+		var a: Vector3 = body.global_transform * faces[i]
+		var b: Vector3 = body.global_transform * faces[i + 1]
+		var c: Vector3 = body.global_transform * faces[i + 2]
+		var normal := (b - a).cross(c - a)
+		if normal.length_squared() < 0.000001:
+			continue
+		normal = normal.normalized()
+		var center := (a + b + c) / 3.0
+		var query := PhysicsRayQueryParameters3D.create(center + normal * 0.2, center - normal * 0.2)
+		query.collision_mask = body.collision_layer
+		query.exclude = _exclude_other_bodies(holder, body)
+		var hit := space.intersect_ray(query)
+		if hit.get("collider") == body:
+			return true
+	return false
+
+
 func _run() -> void:
 	var worlds = AtticWorlds.new()
 	root.add_child(worlds)
@@ -58,6 +82,16 @@ func _run() -> void:
 				has_tall_wall = has_tall_wall or _shape_height((node as CollisionShape3D).shape) > 1.1
 		_check(shape_count > 0, key + " keeps walkable platform collision")
 		_check(not has_tall_wall, key + " has no tall invisible perimeter wall")
+		if key == "snow":
+			var drift := holder.find_child("Prop_snow-drift", true, false) as Node3D
+			var drift_collision := drift.get_node_or_null("MeshSelfCollision") as StaticBody3D if drift != null else null
+			_check(drift_collision != null, "snow drift has mesh-derived collision")
+			if drift_collision != null:
+				var drift_shape := drift_collision.get_node_or_null("CollisionShape3D") as CollisionShape3D
+				_check(drift_shape != null and drift_shape.shape is ConcavePolygonShape3D,
+					"snow drift collision follows its rendered triangle mesh")
+				_check(_ray_hits_mesh(holder, drift_collision),
+					"snow drift mesh collider registers in the physics space")
 
 		var anchor := worlds.return_anchor(key) as Node3D
 		_check(anchor != null, key + " has a return anchor")
