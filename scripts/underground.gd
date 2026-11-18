@@ -364,11 +364,26 @@ static func _build_ramp(root: Node3D, body: StaticBody3D, shaft_radius: float, f
 	surface.mesh = mesh
 	surface.material_override = palette.rock
 	root.add_child(surface)
-	var collision_mesh := _make_ramp_mesh(radius, half_width, thickness, start_angle, total_angle,
-		start_y, end_y, COLLISION_SAMPLES)
-	var collision := CollisionShape3D.new()
-	collision.shape = collision_mesh.create_trimesh_shape()
-	body.add_child(collision)
+	# 不用整条凹面三角网格做角色碰撞。坡道有两圈以上的弯曲段，
+	# 玩家胶囊在侧面、底面和三角形接缝处很容易被夹住，表现为完全走不动。
+	# 每段使用略微重叠的凸盒，只保留连续的可行走踏面。
+	var collision_step := total_angle / float(COLLISION_SAMPLES)
+	for i in range(COLLISION_SAMPLES):
+		var t0 := float(i) / float(COLLISION_SAMPLES)
+		var t1 := float(i + 1) / float(COLLISION_SAMPLES)
+		var tm := (t0 + t1) * 0.5
+		var angle := start_angle + total_angle * tm
+		var y := lerpf(start_y, end_y, tm)
+		var radial := Vector3(cos(angle), 0.0, sin(angle))
+		var tangent := Vector3(-sin(angle), 0.0, cos(angle))
+		var rise := (end_y - start_y) * (t1 - t0)
+		var run := radius * collision_step
+		var segment_length := sqrt(run * run + rise * rise) + 0.22
+		var slope_dir := (tangent * run + Vector3.UP * rise).normalized()
+		var slope_up := (Vector3.UP - slope_dir * Vector3.UP.dot(slope_dir)).normalized()
+		var segment_basis := Basis(radial, slope_up, slope_dir)
+		_box_collider(body, Vector3(half_width * 2.0, thickness, segment_length),
+			 radial * radius + Vector3(0, y - thickness * 0.5, 0), segment_basis)
 	for i in range(0, VISIBLE_SAMPLES, 10):
 		var t := float(i) / float(VISIBLE_SAMPLES)
 		var angle := start_angle + total_angle * t
