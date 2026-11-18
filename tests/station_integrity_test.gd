@@ -58,6 +58,21 @@ func _check(condition: bool, message: String) -> void:
 		failures += 1
 
 
+func _visual_mesh_blocks_segment(mesh_root: Node3D, from_point: Vector3, to_point: Vector3) -> bool:
+	for node in mesh_root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var faces: PackedVector3Array = mesh_instance.mesh.get_faces()
+		var to_root: Transform3D = mesh_root.global_transform.affine_inverse() * mesh_instance.global_transform
+		for index in range(0, faces.size(), 3):
+			if Geometry3D.segment_intersects_triangle(
+				from_point, to_point,
+				to_root * faces[index], to_root * faces[index + 1], to_root * faces[index + 2]) != null:
+				return true
+	return false
+
+
 func _run() -> void:
 	for action in ["move_left", "move_right", "move_forward", "move_back", "thrust_down", "jump", "jetpack"]:
 		if not InputMap.has_action(action):
@@ -73,6 +88,8 @@ func _run() -> void:
 	station.rotation.y = 0.42
 	game.station = station
 	game.add_child(station)
+	if not station.runtime_scene_ready:
+		await station.runtime_scene_ready_finished
 	game.player = load("res://scripts/player.gd").new()
 	game.player.game = game
 	station.add_child(game.player)
@@ -141,6 +158,18 @@ func _run() -> void:
 		if mi.mesh == null:
 			continue
 		triangles.append([mi, mi.mesh.get_faces()])
+	var corridor: Node3D = station.corridor_roots[0]
+	_check(_visual_mesh_blocks_segment(corridor, Vector3(40.0, 2.81, 3.71), Vector3(40.0, 2.9, 3.71)),
+		"corridor side wall visually overlaps the ceiling edge")
+	_check(_visual_mesh_blocks_segment(corridor, Vector3(84.0, 2.81, 10.51), Vector3(84.0, 2.9, 10.51)),
+		"room window wall visually overlaps the ceiling edge")
+	var hub: Node3D = station.hub_root
+	var wall_angle := PI / 6.0
+	var wall_direction := Vector3(cos(wall_angle), 0.0, sin(wall_angle))
+	_check(_visual_mesh_blocks_segment(hub, wall_direction * 25.0 + Vector3.UP * 8.02,
+		wall_direction * 29.0 + Vector3.UP * 8.02), "hub wall visually overlaps the ceiling edge")
+	_check(_visual_mesh_blocks_segment(hub, Vector3(30.0, 8.02, -5.0), Vector3(30.0, 8.02, 5.0)),
+		"hub door lintel visually overlaps the ceiling edge")
 	for door in range(6):
 		var angle := TAU * float(door) / 6.0
 		var direction := Vector3(cos(angle), 0.0, sin(angle))
