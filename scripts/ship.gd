@@ -203,13 +203,9 @@ const BH_ACCEL_FAR := 0.32
 ##   实测 2 万米处引力 377 m/s²，是普通推力 72 的 5.2 倍，
 ##   玩家刚飞进盘面一半就完全失控。那不是「越近越危险」，是「进去就死」。
 ##
-##   所以加速度整体 ÷10 左右：420 → 52。
-##   （取 52 而不是严格的 42：贴着视界时还要乘 BH_ESCAPE_BOOST=3.2，
-##     52×3.2 ≈ 166，才稳稳压过喷气推力 150 —— 这是冒烟测试钉住的设计意图
-##     「贴脸时连加力都顶不住」。42×3.2=134 会低于 150，测试会红。）
-##   任意相对深度处的受力仍与改版前同量级（约 1/8），手感基本等价。
-## 2026-11-18 飞船手动推力与加力翻倍后，黑洞引力也翻倍，维持原有力比。
-const BH_ACCEL_NEAR := 104.0
+##   2026-11-18 飞船加力提高到 1200 后，104×3.2 的近端上限仍不足以压住推力。
+##   420 让 98% 相对深度处的牵引略强于加力，保留「贴脸时无法挣脱」的设计。
+const BH_ACCEL_NEAR := 420.0
 ## 「逃逸层」系数：内层加速度就是再乘这个数，用来表现「越近越难挣脱」。
 ## 以前这行只是定义、没接进公式（实测：全项目零引用），所以内圈根本没有
 ## 「越近越绝望」的额外梯度。现在接上：closeness 超过 BH_ESCAPE_FROM 之后，
@@ -1769,8 +1765,14 @@ func _constrain_manual_velocity_to_forward() -> void:
 	var nose_dir := -global_transform.basis.z.normalized()
 	var side_axis := global_transform.basis.x.normalized()
 	var vertical_axis := side_axis.cross(nose_dir).normalized()
+	var current_speed := velocity.length()
 	var forward_speed := maxf(velocity.dot(nose_dir), 0.0)
-	var vertical_speed := velocity.dot(vertical_axis)
+	# 转向时把已有速度重新对齐到机头，避免旧的侧向速度被丢掉后
+	# 只剩下竖向分量，表现成飞船原地转圈或不再向前飞。
+	if current_speed > 0.1:
+		forward_speed = maxf(forward_speed, current_speed)
+	var vertical_input := Input.get_axis("thrust_down", "jump")
+	var vertical_speed := velocity.dot(vertical_axis) if absf(vertical_input) > 0.01 else 0.0
 	velocity = nose_dir * forward_speed + vertical_axis * vertical_speed
 
 
@@ -2051,6 +2053,13 @@ func _physics_process(delta: float) -> void:
 			var forward_speed := velocity.dot(nose_dir)
 			if forward_speed < 0.0:
 				velocity -= nose_dir * forward_speed
+			# 没有 Space/C 输入时，不保留上一帧的垂直漂移。
+			# 下一帧会把速度重新压回机头前向，避免持续绕圈。
+			var vertical_input := Input.get_axis("thrust_down", "jump")
+			if absf(vertical_input) <= 0.01:
+				var side_axis := global_transform.basis.x.normalized()
+				var vertical_axis := side_axis.cross(nose_dir).normalized()
+				velocity -= vertical_axis * velocity.dot(vertical_axis)
 	var planet_asset_contact := _move_with_station_collision(delta)
 	if _apply_black_hole_capture(delta):
 		return
