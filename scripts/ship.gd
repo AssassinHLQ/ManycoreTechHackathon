@@ -69,6 +69,9 @@ const HULL_X := 1.75
 const HULL_Y := 1.0
 const HULL_Z := 3.25
 const AUTOPILOT_ACCEL := 230.0
+## 自动航行的高速制动能力。它只用于远距离自动驾驶的速度剖面，
+## 让巡航速度随剩余距离继续增长，不被手动刹车参数卡住。
+const AUTOPILOT_BRAKE_DECEL := 1200.0
 ## 每改变 1 m/s 速度消耗多少推进剂（自动航行）。
 ##
 ## ⚠ 2026-11-11 场景放大后从 0.008 降到 0.003：
@@ -2545,7 +2548,7 @@ func _autopilot_desired_speed(altitude: float, gravity: Vector3) -> float:
 	# ⚠ 2026-11-11：可用减速度改用**手动制动的减速度**，
 	#   而不是推进加速度 —— 自动航行刹车的上限本来就该是「玩家按住 S 能刹多快」。
 	#   旧版用 AUTOPILOT_ACCEL(230) 再乘 0.35，等于只用了 28% 的刹车能力。
-	var available: float = maxf(SHIP_BRAKE_DECEL - gravity.length(), AUTOPILOT_BRAKE_FLOOR)
+	var available: float = maxf(AUTOPILOT_BRAKE_DECEL - gravity.length(), AUTOPILOT_BRAKE_FLOOR)
 	var brake: float = available * AUTOPILOT_BRAKE_FRACTION
 	var d: float = maxf(altitude - AUTOPILOT_TOUCHDOWN_ALT, 0.0)
 	# 从巡航速度刹停所需的距离
