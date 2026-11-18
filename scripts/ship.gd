@@ -2320,7 +2320,7 @@ func _move_with_station_collision(delta: float) -> void:
 		var relative_velocity := velocity - station_port_velocity(station)
 		if hit_normal.dot(relative_velocity) > 0.0:
 			hit_normal = -hit_normal
-		var impact_speed := relative_velocity.length()
+		var impact_speed := _station_normal_impact_speed(relative_velocity, hit_normal)
 		if relative_velocity.dot(hit_normal) < 0.0:
 			velocity -= hit_normal * relative_velocity.dot(hit_normal)
 		velocity *= 0.22
@@ -2336,6 +2336,12 @@ func _move_with_station_collision(delta: float) -> void:
 			if hull <= 0.0:
 				game.begin_death("飞船撞上空间站解体", 4.2)
 		return
+
+
+func _station_normal_impact_speed(relative_velocity: Vector3, surface_normal: Vector3) -> float:
+	if surface_normal.length_squared() < 0.000001:
+		return 0.0
+	return maxf(0.0, -relative_velocity.dot(surface_normal.normalized()))
 
 
 func _station_blocked(at_position: Vector3) -> bool:

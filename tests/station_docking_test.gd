@@ -42,6 +42,11 @@ func _run() -> void:
 	game.station.set_physics_process(false)
 	for planet in game.planets: planet.set_physics_process(false)
 	await physics_frame
+	var collision_normal := Vector3.RIGHT
+	_check(is_equal_approx(game.ship._station_normal_impact_speed(Vector3(-5.0, 0.0, 100.0), collision_normal), 5.0),
+		"high-speed tangential station pass uses only its 5 m/s normal impact")
+	_check(is_equal_approx(game.ship._station_normal_impact_speed(Vector3(-20.0, 0.0, 100.0), collision_normal), 20.0),
+		"direct station impact retains its real 20 m/s normal speed")
 	var stations: Array = [game.station]
 	stations.append_array(game.distant_stations)
 	for station in stations:
