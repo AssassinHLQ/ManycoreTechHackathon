@@ -1329,9 +1329,10 @@ func _build_planets(home_only := false) -> void:
 		# 每颗星球建完让出一帧：地形与地标是最贵的一段，逐个分片才能避免长卡顿
 		_stage_end("planet " + planet.planet_id)
 		await _yield_frame()
-		# Keep remote work visibly backgrounded in the real game. Headless probes
-		# skip the wall-clock gap so regression tests stay deterministic and fast.
-		if not OS.has_feature("headless"):
+		# Proxy planets are cheap and should finish the destination list immediately.
+		# Keep the gap only for a non-proxy build so a full scene cannot monopolize
+		# the main loop when a platform uses the fallback path.
+		if not OS.has_feature("headless") and not planet.stream_proxy:
 			await get_tree().create_timer(REMOTE_STREAM_GAP).timeout
 		_stage_begin()
 	# 第一段（只建母星）到此为止：这些收尾步骤需要**全部**行星就位，
