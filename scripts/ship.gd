@@ -356,8 +356,8 @@ func _quat_axis(q: Quaternion) -> Vector3:
 
 
 ## 最大角速度（弧度/秒）。待转量足够大时的转速上限。
-## 1.4 rad/s ≈ 80°/秒。
-const MAX_TURN_RATE := 1.4
+## 1.2 rad/s ≈ 69°/秒，让大幅转向稍微沉稳一些。
+const MAX_TURN_RATE := 1.2
 
 ## 「满速待转量」（弧度）。待转量达到这个值时速度封顶，更小则按 √ 曲线衰减。
 ##
