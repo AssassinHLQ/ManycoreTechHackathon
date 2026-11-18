@@ -126,6 +126,9 @@ var engine_plumes: Array = []
 ## 尾焰的**软壳**层（2026-11-11 新增）：比火舌更大更淡，负责糊掉硬边界。
 ## 与 engine_plumes 分开存，因为 _update_engine 里两者缩放系数不同。
 var engine_halos: Array = []
+## 尾焰内芯和程序化机型的喷口发光盘。
+## 这些网格也必须随推力显隐，否则主火焰熄灭后仍会留下蓝色尾光。
+var engine_cores: Array = []
 
 ## 腹部（向下）喷焰：升空 / 悬停用。
 ##
@@ -1104,7 +1107,9 @@ func _build_external_exhaust(holder: Node3D, bounds: AABB) -> void:
 		core.material_override = core_mat
 		core.position = nozzle
 		core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		core.visible = false
 		add_child(core)
+		engine_cores.append(core)
 
 		# 尾灯：照亮机尾地面
 		var light := OmniLight3D.new()
@@ -1424,7 +1429,9 @@ func _build_model() -> void:
 		engine_materials.append(glow_mat)
 		var exhaust := _mesh(_cylinder(0.30, 0.30, 0.06, 16), glow_mat, Vector3(side * 2.75, engine_y, 2.16))
 		exhaust.rotation.x = PI * 0.5
+		exhaust.visible = false
 		add_child(exhaust)
+		engine_cores.append(exhaust)
 		for i in range(4):
 			var vane_angle := TAU * float(i) / 4.0 + 0.4
 			_batch_box(Vector3(0.05, 0.20, 0.26), trim, Transform3D(Basis.IDENTITY,
@@ -1432,7 +1439,7 @@ func _build_model() -> void:
 		var light := OmniLight3D.new()
 		light.position = Vector3(side * 2.75, engine_y, 2.45)
 		light.light_color = Color("67dceb")
-		light.light_energy = 0.8
+		light.light_energy = 0.0
 		light.omni_range = 6.0
 		add_child(light)
 		engine_lights.append(light)
@@ -3173,6 +3180,11 @@ func _update_engine(delta: float) -> void:
 		halo.scale = halo.scale.lerp(
 			Vector3(1.15, 1.15, maxf(hlen, 0.02)),
 			1.0 - exp(-delta * 9.0))
+
+	# 内芯和程序化机型的喷口发光盘没有动态缩放，
+	# 但必须和主火焰使用同一套显隐条件。
+	for core in engine_cores:
+		(core as Node3D).visible = firing
 
 	_update_ventral(delta)
 
