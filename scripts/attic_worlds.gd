@@ -273,18 +273,19 @@ func _build_ground(holder: Node3D, ground_material: Material, include_bounds := 
 	floor_collision.shape = floor_shape
 	floor_collision.position = Vector3(0, -0.5, 0)
 	body.add_child(floor_collision)
-
-	# 四面边界墙，防止走出场地掉进虚空
-	for side in [-1.0, 1.0]:
-		for axis in [Vector3.RIGHT, Vector3.FORWARD]:
-			var wall_shape := BoxShape3D.new()
-			wall_shape.size = Vector3(PLATFORM_HALF * 2.0, 6.0, 1.0) if axis == Vector3.RIGHT \
-				else Vector3(1.0, 6.0, PLATFORM_HALF * 2.0)
-			var wall := CollisionShape3D.new()
-			wall.shape = wall_shape
-			var offset: Vector3 = axis * (PLATFORM_HALF + 0.5) * side
-			wall.position = offset + Vector3(0, 3.0, 0)
-			body.add_child(wall)
+	if include_bounds:
+		for side in [-1.0, 1.0]:
+			for axis in [Vector3.RIGHT, Vector3.FORWARD]:
+				var wall_shape := BoxShape3D.new()
+				if axis == Vector3.RIGHT:
+					wall_shape.size = Vector3(PLATFORM_HALF * 2.0, 6.0, 1.0)
+				else:
+					wall_shape.size = Vector3(1.0, 6.0, PLATFORM_HALF * 2.0)
+				var wall := CollisionShape3D.new()
+				wall.shape = wall_shape
+				var offset: Vector3 = axis * (PLATFORM_HALF + 0.5) * side
+				wall.position = offset + Vector3(0, 3.0, 0)
+				body.add_child(wall)
 
 	var ground := _cyl(holder, PLATFORM_HALF, PLATFORM_HALF, 0.6, Vector3(0, -0.3, 0), ground_material, 40)
 	ground.name = "Ground"
