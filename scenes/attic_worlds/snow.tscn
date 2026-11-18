@@ -1395,6 +1395,7 @@ metadata/detail_pieces = 11
 
 [node name="StorySign" type="Node3D" parent="." unique_id=650842614]
 transform = Transform3D(-0.45, 0, 0, 0, 0.45, 0, 0, 0, -0.45, 0, 0, -14)
+visible = false
 
 [node name="PostLeft" type="MeshInstance3D" parent="StorySign" unique_id=1047470148]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.1, 0.8, 0)

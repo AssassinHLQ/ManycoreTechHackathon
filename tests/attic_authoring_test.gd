@@ -30,8 +30,7 @@ func _run() -> void:
 		_check(content.is_ancestor_of(worlds.return_anchor(key)), key + " return portal rebound")
 		_check(content.get_node("StorySign/Text").text == worlds.Authoring.LINES[key], key + " sign text")
 		var story_sign := content.get_node("StorySign") as Node3D
-		_check(story_sign.scale.is_equal_approx(Vector3.ONE * 0.45), key + " story sign is scaled down")
-		_check(is_equal_approx(story_sign.rotation.y, PI), key + " story sign faces away from the route")
+		_check(not story_sign.visible, key + " story sign is hidden outside the telescope archive")
 		for id in worlds.prop_ids_in(key):
 			_check(content.is_ancestor_of(worlds.prop_anchor(id)), key + " prop anchor " + id)
 		for index in range(3):
@@ -45,6 +44,10 @@ func _run() -> void:
 			worlds.activate_device(key, index)
 			_check(fresh_material.albedo_color == fresh_color and fresh_material.emission_energy_multiplier == fresh_energy,
 				key + " puzzle changes leave the other game untouched")
+	var generated_content := Node3D.new()
+	worlds.Authoring.add_story_sign(generated_content, "snow")
+	_check(not generated_content.get_node("StorySign").visible, "generated story signs stay hidden")
+	generated_content.free()
 	worlds.use_winch()
 	worlds.update_bridge(0.2)
 	_check(worlds.worlds.cloud.content.is_ancestor_of(worlds.bridge_node), "bridge animation uses editable node")

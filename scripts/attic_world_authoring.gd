@@ -140,7 +140,8 @@ static func _decode(value, content: Node3D, holder: Node3D, status: Dictionary):
 static func add_story_sign(content: Node3D, key: String) -> void:
 	var sign_root := Node3D.new()
 	sign_root.name = "StorySign"
-	# Keep the writing turned away from the normal route and readable only through the telescope.
+	# The telescope archive is the only presentation for these inscriptions.
+	sign_root.visible = false
 	sign_root.rotation.y = PI
 	sign_root.scale = Vector3.ONE * 0.45
 	sign_root.position = Vector3(0, 0, -14.0)
