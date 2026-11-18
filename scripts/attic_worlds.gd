@@ -203,6 +203,15 @@ func _box(parent: Node3D, size: Vector3, pos: Vector3, material: Material) -> Me
 	return node
 
 
+func _box_collision(body: StaticBody3D, size: Vector3, pos: Vector3) -> void:
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	shape.shape = box
+	shape.position = pos
+	body.add_child(shape)
+
+
 func _cyl(parent: Node3D, top: float, bottom: float, height: float, pos: Vector3, material: Material,
 		segments := 12) -> MeshInstance3D:
 	var mesh := CylinderMesh.new()
@@ -624,16 +633,22 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 	var floor_mat := _mat(Color("3d4450"), 0.16)
 	var wall_mat := _mat(Color("55606e"), 0.20)
 	var glow := _mat(Color("cfe0e6"), 0.6)
-	_build_ground(holder, floor_mat, true)
+	var world_collision := _build_ground(holder, floor_mat)
 	# 露天镜面庭院：地板 + 三面墙（正面敞开，方便从外面看进去）
 	var half_x := 6.0
 	var half_z := 5.0
 	var height := 3.4
 	_box(holder, Vector3(half_x * 2.0, 0.2, half_z * 2.0), Vector3(0, 0.1, 0), floor_mat)
+	var side_wall_size := Vector3(0.3, height, half_z * 2.0)
 	for side in [-1.0, 1.0]:
-		_box(holder, Vector3(0.3, height, half_z * 2.0), Vector3(side * half_x, height * 0.5, 0), wall_mat)
+		var wall_position := Vector3(side * half_x, height * 0.5, 0)
+		_box(holder, side_wall_size, wall_position, wall_mat)
+		_box_collision(world_collision, side_wall_size, wall_position)
 	# 只有背面（-Z）与两侧，正面 +Z 敞开
-	_box(holder, Vector3(half_x * 2.0, height, 0.3), Vector3(0, height * 0.5, -half_z), wall_mat)
+	var back_wall_size := Vector3(half_x * 2.0, height, 0.3)
+	var back_wall_position := Vector3(0, height * 0.5, -half_z)
+	_box(holder, back_wall_size, back_wall_position, wall_mat)
+	_box_collision(world_collision, back_wall_size, back_wall_position)
 	# 镜面倒影：地面上一块更亮的区域 + 竖向反光条
 	_box(holder, Vector3(7.4, 0.02, 6.2), Vector3(0, 0.22, 0), glow)
 	for i in range(7):

@@ -1,7 +1,7 @@
 extends SceneTree
 
 const AtticWorlds = preload("res://scripts/attic_worlds.gd")
-const WORLD_KEYS := ["snow", "cloud", "firefly", "alley"]
+const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror"]
 
 var checks := 0
 var failures := 0
@@ -81,7 +81,31 @@ func _run() -> void:
 				shape_count += 1
 				has_tall_wall = has_tall_wall or _shape_height((node as CollisionShape3D).shape) > 1.1
 		_check(shape_count > 0, key + " keeps walkable platform collision")
-		_check(not has_tall_wall, key + " has no tall invisible perimeter wall")
+		if key == "mirror":
+			_check(shape_count == 4, "mirror collision contains only its floor and three visible walls")
+			var content: Node3D = worlds.worlds[key]["content"]
+			var space := holder.get_world_3d().direct_space_state
+			var exclude := _exclude_other_bodies(holder, collision)
+			var back_query := PhysicsRayQueryParameters3D.create(
+				content.to_global(Vector3(0, 1.7, 0)), content.to_global(Vector3(0, 1.7, -6.0)))
+			back_query.collision_mask = collision.collision_layer
+			back_query.exclude = exclude
+			_check(space.intersect_ray(back_query).get("collider") == collision,
+				"mirror back wall blocks at its visible surface")
+			var side_query := PhysicsRayQueryParameters3D.create(
+				content.to_global(Vector3(0, 1.7, 0)), content.to_global(Vector3(7.0, 1.7, 0)))
+			side_query.collision_mask = collision.collision_layer
+			side_query.exclude = exclude
+			_check(space.intersect_ray(side_query).get("collider") == collision,
+				"mirror side wall blocks at its visible surface")
+			var front_query := PhysicsRayQueryParameters3D.create(
+				content.to_global(Vector3(0, 1.7, 0)), content.to_global(Vector3(0, 1.7, 14.0)))
+			front_query.collision_mask = collision.collision_layer
+			front_query.exclude = exclude
+			_check(space.intersect_ray(front_query).is_empty(),
+				"mirror courtyard opening has no invisible perimeter wall")
+		else:
+			_check(not has_tall_wall, key + " has no tall invisible perimeter wall")
 		if key == "snow":
 			var drift := holder.find_child("Prop_snow-drift", true, false) as Node3D
 			var drift_collision := drift.get_node_or_null("MeshSelfCollision") as StaticBody3D if drift != null else null
