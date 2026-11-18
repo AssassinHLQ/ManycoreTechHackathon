@@ -345,6 +345,9 @@ const TURN_FULL_ANGLE := 0.35
 ## 方向歧义，飞船就会突然往回弹（这正是第 4 版的 bug）。
 ## 120° 既留足余量，又能在快速拖动时不过度堆积。
 const TURN_BUDGET_MAX := deg_to_rad(120.0)
+## 第三人称/座舱镜头允许领先机身的最大角度。
+## 鼠标输入仍可继续累积给飞船姿态，但镜头不会被甩到看不见船的位置。
+const CAMERA_LEAD_MAX := deg_to_rad(26.0)
 
 ## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
 var _turn_velocity := Vector3.ZERO
@@ -353,6 +356,14 @@ var _turn_velocity := Vector3.ZERO
 var _attitude_prev_budget := 0.0
 ## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
 var forward_input := 0.0
+
+
+func _camera_lead_quaternion() -> Quaternion:
+	var angle := turn_budget.get_angle()
+	if angle <= CAMERA_LEAD_MAX:
+		return turn_budget
+	var axis := _quat_axis(turn_budget)
+	return Quaternion(axis, CAMERA_LEAD_MAX) if axis != Vector3.ZERO else Quaternion.IDENTITY
 
 ## 滚转速率（弧度/秒），A/D 控制。这是**包络满值**时的峰值转速。
 ## ⚠ A/D 转动继续放慢，峰值约 18°/秒。
@@ -1800,7 +1811,7 @@ func _update_third_person_camera(_delta: float) -> void:
 			up = Vector3.FORWARD
 		# 相机先响应鼠标目标，机身再通过 _apply_attitude 逐步追上。
 		# turn_budget 是飞船局部坐标里的剩余待转量，直接叠加在跟随机头的视角上。
-		camera.basis = (Basis.looking_at(dir, up) * Basis(turn_budget)).orthonormalized()
+		camera.basis = (Basis.looking_at(dir, up) * Basis(_camera_lead_quaternion())).orthonormalized()
 	camera.fov = 62.0
 
 
@@ -1844,7 +1855,7 @@ func _reset_cockpit_camera() -> void:
 func _update_cockpit_camera_view() -> void:
 	if third_person or camera == null:
 		return
-	camera.basis = Basis(turn_budget).orthonormalized()
+	camera.basis = Basis(_camera_lead_quaternion()).orthonormalized()
 
 
 ## 手动飞行时只保留机头前向和机体竖向速度。
