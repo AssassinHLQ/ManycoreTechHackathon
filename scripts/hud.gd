@@ -545,9 +545,12 @@ func _build_pause() -> void:
 	var sub := _text(box, "恒星会等你一会儿。", 15, Color("8daaa7"))
 	sub.custom_minimum_size.y = 64
 	_button(box, "继续探索", func(): game.set_paused(false)).custom_minimum_size.y = 52
-	pause_attic = _button(box, "回到阁楼", func(): game.request_attic_visit())
-	pause_attic.custom_minimum_size.y = 46
-	_button(box, "航海回声台 · 双线进度", func(): game.open_route_board()).custom_minimum_size.y = 46
+	# 保留旧入口对象供路由兼容测试使用，但不再把它加入暂停页面。
+	pause_attic = Button.new()
+	pause_attic.text = "回到阁楼"
+	pause_attic.pressed.connect(func(): game.request_attic_visit())
+	pause_attic.visible = false
+	root.add_child(pause_attic)
 	_button(box, "设置", show_settings).custom_minimum_size.y = 42
 	_button(box, "操作与生存指南", show_help).custom_minimum_size.y = 46
 	_button(box, "返回标题", func(): game.return_to_menu()).custom_minimum_size.y = 46
