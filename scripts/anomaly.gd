@@ -93,7 +93,7 @@ func _ready() -> void:
 			child.visibility_range_end = 1100.0
 
 	var body := StaticBody3D.new()
-	body.collision_layer = 1
+	body.collision_layer = 8
 	body.collision_mask = 0
 	var pedestal_collision := CollisionShape3D.new()
 	var pedestal_shape := CylinderShape3D.new()

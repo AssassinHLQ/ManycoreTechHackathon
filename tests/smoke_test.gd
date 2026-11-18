@@ -55,6 +55,23 @@ func _run() -> void:
 	for planet in game.planets:
 		gravities[planet.gravity_strength] = true
 	_check(gravities.size() >= 4, "planets have distinct gravity strengths")
+	var asset_collision_planets := 0
+	var ground_cover_colliders := 0
+	for planet in game.planets:
+		var asset_bodies := 0
+		for body in planet.find_children("*", "StaticBody3D", true, false):
+			if ((body as StaticBody3D).collision_layer & 8) != 0:
+				asset_bodies += 1
+		for prop_id in planet.GROUND_COVER_PROPS:
+			if planet.get_node_or_null("PropCollision_%s" % prop_id) != null:
+				ground_cover_colliders += 1
+		if asset_bodies > 0:
+			asset_collision_planets += 1
+		else:
+			_check(false, "%s has no dedicated asset collision bodies" % planet.planet_id)
+	_check(asset_collision_planets == game.planets.size(), "every planet has dedicated, ship-queryable asset colliders")
+	_check(ground_cover_colliders == 0, "low ground cover does not block on-foot movement")
+	_check(game.player.collision_mask & 8 != 0, "on-foot capsule collides with the dedicated planet-asset layer")
 	_check(game.home.find_child("Architecture_Qinglan", true, false) != null, "home receives its observatory scene")
 	_check(game.home.find_child("Architecture_Qinglan", true, false).find_child("BuildingCollision", true, false) != null, "landmark architecture has physical collision")
 	_check(game.home.find_child("Cave_Qinglan", true, false) != null, "home hides an underground cave")
@@ -112,7 +129,7 @@ func _run() -> void:
 		game.ship.global_position = from + arch.global_basis.y.normalized() * 40.0
 		await physics_frame
 		await physics_frame
-		var probe_query := PhysicsRayQueryParameters3D.create(from, to, 1)
+		var probe_query := PhysicsRayQueryParameters3D.create(from, to, 8)
 		var probe_hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(probe_query)
 		if probe_hit.is_empty():
 			_check(false, probe[3] + " has a collider")
@@ -122,7 +139,7 @@ func _run() -> void:
 	game.ship.global_transform = parked_transform
 	game.ship.set_physics_process(ship_processing)
 	var dome_arch: Node3D = game.home.find_child("Architecture_Qinglan", true, false)
-	var dome_hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(dome_arch.global_transform * Vector3(0, 21, 0), dome_arch.global_transform * Vector3(0, 10, 0), 1))
+	var dome_hit: Dictionary = game.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(dome_arch.global_transform * Vector3(0, 21, 0), dome_arch.global_transform * Vector3(0, 10, 0), 8))
 	_check(not dome_hit.is_empty() and (dome_arch.global_transform.affine_inverse() * dome_hit.position).y > 12.5, "windmill cap blocks flight")
 	_check(game.home.find_children("*", "StaticBody3D", true, false).size() > 30, "near-site trees and buildings create static colliders")
 	var scene_count := 0
@@ -305,6 +322,35 @@ func _run() -> void:
 	for i in range(8):
 		await physics_frame
 	_check(game.state == "walk", "start enters on-foot mode")
+	var ship: Variant = game.ship
+	var saved_ship_position: Vector3 = ship.global_position
+	var saved_ship_velocity: Vector3 = ship.velocity
+	var saved_ship_hull: float = ship.hull
+	var saved_ship_cooldown: float = ship.impact_cooldown
+	var obstacle := StaticBody3D.new()
+	obstacle.name = "CollisionTestAsset"
+	obstacle.collision_layer = 8
+	obstacle.collision_mask = 0
+	var obstacle_shape := CollisionShape3D.new()
+	var obstacle_box := BoxShape3D.new()
+	obstacle_box.size = Vector3(28.0, 28.0, 28.0)
+	obstacle_shape.shape = obstacle_box
+	obstacle.add_child(obstacle_shape)
+	game.add_child(obstacle)
+	var ship_forward: Vector3 = -ship.global_transform.basis.z.normalized()
+	obstacle.global_position = saved_ship_position + ship_forward * 90.0
+	await physics_frame
+	ship.velocity = ship_forward * 80.0
+	var ship_asset_hit: bool = ship._move_with_planet_asset_collision(ship_forward * 140.0)
+	_check(ship_asset_hit and ship.global_position.distance_to(saved_ship_position) < 140.0,
+		"ship hull sweep stops against a surface asset instead of passing through")
+	_check(ship.hull < saved_ship_hull, "a hard ship-asset impact damages the hull")
+	ship.global_position = saved_ship_position
+	ship.velocity = saved_ship_velocity
+	ship.hull = saved_ship_hull
+	ship.impact_cooldown = saved_ship_cooldown
+	obstacle.queue_free()
+	await physics_frame
 	if "--no-capture" in OS.get_cmdline_user_args():
 		_check(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED, "background startup leaves the mouse free")
 	_check(game.player.camera.current, "player camera active")

@@ -31,7 +31,7 @@ var _body_scaled_once := false
 
 func _ready() -> void:
 	collision_layer = 2
-	collision_mask = 1
+	collision_mask = 9
 	floor_snap_length = 0.55
 	floor_max_angle = deg_to_rad(82.0)
 	safe_margin = 0.025

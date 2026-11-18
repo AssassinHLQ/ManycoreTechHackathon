@@ -1045,7 +1045,7 @@ static func _ground_y(root: Node3D, planet, x: float, z: float) -> float:
 static func _add_collision(root: Node3D, kind: String, planet) -> void:
 	var body := StaticBody3D.new()
 	body.name = "BuildingCollision"
-	body.collision_layer = 1
+	body.collision_layer = 8
 	body.collision_mask = 0
 	root.add_child(body)
 	match kind:

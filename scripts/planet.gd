@@ -746,6 +746,7 @@ static var _prop_in_use := {}
 ## 每种道具的共享碰撞形状（由可见网格三角面生成，见 _prop_collision_shape）。
 ## 同一进程里所有星球复用 —— 形状的 BVH 只建一次。
 static var _prop_shape_cache := {}
+static var _prop_collision_proxy_cache := {}
 
 ## Low ground plants participate in the vegetation density setting.
 const GROUND_COVER_PROPS := [
@@ -2466,9 +2467,13 @@ const PROP_COLLIDER_CAP := 260
 ##   · 于是可以把上限放到 260，基本覆盖玩家会走到的全部实例
 ##   · 每个实例仍按自己的位置与朝向摆碰撞形状，互不影响
 func _add_prop_colliders(entries: Array, prop_id: String, mesh: Mesh, aabb: AABB) -> void:
+	if prop_id in GROUND_COVER_PROPS:
+		return
 	var limit: float = site_pad_radius * 2.2
 	var profile := _prop_collider_profile(prop_id)
-	var shared_shape: Shape3D = _prop_collision_shape(prop_id, mesh)
+	var proxy := _prop_collision_proxy(prop_id, mesh, aabb)
+	var shared_shape: Shape3D = proxy.get("shape")
+	var proxy_center: Vector3 = proxy.get("center", Vector3.ZERO)
 	var site_dir: Vector3 = site_direction.normalized()
 	# 站点附近的优先（玩家真会走过去），其余按顺序补到上限。
 	var picked: Array = []
@@ -2488,7 +2493,7 @@ func _add_prop_colliders(entries: Array, prop_id: String, mesh: Mesh, aabb: AABB
 	# 一个物理体承载该类道具的所有碰撞形状。
 	var body := StaticBody3D.new()
 	body.name = "PropCollision_%s" % prop_id
-	body.collision_layer = 1
+	body.collision_layer = 8
 	body.collision_mask = 0
 	add_child(body)
 	for e in picked:
@@ -2509,7 +2514,7 @@ func _add_prop_colliders(entries: Array, prop_id: String, mesh: Mesh, aabb: AABB
 			var origin: Vector3 = surface_position(dir,
 				float(e["altitude"]) - aabb.position.y * k)
 			collision.shape = shared_shape
-			collision.transform = Transform3D(basis, origin)
+			collision.transform = Transform3D(basis, origin + basis * proxy_center)
 		else:
 			# ② 网格异常（没有三角面）时回退：按包围盒估球/圆柱。
 			var origin: Vector3 = surface_position(dir, float(e["altitude"]))
@@ -2541,6 +2546,36 @@ static func _prop_collision_shape(prop_id: String, mesh: Mesh) -> Shape3D:
 			shape = concave
 	_prop_shape_cache[prop_id] = shape
 	return shape
+
+
+## Smooth walk proxies keep leaf and rock triangle detail from snagging the player capsule.
+## Buildings retain their authored openings through the detailed static mesh shape.
+static func _prop_collision_proxy(prop_id: String, mesh: Mesh, aabb: AABB) -> Dictionary:
+	if _prop_collision_proxy_cache.has(prop_id):
+		return _prop_collision_proxy_cache[prop_id]
+	var shape: Shape3D
+	var center := Vector3.ZERO
+	var is_tree := prop_id.contains("tree")
+	var is_tall_solid := is_tree or prop_id.contains("tower") or prop_id.contains("obelisk") \
+		or prop_id.contains("spire") or prop_id.contains("crystal") or prop_id.contains("spike")
+	if is_tall_solid:
+		var local_height: float = maxf(aabb.size.y * (0.62 if is_tree else 0.9), 0.01)
+		var radius_fraction := 0.12 if is_tree else 0.2
+		var local_radius: float = maxf(minf(aabb.size.x, aabb.size.z) * radius_fraction, 0.015)
+		var capsule := CapsuleShape3D.new()
+		capsule.radius = local_radius
+		capsule.height = maxf(local_height, local_radius * 2.0)
+		shape = capsule
+		center = Vector3(aabb.get_center().x,
+			aabb.position.y + local_height * (0.31 if is_tree else 0.5), aabb.get_center().z)
+	elif prop_id.contains("rock"):
+		if mesh != null:
+			shape = mesh.create_convex_shape(true, false)
+	if shape == null:
+		shape = _prop_collision_shape(prop_id, mesh)
+	var result := {"shape": shape, "center": center}
+	_prop_collision_proxy_cache[prop_id] = result
+	return result
 
 
 ## 把 prop_queue 里排好的道具落成 MultiMeshInstance3D。
@@ -2717,7 +2752,7 @@ func _build_workshop() -> void:
 	var loader := Placement.new()
 	var collision := StaticBody3D.new()
 	collision.name = "WorkshopCollision"
-	collision.collision_layer = 1
+	collision.collision_layer = 8
 	collision.collision_mask = 0
 	outpost.add_child(collision)
 	# The entire kit shares a tangent frame. Sample terrain under its feet.
@@ -3338,7 +3373,7 @@ func _add_home_ruin() -> void:
 	if root == null:
 		return
 	var body := StaticBody3D.new()
-	body.collision_layer = 1
+	body.collision_layer = 8
 	body.collision_mask = 0
 	var collision := CollisionShape3D.new()
 	var shape := CylinderShape3D.new()

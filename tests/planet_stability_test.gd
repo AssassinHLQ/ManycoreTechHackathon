@@ -69,12 +69,15 @@ func _prop_sample(planet) -> Dictionary:
 		var d := direction.rotated(tangent, angle)
 		var h: float = planet.terrain_height(d)
 		var ray := PhysicsRayQueryParameters3D.create(
-			planet.to_global(d * (h + 100.0)), planet.to_global(d * (h - 100.0)), 1)
+			planet.to_global(d * (h + 100.0)), planet.to_global(d * (h - 100.0)), 8)
 		ray.exclude = [game.player.get_rid()]
 		var hit := space.intersect_ray(ray)
+		var world_direction: Vector3 = (planet.global_basis.orthonormalized() * d).normalized()
+		# The player controller accepts slopes up to 82 degrees; test a face it can stand on.
 		if not hit.is_empty() and String(hit.collider.name).begins_with("PropCollision_") \
-			and (hit.normal as Vector3).dot(d) > 0.98:
+			and (hit.normal as Vector3).dot(world_direction) > 0.14:
 			hit["direction"] = d
+			hit["world_direction"] = world_direction
 			return hit
 	return {}
 
@@ -86,19 +89,49 @@ func _check_prop_contact() -> void:
 	game.ship.global_position = planet.to_global(planet.site_direction.normalized() * (planet.radius + 200.0))
 	await _physics_frames(3)
 	var hit := _prop_sample(planet)
-	_check(not hit.is_empty(), "sample a gentle face of a real crystal collision mesh")
+	_check(not hit.is_empty(), "sample a walkable face of a real planet asset")
 	if hit.is_empty():
 		return
 	game.state = "walk"
 	game.ship.set_physics_process(false)
 	game.player.reparent(planet, false)
-	game.player.global_transform = Transform3D(Basis(Quaternion(Vector3.UP, hit.direction)), hit.position + hit.direction * 0.4)
+	var world_direction: Vector3 = hit.world_direction
+	game.player.global_transform = Transform3D(Basis(Quaternion(Vector3.UP, world_direction)),
+		hit.position + world_direction * 0.4)
 	game.player.velocity = Vector3.ZERO
 	game.player.reset_physics_interpolation()
 	await _physics_frames(90)
 	var idle := await _idle(120)
 	_check(idle.span < 0.04 and idle.grounded >= 110,
-		"crystal contact stays still while orbiting (%.5f m, grounded %d/120)" % [idle.span, idle.grounded])
+		"asset contact stays still while orbiting (%.5f m, grounded %d/120)" % [idle.span, idle.grounded])
+	await _check_ship_asset_contact(planet)
+
+
+func _check_ship_asset_contact(planet) -> void:
+	var current_hit := _prop_sample(planet)
+	_check(not current_hit.is_empty(), "asset remains queryable after planetary rotation")
+	if current_hit.is_empty():
+		return
+	var ship_transform: Transform3D = game.ship.global_transform
+	var ship_velocity: Vector3 = game.ship.velocity
+	var ship_hull: float = game.ship.hull
+	var ship_cooldown: float = game.ship.impact_cooldown
+	var approach: Vector3 = (current_hit.position - planet.global_position).normalized()
+	var ship_up := Vector3.UP if absf(approach.dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
+	game.ship.set_physics_process(false)
+	var ship_start: Vector3 = current_hit.position + approach * 250.0
+	game.ship.global_transform = Transform3D(Basis.looking_at(-approach, ship_up), ship_start)
+	game.ship.velocity = planet.orbital_velocity() - approach * 5.0
+	game.ship.hull = 100.0
+	game.ship.impact_cooldown = 0.0
+	var ship_hit: bool = game.ship._move_with_planet_asset_collision(-approach * 300.0)
+	_check(ship_hit and game.ship.global_position.distance_to(ship_start) < 300.0,
+		"ship hull sweep hits a real planet asset")
+	game.ship.global_transform = ship_transform
+	game.ship.velocity = ship_velocity
+	game.ship.hull = ship_hull
+	game.ship.impact_cooldown = ship_cooldown
+	game.ship.set_physics_process(true)
 
 
 func _ground_sample(planet) -> Dictionary:
@@ -129,7 +162,7 @@ func _ground_sample(planet) -> Dictionary:
 			var basis := Basis(Quaternion(Vector3.UP, d))
 			var query := PhysicsShapeQueryParameters3D.new()
 			query.shape = capsule
-			query.collision_mask = 1
+			query.collision_mask = 9
 			query.exclude = [game.player.get_rid()]
 			query.transform = Transform3D(basis, hit.position + d * (0.4 + 0.82 * scale))
 			if not space.intersect_shape(query).is_empty():
@@ -210,6 +243,7 @@ func _run() -> void:
 		_check(idle.grounded >= 110, "%s stays grounded (%d/120)" % [planet.planet_id, idle.grounded])
 		if "--prop-contact" in OS.get_cmdline_user_args():
 			_check(String(hit.collider.name).begins_with("PropCollision_"), "contact case stands on a real prop mesh")
+			await _check_ship_asset_contact(planet)
 			checked += 1
 			continue
 		if planet.planet_id in ["qinglan", "jianmo"]:

@@ -192,6 +192,8 @@ var fuel_warning_cooldown := 0.0
 const FUEL_LIFE_SUPPORT := 90.0
 const STATION_COLLISION_RANGE := 400.0
 const STATION_COLLISION_MASK := 5
+const PLANET_ASSET_COLLISION_MASK := 8
+const PLANET_ASSET_COLLISION_ALTITUDE := 1200.0
 
 # ── 卡冈图雅的引力 ────────────────────────────────────────────────────────
 ## 从多远开始有牵引力。再往外就完全自由航行了。
@@ -2277,6 +2279,9 @@ func _apply_black_hole_capture(delta: float) -> bool:
 
 
 func _move_with_station_collision(delta: float) -> void:
+	var motion := velocity * delta
+	if _move_with_planet_asset_collision(motion):
+		return
 	var station: Node3D = null
 	var nearest := INF
 	for candidate in _dockable_stations():
@@ -2287,7 +2292,6 @@ func _move_with_station_collision(delta: float) -> void:
 		if distance < reach and distance < nearest:
 			station = candidate
 			nearest = distance
-	var motion := velocity * delta
 	if station == null:
 		global_position += motion
 		return
@@ -2336,6 +2340,60 @@ func _move_with_station_collision(delta: float) -> void:
 			if hull <= 0.0:
 				game.begin_death("飞船撞上空间站解体", 4.2)
 		return
+
+
+func _move_with_planet_asset_collision(motion: Vector3) -> bool:
+	if hull_shape == null or motion.length_squared() < 0.000001:
+		return false
+	var planet = game.nearest_planet(global_position)
+	if planet == null:
+		return false
+	var radial: Vector3 = global_position - planet.global_position
+	var surface_normal := radial.normalized()
+	var planet_basis: Basis = planet.global_basis.orthonormalized()
+	var local_surface_normal: Vector3 = (planet_basis.inverse() * surface_normal).normalized()
+	var altitude: float = radial.length() - planet.terrain_height(local_surface_normal)
+	if altitude > PLANET_ASSET_COLLISION_ALTITUDE:
+		return false
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = hull_shape
+	query.transform = Transform3D(global_transform.basis, global_position)
+	query.motion = motion
+	query.collision_mask = PLANET_ASSET_COLLISION_MASK
+	query.exclude = [hull_body.get_rid()]
+	query.margin = 0.03
+	var space := get_world_3d().direct_space_state
+	var fractions: PackedFloat32Array = space.cast_motion(query)
+	if fractions.size() < 2 or fractions[0] >= 0.99999:
+		return false
+	var start := global_position
+	var safe_fraction := clampf(fractions[0] - 0.002, 0.0, 1.0)
+	global_position = start + motion * safe_fraction
+	query.motion = Vector3.ZERO
+	query.transform = Transform3D(global_transform.basis,
+		start + motion * minf(fractions[1] + 0.002, 1.0))
+	var hit := space.get_rest_info(query)
+	var normal: Vector3 = hit.get("normal", -motion.normalized())
+	if normal.length_squared() < 0.0001:
+		normal = -motion.normalized()
+	normal = normal.normalized()
+	var surface_velocity: Vector3 = planet.orbital_velocity()
+	var relative_velocity := velocity - surface_velocity
+	if normal.dot(relative_velocity) > 0.0:
+		normal = -normal
+	var normal_speed := relative_velocity.dot(normal)
+	var impact_speed := maxf(0.0, -normal_speed)
+	if normal_speed < 0.0:
+		velocity -= normal * normal_speed
+	if impact_speed > 14.0 and impact_cooldown <= 0.0:
+		hull = maxf(0.0, hull - (impact_speed - 10.0) * 0.45)
+		impact_cooldown = 1.2
+		autopilot = false
+		game.hud.show_toast("撞上星球地表资产 · 船体 %d%% · X 制动" % int(hull), 3.2)
+		game.audio.play_impact()
+		if hull <= 0.0:
+			game.begin_death("飞船撞上地表资产解体", 4.2)
+	return true
 
 
 func _station_normal_impact_speed(relative_velocity: Vector3, surface_normal: Vector3) -> float:
