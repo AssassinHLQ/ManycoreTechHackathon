@@ -224,8 +224,8 @@ const BH_PULL_RANGE := 30000.0
 ## 随星系 ×10 同步放大：120 → 1200。
 const BH_HORIZON := 1200.0
 ## 远端加速度（天文学上「拉到就回不来」的那圈，换算成游戏单位）。
-## 星系 ×10 后 ÷10：1.6 → 0.16。
-const BH_ACCEL_FAR := 0.16
+## 初次星系缩放标定值为 0.16，本次与飞船推力同步翻倍至 0.32。
+const BH_ACCEL_FAR := 0.32
 ## 近端加速度：贴到视界附近时的最大牵引。
 ##
 ## ⚠ 2026-11-11 星系 ×10 的关键联动：
@@ -238,7 +238,8 @@ const BH_ACCEL_FAR := 0.16
 ##     52×3.2 ≈ 166，才稳稳压过喷气推力 150 —— 这是冒烟测试钉住的设计意图
 ##     「贴脸时连加力都顶不住」。42×3.2=134 会低于 150，测试会红。）
 ##   任意相对深度处的受力仍与改版前同量级（约 1/8），手感基本等价。
-const BH_ACCEL_NEAR := 52.0
+## 2026-11-18 飞船手动推力与加力翻倍后，黑洞引力也翻倍，维持原有力比。
+const BH_ACCEL_NEAR := 104.0
 ## 「逃逸层」系数：内层加速度就是再乘这个数，用来表现「越近越难挣脱」。
 ## 以前这行只是定义、没接进公式（实测：全项目零引用），所以内圈根本没有
 ## 「越近越绝望」的额外梯度。现在接上：closeness 超过 BH_ESCAPE_FROM 之后，
@@ -399,8 +400,8 @@ const ROLL_RAMP_TIME := 0.45
 ## 加速，是理论无限加速的」）。
 ## 旧版有 SHIP_MAX_SPEED=420 / SHIP_BOOST_MAX_SPEED=700 两个人造上限，
 ## 那是错的：太空里没有阻力，推力一直在就该一直加速。
-const SHIP_THRUST := 72.0
-const SHIP_BOOST_THRUST := 150.0
+const SHIP_THRUST := 144.0
+const SHIP_BOOST_THRUST := 300.0
 const SHIP_BRAKE_DECEL := 260.0
 
 ## ⚠ 速度上限**已彻底移除**（2026-11-10 用户：「为什么现在上限速度还是有, 3200」）
@@ -1786,11 +1787,13 @@ func _physics_process(delta: float) -> void:
 	_update_station_motion(delta)
 	if game.state != "ship" or game.paused or game.supernova_active or game.map_open:
 		thrust_level = 0.0
+		ascend_level = 0.0
 		# ⚠ 2026-11-13：这里必须显式把引擎音关掉。
 		#   之前只 return，不调 set_engine —— 一旦状态切走（死亡/菜单/暂停），
 		#   引擎循环音会永远停在最后一次的音量上，玩家死亡重生后还一直响。
 		if game.audio != null:
 			game.audio.set_engine(false, 0.0)
+		_update_engine(delta)
 		return
 	impact_cooldown = maxf(0.0, impact_cooldown - delta)
 	dock_cooldown = maxf(0.0, dock_cooldown - delta)
@@ -2122,8 +2125,8 @@ func _physics_process(delta: float) -> void:
 
 ## 卡冈图雅的引力场。
 ##
-## 强度按 1/r² 衰减：在 BH_PULL_RANGE 处大约是 1.6（巡航时几乎察觉不到，只是航线被
-## 慢慢掰弯），到视界附近涨到 BH_ACCEL_NEAR。推力只有 72（按 Shift 喷气 150），所以
+## 强度按 1/r² 衰减：在 BH_PULL_RANGE 处大约是 0.32（巡航时几乎察觉不到，只是航线被
+## 慢慢掰弯），到视界附近涨到 BH_ACCEL_NEAR。常规推力为 144（按 Shift 喷气 300），所以
 ## 进入内圈之后基本是「看着自己被吸进去」—— 这正是想要的手感。
 ##
 ## 外圈加一层「切向拖拽」：飞船会绕着黑洞打转，像被甩进了轨道，而不是笔直撞上去。
@@ -3103,16 +3106,16 @@ func _update_engine(delta: float) -> void:
 	#   三束尾焰同一帧从 invisible 跳到 visible —— 屏幕上是「啪」一下亮起来，
 	#   很生硬。
 	#
-	#   现在改成**平滑包络**：engine_level 按时间常数逼近目标（0 或 1），
-	#   尾焰的缩放同时乘以这个包络。所以点火是「由小到大淡入」，
-	#   熄火是「慢慢收细」，全程没有可见性突变。
+	#   点火时用平滑包络淡入；熄火或燃料耗尽时立即隐藏尾焰，避免火焰残留。
 	#
 	#   包络还负责透明度：透明度 = 包络，所以即使形状在，亮度也是渐进的。
-	var want_firing: bool = thrust_level > 0.06
+	var want_firing: bool = thrust_level > 0.06 and fuel > 0.01
 	var target_level := 1.0 if want_firing else 0.0
-	# 起转快一点（0.22s 到 90%），熄火慢一点（0.45s），符合涡轮的惯性感
-	var tau := 0.10 if want_firing else 0.22
-	engine_level = lerpf(engine_level, target_level, 1.0 - exp(-delta / maxf(tau, 0.001)))
+	# 起转保留柔和淡入，熄火直接清零。
+	if want_firing:
+		engine_level = lerpf(engine_level, target_level, 1.0 - exp(-delta / 0.10))
+	else:
+		engine_level = 0.0
 
 	# 只有包络几乎归零时才彻底隐藏，避免常亮退化三角形
 	var firing: bool = engine_level > 0.01
@@ -3120,12 +3123,17 @@ func _update_engine(delta: float) -> void:
 	for material in engine_materials:
 		# 亮度也跟包络走，不再用「非 0 即满」的二值跳变
 		var peak := 1.2 + thrust_level * 4.2
-		var mat_target := 0.0 if not firing else peak * engine_level
-		material.emission_energy_multiplier = lerpf(
-			material.emission_energy_multiplier, mat_target, delta * 10.0)
+		if firing:
+			material.emission_energy_multiplier = lerpf(
+				material.emission_energy_multiplier, peak * engine_level, delta * 10.0)
+		else:
+			material.emission_energy_multiplier = 0.0
 	for light in engine_lights:
-		var light_target := 0.0 if not firing else (0.4 + thrust_level * 2.2) * engine_level
-		light.light_energy = lerpf(light.light_energy, light_target, delta * 10.0)
+		if firing:
+			var light_target := (0.4 + thrust_level * 2.2) * engine_level
+			light.light_energy = lerpf(light.light_energy, light_target, delta * 10.0)
+		else:
+			light.light_energy = 0.0
 
 	# 尾焰本体
 	for i in range(engine_plumes.size()):
@@ -3182,9 +3190,11 @@ func _update_ventral(delta: float) -> void:
 	if ventral_plumes.is_empty():
 		return
 
-	var target: float = clampf(ascend_level, 0.0, 1.0)
-	# 上升推力有惯性时（比如刚松手）让它慢慢熄，不要瞬间断火
-	ventral_level = lerpf(ventral_level, target, 1.0 - exp(-delta * 9.0))
+	var target: float = clampf(ascend_level, 0.0, 1.0) if fuel > 0.01 else 0.0
+	if target <= 0.05:
+		ventral_level = 0.0
+	else:
+		ventral_level = lerpf(ventral_level, target, 1.0 - exp(-delta * 9.0))
 
 	var firing: bool = ventral_level > 0.05
 	for i in range(ventral_plumes.size()):

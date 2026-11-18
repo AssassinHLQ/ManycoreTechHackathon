@@ -26,6 +26,36 @@ func _run() -> void:
 	root.add_child(game)
 	await game.await_world_ready()
 	await process_frame
+	var exhaust_ship = game.ship
+	var saved_ship_fuel: float = exhaust_ship.fuel
+	exhaust_ship.fuel = 0.0
+	exhaust_ship.thrust_level = 1.0
+	exhaust_ship.engine_level = 1.0
+	exhaust_ship.ascend_level = 1.0
+	exhaust_ship.ventral_level = 1.0
+	for plume in exhaust_ship.engine_plumes:
+		plume.visible = true
+	for halo in exhaust_ship.engine_halos:
+		halo.visible = true
+	for plume in exhaust_ship.ventral_plumes:
+		plume.visible = true
+	for core in exhaust_ship.ventral_cores:
+		core.visible = true
+	exhaust_ship._update_engine(0.016)
+	var exhaust_hidden: bool = exhaust_ship.engine_level == 0.0 \
+		and not exhaust_ship.engine_plumes.is_empty() and not exhaust_ship.ventral_plumes.is_empty()
+	for plume in exhaust_ship.engine_plumes:
+		exhaust_hidden = exhaust_hidden and not plume.visible
+	for halo in exhaust_ship.engine_halos:
+		exhaust_hidden = exhaust_hidden and not halo.visible
+	for plume in exhaust_ship.ventral_plumes:
+		exhaust_hidden = exhaust_hidden and not plume.visible
+	for core in exhaust_ship.ventral_cores:
+		exhaust_hidden = exhaust_hidden and not core.visible
+	_check(exhaust_hidden, "rear and lift exhaust vanish immediately when fuel is empty")
+	exhaust_ship.fuel = saved_ship_fuel
+	exhaust_ship.thrust_level = 0.0
+	exhaust_ship.ascend_level = 0.0
 	# ⚠ 2026-11-11：建场改成两阶段（母星先行、其余后台补建），
 	#   world_ready 时只有 1 颗行星，而下面要断言 20 颗。
 	#
@@ -404,6 +434,8 @@ func _run() -> void:
 	game.toggle_journal()
 	_check(not game.journal_open and not game.paused, "journal closes cleanly")
 	game.state = "ship"
+	game.hud._process(0.016)
+	_check(game.hud.location_sub.text.is_empty(), "cockpit hides the nearest-body subtitle")
 	game.ship.camera.current = true
 	var wheel := InputEventMouseButton.new()
 	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
@@ -624,7 +656,7 @@ func _run() -> void:
 	bh_ship.velocity = Vector3.ZERO
 	var close_pull: float = bh_ship._black_hole_pull(0.016).length()
 	_check(close_pull > bh_ship.SHIP_BOOST_THRUST,
-		"up close the pull beats even the boost thruster (150 / 实测 %.0f)" % close_pull)
+		"up close the pull (%.0f) beats the boost thruster (%.0f)" % [close_pull, bh_ship.SHIP_BOOST_THRUST])
 	bh_ship.global_position = hole + Vector3(0.0, 0.0, 1800.0)
 	bh_ship.velocity = Vector3.ZERO
 	var near_pull: float = bh_ship._black_hole_pull(0.016).length()

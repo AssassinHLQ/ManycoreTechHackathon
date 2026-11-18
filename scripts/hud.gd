@@ -1084,11 +1084,9 @@ func _process(delta: float) -> void:
 	if bh_visible:
 		# 报「推力余量」而不是「引力场百分比」。
 		# 以前那个百分比是 closeness（距离的归一化），跟实际加速度差得很远：
-		# 实测离黑洞 4000 处加速度已经是 83（推力 72，推不动了），可 HUD 才显示
-		# 45%、文案还在说「推力已难对抗」—— 玩家会以为还能跑。
-		# 现在直接拿实际径向加速度跟推力比，余量一目了然。
+		# 以当前常规推力计算余量，避免推力调整后 HUD 仍沿用旧数值。
 		var accel: float = ship.bh_radial_accel
-		var margin: int = int(round((72.0 - accel) / 72.0 * 100.0))
+		var margin: int = int(round((ship.SHIP_THRUST - accel) / ship.SHIP_THRUST * 100.0))
 		match int(ship.bh_warn_level):
 			1:
 				bh_warning.text = "引力场 · 卡冈图雅 · 推力余量 %d%% · 航线已被牵引" % margin
@@ -1112,7 +1110,7 @@ func _process(delta: float) -> void:
 			location_sub.text = "已对接 · E 进入空间站 · Space 解除对接"
 		else:
 			location_title.text = "驾驶舱  /  " + game.ship.target.display_name if game.ship.target != null else "驾驶舱"
-			location_sub.text = "最近天体：" + planet.display_name + "　·　" + planet.description
+			location_sub.text = ""
 	else:
 		location_title.text = planet.display_name
 		location_sub.text = planet.description
