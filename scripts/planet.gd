@@ -1045,6 +1045,10 @@ var _lux_height_ready := false
 ## 纬度分格数；经度是它的两倍（经线在极点收敛，这样格子近似方正）。
 const LUX_LAT_BINS := 192
 const LUX_LON_BINS := 384
+## 全局地形碰撞的采样密度。视觉地形可以继续使用自己的网格，
+## 角色碰撞需要更密的规则球面，避免玩家跨过大三角面时出现台阶感。
+const TERRAIN_COLLISION_RADIAL_SEGMENTS := 384
+const TERRAIN_COLLISION_RINGS := 192
 ## Lux3D 模型的挂载根（缩放后挂在行星下）。
 var _lux_root: Node3D
 ## 站点平地高度（Lux3D 分支压平网格后记下来，供 _ready 重算 site_height 对照）。
@@ -1161,11 +1165,10 @@ func _build_heightfield_surface_mesh() -> ArrayMesh:
 	var sphere := SphereMesh.new()
 	sphere.radius = radius
 	sphere.height = radius * 2.0
-	# 碰撞使用规则的低面数网格，视觉网格和高度查询保持原分辨率。
-	# 256×128 在大星球上仍能连续表达地形坡度，同时比旧版 384×192 少约 56%
-	# 的三角面。洞口再用 _refine_around_cave 做局部细分，避免入口被封死。
-	sphere.radial_segments = 256
-	sphere.rings = 128
+	# 碰撞使用比视觉网格更密的规则球面，减少角色跨三角面时的台阶感。
+	# 洞口仍会额外调用 _refine_around_cave 做局部细分，避免入口被封死。
+	sphere.radial_segments = TERRAIN_COLLISION_RADIAL_SEGMENTS
+	sphere.rings = TERRAIN_COLLISION_RINGS
 	var arrays := sphere.get_mesh_arrays()
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	for i in range(vertices.size()):
