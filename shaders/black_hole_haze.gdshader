@@ -48,6 +48,19 @@ float value_noise(float x) {
 	return mix(hash11(i), hash11(i + 1.0), f);
 }
 
+float filtered_bands(float radius) {
+	// 远处把跨像素的细碎尘埃带做平均，避免黑洞旋转时闪烁。
+	float width = max(fwidth(radius), 1.0);
+	float a = radius - width;
+	float b = radius;
+	float c = radius + width;
+	return (
+		value_noise(a * band_frequency) * 0.62 + value_noise(a * band_frequency * 2.41 + 7.0) * 0.38
+		+ value_noise(b * band_frequency) * 0.62 + value_noise(b * band_frequency * 2.41 + 7.0) * 0.38
+		+ value_noise(c * band_frequency) * 0.62 + value_noise(c * band_frequency * 2.41 + 7.0) * 0.38
+	) / 3.0;
+}
+
 void vertex() {
 	local_pos = VERTEX;
 }
@@ -59,8 +72,7 @@ void fragment() {
 	float span = max(1.0, outer_radius - inner_radius);
 	float t = clamp((r - inner_radius) / span, 0.0, 1.0);
 
-	float bands = value_noise(r * band_frequency) * 0.62
-		+ value_noise(r * band_frequency * 2.41 + 7.0) * 0.38;
+	float bands = filtered_bands(r);
 
 	vec3 col = mix(dust_color.rgb, outer_dust_color.rgb, smoothstep(0.0, 0.85, t));
 	col *= (1.0 - band_strength * bands);

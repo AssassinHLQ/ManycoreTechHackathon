@@ -70,6 +70,20 @@ float value_noise(float x) {
 	return mix(hash11(i), hash11(i + 1.0), f);
 }
 
+float filtered_bands(float radius) {
+	// 远距离时一个像素可能跨过多条径向色带，直接采样会随旋转产生闪烁。
+	// 用屏幕空间导数做小范围平均，近处保持细节，远处稳定收敛。
+	float width = max(fwidth(radius), 1.0);
+	float a = radius - width;
+	float b = radius;
+	float c = radius + width;
+	return (
+		value_noise(a * band_frequency) * 0.62 + value_noise(a * band_frequency * 2.37 + 11.0) * 0.38
+		+ value_noise(b * band_frequency) * 0.62 + value_noise(b * band_frequency * 2.37 + 11.0) * 0.38
+		+ value_noise(c * band_frequency) * 0.62 + value_noise(c * band_frequency * 2.37 + 11.0) * 0.38
+	) / 3.0;
+}
+
 void vertex() {
 	local_pos = VERTEX;
 }
@@ -84,8 +98,7 @@ void fragment() {
 	float rr = r + swirl_amount * ramp_max * sin(ang * 2.0 + r * 0.0032);
 
 	// 细密丝带：沿半径的一维噪声，两层叠加
-	float bands = value_noise(rr * band_frequency) * 0.62
-		+ value_noise(rr * band_frequency * 2.37 + 11.0) * 0.38;
+	float bands = filtered_bands(rr);
 
 	vec3 col = mix(hot_color.rgb, mid_color.rgb, smoothstep(0.0, 0.30, t));
 	col = mix(col, outer_color.rgb, smoothstep(0.30, 1.0, t));
