@@ -20,6 +20,8 @@ var planet_id := ""
 ## continue to validate every baked prop and collision binding.
 var stream_proxy := false
 var stream_loading := false
+static var _stream_proxy_mesh: SphereMesh
+static var _stream_proxy_materials: Dictionary = {}
 var display_name := ""
 var description := ""
 var kind := "rock"
@@ -875,21 +877,27 @@ func _ready() -> void:
 
 
 func _build_stream_proxy_visual() -> void:
-	var mesh := SphereMesh.new()
-	mesh.radius = radius
-	mesh.height = radius * 2.0
-	mesh.radial_segments = 20
-	mesh.rings = 10
-	var material := StandardMaterial3D.new()
-	material.albedo_color = base_color
-	material.roughness = 0.82
-	material.metallic = 0.04
-	material.emission_enabled = true
-	material.emission = accent_color * 0.08
-	material.emission_energy_multiplier = 0.35
+	if _stream_proxy_mesh == null:
+		_stream_proxy_mesh = SphereMesh.new()
+		_stream_proxy_mesh.radius = 1.0
+		_stream_proxy_mesh.height = 2.0
+		_stream_proxy_mesh.radial_segments = 20
+		_stream_proxy_mesh.rings = 10
+	var key := base_color.to_html(false) + ":" + accent_color.to_html(false)
+	var material: StandardMaterial3D = _stream_proxy_materials.get(key)
+	if material == null:
+		material = StandardMaterial3D.new()
+		material.albedo_color = base_color
+		material.roughness = 0.82
+		material.metallic = 0.04
+		material.emission_enabled = true
+		material.emission = accent_color * 0.08
+		material.emission_energy_multiplier = 0.35
+		_stream_proxy_materials[key] = material
 	var visual := MeshInstance3D.new()
 	visual.name = "StreamProxyVisual"
-	visual.mesh = mesh
+	visual.mesh = _stream_proxy_mesh
+	visual.scale = Vector3.ONE * radius
 	visual.material_override = material
 	visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	visual.visibility_range_end = 260000.0

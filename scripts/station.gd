@@ -87,6 +87,11 @@ var orbit_planet: Node3D
 var orbit_phase := 0.0
 var orbit_radius := 2600.0
 var orbit_ready := false
+## The baked station snapshot is kept on disk for every build. On a real game
+## start, a distant station begins as a cheap marker and upgrades in place
+## before docking or entering it.
+var stream_proxy := false
+var stream_loading := false
 var _orbit_time := 0.0
 var corridor_roots: Array[Node3D] = []
 var corridor_shapes: Array = []
@@ -121,12 +126,18 @@ var _mat_orange: StandardMaterial3D
 var _mat_white: StandardMaterial3D
 var runtime_scene_ready := false
 signal runtime_scene_ready_finished
+signal stream_loaded_finished
 
 
 func _ready() -> void:
 	# 玩家先在已同步的碰撞世界中移动，随后再携带站体及子节点进入下一物理步。
 	# 提前移动父节点会让玩家相对物理服务器上一快照的地板反复升降。
 	process_physics_priority = 10
+	if stream_proxy:
+		_build_stream_proxy_visual()
+		runtime_scene_ready = true
+		runtime_scene_ready_finished.emit()
+		return
 	if not "--rebake-runtime" in OS.get_cmdline_user_args() and await RuntimeBake.load_generated(self, "station"):
 		_build_imported_exterior()
 		_hide_legacy_exterior_visuals()
@@ -147,6 +158,47 @@ func _ready() -> void:
 	set_meta("bake_children", get_children())
 	runtime_scene_ready = true
 	runtime_scene_ready_finished.emit()
+
+
+func _build_stream_proxy_visual() -> void:
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 280.0
+	mesh.bottom_radius = 280.0
+	mesh.height = 10.0
+	mesh.radial_segments = 32
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color("536b76")
+	material.roughness = 0.72
+	material.metallic = 0.28
+	material.emission_enabled = true
+	material.emission = Color("76d6df")
+	material.emission_energy_multiplier = 0.18
+	var visual := MeshInstance3D.new()
+	visual.name = "StreamProxyVisual"
+	visual.mesh = mesh
+	visual.material_override = material
+	visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(visual)
+
+
+## Replace the distant marker with the already exported station snapshot.
+## No procedural station build runs on this path.
+func load_streamed_snapshot() -> void:
+	if not stream_proxy or stream_loading:
+		return
+	stream_loading = true
+	var loaded := await RuntimeBake.load_generated(self, "station")
+	if loaded:
+		var proxy := get_node_or_null("StreamProxyVisual")
+		if proxy != null:
+			proxy.queue_free()
+		_build_imported_exterior()
+		_hide_legacy_exterior_visuals()
+		stream_proxy = false
+	else:
+		push_warning("归航站固定快照加载失败，继续使用远景代理")
+	stream_loading = false
+	stream_loaded_finished.emit()
 
 
 func _merge_exterior_meshes() -> void:

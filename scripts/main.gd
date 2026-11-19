@@ -47,6 +47,12 @@ var world_areas_ready := false
 var _world_stream_requested := false
 const REMOTE_STREAM_GAP := 1.2
 const STREAM_PREWARM_LAYER := 20
+var _attic_build_requested := false
+var _one_dim_star_build_requested := false
+
+
+func _uses_streamed_assets() -> bool:
+	return DisplayServer.get_name() != "headless" or "--profile-stream-proxy" in OS.get_cmdline_user_args()
 
 func _stream_prewarm_mask() -> int:
 	return 1 << (STREAM_PREWARM_LAYER - 1)
@@ -458,7 +464,10 @@ func _build_world_progressive() -> void:
 		world_build_remaining = false
 		if station != null and not station.runtime_scene_ready:
 			await station.runtime_scene_ready_finished
-		_build_attic()
+		if _uses_streamed_assets():
+			_queue_attic_build()
+		else:
+			await _build_attic()
 		await _yield_frame()
 		world_areas_ready = true
 		world_areas_ready_finished.emit()
@@ -475,7 +484,10 @@ func _build_world_progressive() -> void:
 	print("[BUILD] 开始准备远端区域（当前 %d 颗行星）" % planets.size())
 	# Station and distant beacons are already present from the initial playable
 	# scene. Start the attic stream without awaiting its expensive collision pass.
-	_build_attic()
+	if _uses_streamed_assets():
+		_queue_attic_build()
+	else:
+		await _build_attic()
 	_stage_end("attic stream started")
 	await _yield_frame()
 	world_areas_ready = true
@@ -1272,7 +1284,15 @@ func _build_planets(home_only := false) -> void:
 		# the player is inside a local world or has paused the game.
 		while not home_only and (in_attic or paused):
 			await _yield_frame()
-		await RuntimeBakeScript.prepare_generated(get_tree(), "planet_" + definition.id)
+		# The exported snapshot remains the source of truth for every remote
+		# planet. On a real display, keep the initial scene responsive by
+		# instantiating a cheap proxy first and loading the fixed snapshot only
+		# when the player selects or approaches that planet. Headless tools keep
+		# the complete snapshot path so bake and package tests still cover every
+		# baked asset and collision body.
+		var use_stream_proxy := not home_only and _uses_streamed_assets()
+		if not use_stream_proxy:
+			await RuntimeBakeScript.prepare_generated(get_tree(), "planet_" + definition.id)
 		# The player may enter a local world while the worker reads the snapshot.
 		while in_attic or paused:
 			await _yield_frame()
@@ -1309,7 +1329,7 @@ func _build_planets(home_only := false) -> void:
 		planet.base_color = definition.color
 		planet.accent_color = definition.accent
 		planet.description = definition.description
-		planet.stream_proxy = not FULL_BAKED_WORLD and not home_only and DisplayServer.get_name() != "headless"
+		planet.stream_proxy = use_stream_proxy
 		add_child(planet)
 		if not planet.runtime_scene_ready:
 			await planet.runtime_scene_ready_finished
@@ -1339,7 +1359,8 @@ func _build_planets(home_only := false) -> void:
 			if tower != null:
 				anomaly.transform = tower.transform * Transform3D(Basis.from_scale(Vector3.ONE * 0.3), Vector3(-3.2, 1.76, 9.4))
 		anomalies.append(anomaly)
-		route_link.build_echo(self, planet, anomaly)
+		if not planet.stream_proxy:
+			route_link.build_echo(self, planet, anomaly)
 		# 远端行星保持轻量代理，完整场景只在目的地被选中或接近时预热。
 		# 启动阶段把 19 颗星球全部实例化会连续占用主线程，碰撞网格也会
 		# 在玩家仍停留在母星时逐颗生成，最终表现成反复“未响应”。
@@ -1359,11 +1380,18 @@ func _build_planets(home_only := false) -> void:
 		return
 	_create_orbit_lines(definitions)
 	await _yield_frame()
-	_build_extra_anomalies()
+	if not _uses_streamed_assets():
+		_build_extra_anomalies()
 	await _yield_frame()
-	_build_quantum()
+	if _uses_streamed_assets():
+		# The distant point-cloud asset is decorative and expensive to instantiate.
+		# Keep it out of the opening frames and add it once the player leaves home.
+		_queue_one_dim_star_build()
+	else:
+		_build_quantum()
 	await _yield_frame()
-	_build_one_dim_star()
+	if not _uses_streamed_assets():
+		_build_one_dim_star()
 
 
 ## 一维星：纯点云的装饰星球。**故意不进 planets / anomalies**：
@@ -1381,6 +1409,20 @@ func _build_one_dim_star() -> void:
 	one_dim_star.position = Vector3(cos(0.9) * 11400.0, 620.0, sin(0.9) * 11400.0)
 
 
+func _queue_one_dim_star_build() -> void:
+	if one_dim_star != null or _one_dim_star_build_requested:
+		return
+	_one_dim_star_build_requested = true
+	call_deferred("_build_one_dim_star_when_playable")
+
+
+func _build_one_dim_star_when_playable() -> void:
+	while state != "ship" and not in_station:
+		await _yield_frame()
+	if one_dim_star == null:
+		_build_one_dim_star()
+
+
 func _build_quantum() -> void:
 	var shard := _planet_by_id("xuanjing")
 	if shard == null:
@@ -1388,6 +1430,15 @@ func _build_quantum() -> void:
 	quantum = QuantumScript.new()
 	quantum.game = self
 	shard.add_child(quantum)
+	anomalies.append(quantum)
+
+
+func _ensure_quantum_for_planet(planet: Node3D) -> void:
+	if quantum != null or planet == null or String(planet.planet_id) != "xuanjing":
+		return
+	quantum = QuantumScript.new()
+	quantum.game = self
+	planet.add_child(quantum)
 	anomalies.append(quantum)
 
 
@@ -1420,6 +1471,13 @@ func _build_extra_anomalies() -> void:
 		}
 	]
 	for entry in entries:
+		var already_built := false
+		for existing in anomalies:
+			if String(existing.anomaly_id) == String(entry.id):
+				already_built = true
+				break
+		if already_built:
+			continue
 		var planet := _planet_by_id(entry.planet)
 		if planet == null:
 			continue
@@ -1557,6 +1615,8 @@ func _set_default_render_layer(planet: Node3D) -> void:
 func _prewarm_planet_render(planet: Node3D) -> void:
 	if stream_prewarm_viewport == null or stream_prewarm_camera == null:
 		return
+	if DisplayServer.get_name() == "headless":
+		return
 	if planet == null or not is_instance_valid(planet):
 		return
 	# Keep the staged node in the main scene tree, but render it through a
@@ -1576,7 +1636,9 @@ func _prewarm_planet_render(planet: Node3D) -> void:
 	await get_tree().process_frame
 	stream_prewarm_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	await get_tree().process_frame
-	stream_prewarm_viewport.get_texture().get_image()
+	var prewarm_texture := stream_prewarm_viewport.get_texture()
+	if prewarm_texture != null:
+		prewarm_texture.get_image()
 	stream_prewarm_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_set_default_render_layer(planet)
 
@@ -1625,6 +1687,12 @@ func _activate_staged_planet(proxy: Node3D, full: Node3D) -> void:
 		ship.target = full
 	if home == proxy:
 		home = full
+	_ensure_quantum_for_planet(full)
+	for child in full.get_children():
+		if child.get_script() == AnomalyScript:
+			route_link.build_echo(self, full, child)
+			break
+	call_deferred("_build_extra_anomalies")
 	full._orbit_time = elapsed
 	_set_default_render_layer(full)
 	_set_staged_planet_enabled(full, true, false)
@@ -2113,6 +2181,7 @@ func _build_station() -> void:
 	station.name = "HomecomingStation"
 	station.game = self
 	station.orbit_planet = home
+	station.stream_proxy = _uses_streamed_assets()
 	station.position = Vector3(4300.0, 1180.0, -1500.0) * ORBIT_SCALE
 	station.rotation.y = 0.42
 	add_child(station)
@@ -2382,8 +2451,12 @@ func _process(delta: float) -> void:
 	if state == "ship" and ship != null and ship.target != null:
 		var target_distance := ship.global_position.distance_to(ship.target.global_position)
 		# Upload the full planet well before final approach so close range stays smooth.
-		if target_distance < ship.target.radius + 60000.0:
+		if ship.target.get_script() == PlanetScript and target_distance < ship.target.radius + 60000.0:
 			_request_planet_stream(ship.target)
+		if station != null and station.stream_proxy and not station.stream_loading:
+			var station_distance := ship.global_position.distance_to(station.global_position)
+			if ship.target == station or station_distance < station.radius + 12000.0:
+				station.load_streamed_snapshot()
 	visual_time += delta
 	_update_guide(delta)
 	_update_boat(delta)
@@ -4173,6 +4246,24 @@ func _build_attic() -> void:
 	attic.process_mode = Node.PROCESS_MODE_DISABLED
 	attic_worlds.set_active_world("")
 	attic_ready = true
+
+
+func _queue_attic_build() -> void:
+	if attic_ready or _attic_build_requested:
+		return
+	_attic_build_requested = true
+	call_deferred("_build_attic_when_playable")
+
+
+func _build_attic_when_playable() -> void:
+	# The attic is reached through the station, so do not spend its build cost
+	# while the player is still on the opening planet or in the menu.
+	while state != "ship" and not in_station:
+		await _yield_frame()
+	if attic_ready:
+		return
+	await _build_attic()
+	_restore_progress()
 
 
 ## 手册里的「重播新手提示」

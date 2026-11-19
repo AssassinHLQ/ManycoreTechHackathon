@@ -74,6 +74,8 @@ func build_echo(game, planet, source: Node3D) -> void:
 	for key in ROUTES:
 		if ROUTES[key].planet != planet.planet_id:
 			continue
+		if echoes.has(key) and is_instance_valid(echoes[key]):
+			return
 		var echo := EchoScript.new()
 		echo.name = "AtticEcho_" + key
 		echo.anomaly_id = echo_id(key)
