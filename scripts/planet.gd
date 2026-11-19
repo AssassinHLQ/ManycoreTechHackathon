@@ -571,7 +571,6 @@ const PROP_MODELS := {
 	"cave-stalagmite": "res://assets/models/props/cave-stalagmite/model.glb",
 	"cave-stalactite": "res://assets/models/props/cave-stalactite/model.glb",
 	"cave-crystal-cluster": "res://assets/models/props/cave-crystal-cluster/model.glb",
-	"cave-mine-cart": "res://assets/models/props/cave-mine-cart/model.glb",
 	"cave-elevator": "res://assets/models/props/cave-elevator/model.glb",
 	"cave-lantern": "res://assets/models/props/cave-lantern/model.glb",
 	"cave-altar": "res://assets/models/props/cave-altar/model.glb",
@@ -3105,9 +3104,8 @@ const INTERACTIVE_SEED := [
 	["vent-lo", 1, 2, 4],
 	# 信标（第四批资产）：给一次补给，也让「点亮」这个交互每颗星球都能玩到
 	["signal-beacon", 1, 2, 3],
-	# 第五批机器：医疗站（氧气回满）+ 矿石破碎机（燃料），让 med 类型也覆盖到
+	# 第五批机器：医疗站补充氧气，提供 med 类型交互
 	["med-station", 1, 2, 3],
-	["ore-crusher", 1, 2, 3],
 ]
 
 
