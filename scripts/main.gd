@@ -533,21 +533,11 @@ func _save_voyage_contract() -> void:
 
 
 func _set_voyage_target() -> void:
-	if ship == null or voyage_contract == null:
+	if ship == null or station == null or voyage_contract == null or not voyage_contract.active:
 		return
-	var target_id := String(voyage_contract.target_id)
-	if target_id == "":
-		return
-	for i in range(planets.size()):
-		var planet = planets[i]
-		if String(planet.planet_id) != target_id:
-			continue
-		ship.target = planet
-		_request_planet_stream(ship.target)
-		target_index = i
-		map_selected = i
+	if voyage_contract.phase == VoyageContractScript.RETURN_STATION:
+		ship.target = station
 		_voyage_target_set = true
-		return
 
 
 func _update_voyage_contract() -> void:
@@ -561,25 +551,14 @@ func _update_voyage_contract() -> void:
 	if phase != _voyage_last_phase:
 		_voyage_last_phase = phase
 		_voyage_target_set = false
-		if phase == "return" and home != null and ship != null:
-			ship.target = home
-			target_index = planets.find(home)
-			map_selected = target_index if target_index >= 0 else map_selected
-			_voyage_target_set = true
-	if phase == "scan_target" and not _voyage_target_set:
+	if phase == VoyageContractScript.RETURN_STATION and not _voyage_target_set:
 		_set_voyage_target()
-	if phase == "return" and ship != null and ship.docked and ship.docked_station == station:
-		var earned := int(voyage_contract.reward)
-		var first: bool = false
-		if voyage_contract.complete_at_home():
-			if progress != null:
-				progress.add_coins(earned)
-				first = progress.unlock("voyage_first")
-				_save_voyage_contract()
-			if audio != null:
-				audio.play_chime()
-			var suffix := " · 新成就「第一份委托」" if first else ""
-			hud.show_toast("航行委托完成 · +%d 金%s · 下一次出发会有新的目的地" % [earned, suffix], 6.0)
+	if phase == VoyageContractScript.RETURN_STATION and ship != null \
+			and ship.docked and ship.docked_station == station:
+		if voyage_contract.arrive_at_station():
+			_voyage_last_phase = ""
+			_voyage_target_set = false
+			_save_voyage_contract()
 
 
 func _migrate_legacy_user_data() -> void:
@@ -2448,11 +2427,30 @@ func _process(delta: float) -> void:
 	# 渐进式建场期间世界还不完整（home / menu_camera / 火焰都未创建），先不跑逐帧逻辑。
 	if not world_ready:
 		return
-	if state == "ship" and ship != null and ship.target != null:
-		var target_distance := ship.global_position.distance_to(ship.target.global_position)
-		# Upload the full planet well before final approach so close range stays smooth.
-		if ship.target.get_script() == PlanetScript and target_distance < ship.target.radius + 60000.0:
-			_request_planet_stream(ship.target)
+	if state == "ship" and ship != null:
+		var nearest_stream_proxy: Node3D = null
+		var nearest_surface_distance := INF
+		for planet: Node3D in planets:
+			if planet == null or not is_instance_valid(planet) or not planet.stream_proxy:
+				continue
+			var surface_distance := ship.global_position.distance_to(planet.global_position) - float(planet.radius)
+			if surface_distance < nearest_surface_distance:
+				nearest_surface_distance = surface_distance
+				nearest_stream_proxy = planet
+		# Prepare the closest body before it reaches the existing activation range.
+		# Its full snapshot contains the terrain collision missing from the proxy.
+		if nearest_stream_proxy != null and nearest_surface_distance < 120000.0:
+			_enqueue_planet_prewarm(nearest_stream_proxy)
+		if nearest_stream_proxy != null and nearest_surface_distance < 60000.0:
+			_request_planet_stream(nearest_stream_proxy)
+		if ship.target != null:
+			var target_distance := ship.global_position.distance_to(ship.target.global_position)
+			# Upload the full planet well before final approach so close range stays smooth.
+			if ship.target.get_script() == PlanetScript and target_distance < ship.target.radius + 60000.0:
+				_request_planet_stream(ship.target)
+		# The homecoming station is not part of the planet target list. Its fixed
+		# snapshot must therefore stream from its own distance check, even when the
+		# player has no planet selected or the station is the active target.
 		if station != null and station.stream_proxy and not station.stream_loading:
 			var station_distance := ship.global_position.distance_to(station.global_position)
 			if ship.target == station or station_distance < station.radius + 12000.0:
@@ -2684,12 +2682,10 @@ func start_game() -> void:
 	_set_mouse_capture()
 	if DisplayServer.get_name() != "headless" and not OS.has_feature("web"):
 		DisplayServer.window_set_ime_active(false)
-	if voyage_contract.start(discovered):
-		_voyage_last_phase = ""
-		_save_voyage_contract()
-		hud.show_toast("新委托：先扫描风车塔，再把一段信号带回归航站。", 5.0)
-	else:
-		hud.show_toast("委托继续：" + String(voyage_contract.status(discovered).get("hint", "")), 4.0)
+	voyage_contract.start(discovered)
+	_voyage_last_phase = ""
+	_voyage_target_set = false
+	_save_voyage_contract()
 
 
 func return_to_menu() -> void:
@@ -3039,11 +3035,6 @@ func _planet_interact() -> bool:
 			player.oxygen = minf(player.oxygen + 20.0, 100.0)
 			hud.show_toast("信标点亮 · 上一艘船留下的补给 · 燃料氧气 +20", 3.4)
 			audio.play_ui(980.0)
-			if voyage_contract != null and voyage_contract.on_beacon(host_id):
-				_voyage_last_phase = ""
-				_voyage_target_set = false
-				_save_voyage_contract()
-				hud.show_toast("委托推进 · 返回归航站完成交付", 4.0)
 		"med":
 			# 医疗站：氧气回满（比货舱强，但充能少、冷却长）
 			player.oxygen = 100.0
@@ -3657,14 +3648,6 @@ func discover(id: String) -> void:
 	discovered[id] = true
 	scan_progress = 1.0
 	_save_knowledge()
-	if voyage_contract != null and voyage_contract.on_discovered(id):
-		_voyage_last_phase = ""
-		_voyage_target_set = false
-		_save_voyage_contract()
-		if id == "qinglan":
-			hud.show_toast("委托推进 · 现在前往%s扫描主信号" % voyage_contract.target_name, 4.0)
-		else:
-			hud.show_toast("委托推进 · 着陆后点亮%s的地表信标" % voyage_contract.target_name, 4.0)
 	audio.play_chime()
 	var anomaly := _anomaly_by_id(id)
 	if anomaly != null:
@@ -4342,6 +4325,8 @@ func _enter_attic_space() -> void:
 	# Shared scene transition for the physical home door.
 	if attic == null or player == null:
 		return
+	if voyage_contract != null and voyage_contract.arrive_home():
+		_save_voyage_contract()
 	if in_attic:
 		if in_pocket():
 			leave_pocket()

@@ -2,6 +2,7 @@ extends SceneTree
 
 const KNOWLEDGE := "user://voyage_contract_integration_knowledge.json"
 const PROGRESS := "user://voyage_contract_integration_progress.json"
+const ContractScript = preload("res://scripts/voyage_contract.gd")
 
 var game
 var failures := 0
@@ -37,39 +38,21 @@ func _run() -> void:
 		await process_frame
 
 	game.start_game()
-	_check(game.voyage_contract.active, "starting a new game creates a readable contract")
-	_check(game.voyage_contract.phase == "scan_home", "fresh contract starts at the windmill scan")
-	game.discover("qinglan")
-	_check(game.voyage_contract.phase == "scan_target" and game.voyage_contract.target_id == "zheya",
-		"the windmill scan selects the first real destination")
-	game.discover("zheya")
-	_check(game.voyage_contract.phase == "recover", "the destination scan requests a ground beacon")
-
-	var target = game._planet_by_id("zheya")
-	var beacon := -1
-	for i in range(target.interactive_spots.size()):
-		if String(target.interactive_spots[i].get("kind", "")) == "beacon":
-			beacon = i
-			break
-	_check(beacon >= 0, "the destination has a real beacon interaction")
-	if beacon >= 0:
-		var spot: Dictionary = target.interactive_spots[beacon]
-		var local_pos: Vector3 = spot["local_pos"] if spot.has("local_pos") else target.surface_position(spot["dir"], float(spot["altitude"]))
-		game.player.reparent(target, false)
-		game.player.position = local_pos
-		game.state = "walk"
-		game.in_attic = false
-		game._planet_interact()
-	_check(game.voyage_contract.phase == "return", "the real beacon interaction advances the contract")
+	_check(game.voyage_contract.active, "starting a new game creates the first objective")
+	_check(game.voyage_contract.phase == ContractScript.RETURN_STATION,
+		"the first objective is to return to the Homecoming Station")
 
 	game.state = "ship"
 	game.ship.docked = true
 	game.ship.docked_station = game.station
 	var before_coins: int = game.progress.coins
 	game._update_voyage_contract()
-	_check(not game.voyage_contract.active, "homecoming-station docking completes the contract")
-	_check(game.progress.coins > before_coins, "completion awards coins in the existing wallet")
-	_check(game.progress.is_unlocked("voyage_first"), "the first completed voyage unlocks its achievement")
+	_check(game.voyage_contract.active and game.voyage_contract.phase == ContractScript.GO_HOME,
+		"docking at the Homecoming Station advances to the home objective")
+	game._enter_attic_space()
+	_check(not game.voyage_contract.active and game.voyage_contract.completed_count == 2,
+		"entering home completes the second and final objective")
+	_check(game.progress.coins == before_coins, "the two objectives award no coins")
 	game.queue_free()
 	await process_frame
 	_cleanup()

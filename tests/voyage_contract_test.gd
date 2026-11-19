@@ -19,29 +19,25 @@ func _check(condition: bool, message: String) -> void:
 
 func _run() -> void:
 	var contract = ContractScript.new()
-	var discovered := {}
-	_check(contract.start(discovered), "a fresh save starts a voyage contract")
-	_check(contract.phase == "scan_home", "the first step points at the home signal")
-	_check(contract.on_discovered("qinglan"), "home scan advances the contract")
-	_check(contract.phase == "scan_target" and contract.target_id == "zheya",
-		"the first target is a real secondary planet")
-	_check(contract.on_discovered("zheya"), "target scan advances the contract")
-	_check(contract.phase == "recover", "target scan asks for a physical beacon interaction")
-	_check(contract.on_beacon("zheya"), "the target beacon advances the contract")
-	_check(contract.phase == "return", "beacon interaction asks for a homecoming return")
-	var saved: Dictionary = contract.save_data()
+	_check(contract.start(), "a fresh save starts the station-return objective")
+	_check(contract.phase == ContractScript.RETURN_STATION, "the first objective is returning to the station")
+	_check(not contract.arrive_home(), "home cannot complete before returning to the station")
+	_check(contract.arrive_at_station(), "docking completes the first objective")
+	_check(contract.phase == ContractScript.GO_HOME and contract.completed_count == 1,
+		"the second objective is going home from the station")
 	var restored = ContractScript.new()
-	restored.load_data(saved)
-	_check(restored.active and restored.phase == "return" and restored.target_id == "zheya",
-		"an active contract survives save and reload")
-	var earned: int = int(restored.reward)
-	_check(restored.complete_at_home(), "docking completion closes the contract")
-	_check(not restored.active and restored.completed_count == 1,
-		"completion increments the voyage count")
-	_check(earned >= 140, "completion carries a meaningful reward")
-	var next = ContractScript.new()
-	next.completed_count = 1
-	_check(next.start({"qinglan": true, "zheya": true}), "a later voyage can start after the first target")
-	_check(next.target_id == "cangbo", "later voyages rotate to another planet")
+	restored.load_data(contract.save_data())
+	_check(restored.active and restored.phase == ContractScript.GO_HOME,
+		"the second objective survives save and reload")
+	_check(restored.arrive_home(), "entering home completes the second objective")
+	_check(not restored.active and restored.completed_count == 2,
+		"the two-step route ends after exactly two objectives")
+	_check(not restored.start(), "the completed two-step route does not repeat")
+	var migrated = ContractScript.new()
+	migrated.load_data({"active": true, "phase": "recover", "target_id": "zheya", "reward": 200,
+		"completed_count": 8})
+	_check(migrated.active and migrated.phase == ContractScript.RETURN_STATION
+		and migrated.completed_count == 0, "legacy scan contracts migrate to the new first objective")
+	_check(not migrated.save_data().has("reward"), "the new route carries no reward data")
 	print("VOYAGE_CONTRACT_TEST %s" % ("PASS" if failures == 0 else "FAIL"))
 	quit(1 if failures > 0 else 0)
