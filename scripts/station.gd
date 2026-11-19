@@ -277,17 +277,23 @@ func _update_doors(delta: float, in_station: bool, idx: int) -> void:
 func _setup_orbit() -> void:
 	if game == null or game.planets.is_empty():
 		return
-	var best: Node3D = null
+	# The home station is authored around the starting planet. When all baked
+	# planets are present before the first physics tick, nearest-planet lookup
+	# can otherwise select a different orbit just because it is closer in space.
+	var best: Node3D = orbit_planet if is_instance_valid(orbit_planet) else null
 	var best_distance := INF
 	var best_position := Vector3.ZERO
-	for planet in game.planets:
-		var planet_node: Node3D = planet
-		var planet_position := _planet_orbit_position(planet_node)
-		var distance: float = global_position.distance_squared_to(planet_position) - float(planet_node.radius) * float(planet_node.radius)
-		if distance < best_distance:
-			best_distance = distance
-			best = planet_node
-			best_position = planet_position
+	if best != null:
+		best_position = _planet_orbit_position(best)
+	else:
+		for planet in game.planets:
+			var planet_node: Node3D = planet
+			var planet_position := _planet_orbit_position(planet_node)
+			var distance: float = global_position.distance_squared_to(planet_position) - float(planet_node.radius) * float(planet_node.radius)
+			if distance < best_distance:
+				best_distance = distance
+				best = planet_node
+				best_position = planet_position
 	if best == null:
 		return
 	orbit_planet = best

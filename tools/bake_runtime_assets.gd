@@ -1,5 +1,5 @@
 extends SceneTree
-## Run headless before exporting. Snapshots are ignored generated runtime assets.
+## Run headless before exporting. Snapshots are shipped with the fixed runtime scene.
 var game
 const FILES := ["user://runtime_bake_knowledge.json", "user://runtime_bake_progress.json"]
 
@@ -71,7 +71,9 @@ func _run() -> void:
 			collision.free()
 		planet.terrain_collision_done = false
 		error = planet.RuntimeBake.save_generated(planet, "planet_" + planet.planet_id, [
-			"res://scripts/main.gd", "res://scripts/planet.gd", "res://scripts/planet_surface_bake.gd",
+			# World orchestration changes do not invalidate static planet geometry.
+			# Geometry parameters remain covered by SurfaceBake._signature().
+			"res://scripts/planet.gd", "res://scripts/planet_surface_bake.gd",
 			"res://scripts/architecture.gd", "res://scripts/underground.gd",
 			"res://scripts/procedural_geometry.gd", "res://scripts/procedural_dressing.gd",
 			"res://scripts/prop_placement.gd", "res://scripts/settings.gd"], planet.SurfaceBake._signature(planet))

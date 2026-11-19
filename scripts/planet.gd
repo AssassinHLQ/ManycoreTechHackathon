@@ -1223,6 +1223,7 @@ func _build_heightfield_surface_mesh() -> ArrayMesh:
 ## 返回 true 表示接成功了；失败返回 false，调用方会退回程序化地形。
 func _build_lux3d_surface() -> bool:
 	if not "--rebake-runtime" in OS.get_cmdline_user_args() and SurfaceBake.load_surface(self):
+		# 烘焙资源已经在保存前裁过洞口，加载时不能再次删面。
 		return true
 	var packed: PackedScene = load(lux_model_path)
 	if packed == null:
@@ -1358,6 +1359,7 @@ func _build_lux3d_surface() -> bool:
 		var rim_extra: float = 1.5 * prop_scale
 		cave_hole_angle = ((cave_mouth_radius + 0.6) * prop_scale + rim_extra) / radius
 	_displace_lux_mesh_to_pad(to_world, site_raw, pad_angle, pad_outer)
+	_cut_lux3d_cave_hole()
 	# 站点基准高度用**压平后的**值，后面 _ready 里重算时会得到同一个数
 	_lux_pad_height = site_raw
 
@@ -1374,6 +1376,67 @@ func _build_lux3d_surface() -> bool:
 		surface = mi as MeshInstance3D
 		break
 	return true
+
+
+## 按碰撞网格相同的角度判据，从 Lux3D 可见地表中裁掉井口。
+func _cut_lux3d_cave_hole() -> int:
+	if not cave_enabled or _lux_root == null or cave_hole_angle <= 0.0:
+		return 0
+	var cos_limit := cos(cave_hole_angle)
+	var root_inverse: Transform3D = _lux_root.global_transform.affine_inverse()
+	var removed_total := 0
+	for item in _lux_root.find_children("*", "MeshInstance3D", true, false):
+		var node := item as MeshInstance3D
+		var source_mesh: Mesh = node.mesh
+		if source_mesh == null or source_mesh.get_blend_shape_count() > 0:
+			continue
+		var rebuilt := ArrayMesh.new()
+		var node_to_root: Transform3D = root_inverse * node.global_transform
+		var removed_from_mesh := 0
+		for surface_index in range(source_mesh.get_surface_count()):
+			var primitive_type: int = source_mesh.surface_get_primitive_type(surface_index)
+			var arrays: Array = source_mesh.surface_get_arrays(surface_index)
+			var original_material: Material = source_mesh.surface_get_material(surface_index)
+			if primitive_type != Mesh.PRIMITIVE_TRIANGLES:
+				rebuilt.add_surface_from_arrays(primitive_type, arrays)
+				if original_material != null:
+					rebuilt.surface_set_material(surface_index, original_material)
+				continue
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			if indices.is_empty():
+				indices.resize(vertices.size())
+				for vertex_index in range(vertices.size()):
+					indices[vertex_index] = vertex_index
+			if indices.size() % 3 != 0:
+				rebuilt.add_surface_from_arrays(primitive_type, arrays)
+				if original_material != null:
+					rebuilt.surface_set_material(surface_index, original_material)
+				continue
+			var kept := PackedInt32Array()
+			var removed_in_surface := 0
+			for index in range(0, indices.size(), 3):
+				var a: Vector3 = node_to_root * vertices[indices[index]]
+				var b: Vector3 = node_to_root * vertices[indices[index + 1]]
+				var c: Vector3 = node_to_root * vertices[indices[index + 2]]
+				if (a + b + c).normalized().dot(cave_direction) > cos_limit:
+					removed_from_mesh += 1
+					removed_in_surface += 1
+					continue
+				kept.push_back(indices[index])
+				kept.push_back(indices[index + 1])
+				kept.push_back(indices[index + 2])
+			if removed_in_surface > 0:
+				arrays[Mesh.ARRAY_INDEX] = kept
+			rebuilt.add_surface_from_arrays(primitive_type, arrays)
+			if original_material != null:
+				rebuilt.surface_set_material(surface_index, original_material)
+		if removed_from_mesh > 0:
+			node.mesh = rebuilt
+			removed_total += removed_from_mesh
+	if removed_total > 0:
+		print("[CAVE] %s：从 Lux3D 可见地表裁掉井口三角面 %d 个" % [planet_id, removed_total])
+	return removed_total
 
 
 ## 把 Lux3D 网格的顶点在站点附近按 `terrain_height` 的平地混合公式压平。
@@ -2767,7 +2830,7 @@ const WORKSHOP_THEMES := {
 
 ## Purpose-specific equipment; keep each outpost sparse and readable.
 const OUTPOST_EQUIPMENT := {
-	"qinglan": ["oxygen-generator", "wind-turbine"],
+	"qinglan": ["oxygen-generator"],
 	"zheya": ["mining-rig", "fuel-tank"],
 	"cangbo": ["stasis-pod", "holo-terminal"],
 	"xuanjing": ["power-cell", "control-console"],

@@ -303,17 +303,7 @@ static func pocket(root: Node3D, kind: String) -> void:
 				d._box(Vector3(0.08, 0.16, 9.9), Vector3(side * 5.81, 0.28, 0), d.dark)
 				d._box(Vector3(0.34, 0.07, 10.0), Vector3(side * 6.0, 3.43, 0), d.metal)
 				d._panel(Vector3(side * 5.81, 1.5, -3.4), Vector2(1.1, 1.4), Basis(Vector3.UP, -side * PI * 0.5))
-		"dungeon":
-			d.metal.albedo_color = Color("728390")
-			# Wall ribs and recessed service plates keep the 9 m combat lane unobstructed.
-			for room in range(6):
-				var z := -float(room) * 12.0
-				for side in [-1.0, 1.0]:
-					for dz in [-3.5, 3.5]:
-						d._box(Vector3(0.12, 3.3, 0.20), Vector3(side * 4.31, 1.75, z + dz), d.dark)
-						d._box(Vector3(0.18, 0.08, 0.34), Vector3(side * 4.31, 3.33, z + dz), d.metal)
-						d._panel(Vector3(side * 4.31, 1.35, z), Vector2(1.4, 0.65), Basis(Vector3.UP, -side * PI * 0.5))
-	# The actual return portal is identified by its anchor, so all six keep the same layout.
+	# The actual return portal is identified by its anchor, so all five keep the same layout.
 	for portal in root.find_children("ReturnPortal", "Node3D", true, false):
 		var p: Vector3 = root.to_local(portal.global_position)
 		for side in [-1.0, 1.0]:

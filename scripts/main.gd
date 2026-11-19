@@ -28,6 +28,9 @@ const LOOP_DURATION := 1020.0
 const LOCAL_SCENE_FAR := 350.0 # Includes the snow world's moon, below the 400 m world spacing.
 ## 打印跨帧建场各阶段耗时（排查首屏卡顿时打开）
 const BUILD_TIMING := false
+## 正常运行直接挂载全部已烘焙星球。只有带 --rebake-runtime 的专用烘焙进程
+## 才允许走程序化建场，避免玩家启动时按距离生成代理和地表。
+const FULL_BAKED_WORLD := true
 var _stage_usec := 0
 var save_path := "user://starward_knowledge.json"
 ## 行囊进度的存档路径；测试可在 add_child 之前覆盖，避免写进正式存档
@@ -246,16 +249,20 @@ const GARGANTUA_DISK_RAMP_MAX := 1211.0
 const GARGANTUA_DISK_BAND_FREQ := 0.011
 ## 三层吸积盘壳的内缘 / 外缘半径（模型局部单位，实测）。
 ## 顺序与 glb 里的 surface 顺序一致：light1 → light2 → light3。
-## 内缘统一设在 180：视界那个球（black hole center）外缘实测约 176，
-## 丝带从它外面开始，中心才有那个纯黑的洞，而不是一团过曝的白。
-const GARGANTUA_SHELL_INNER := [180.0, 180.0, 180.0]
+## 内缘统一设在 260：light1/2/3 是向中心弯折的壳，内侧会穿进
+## distortion（半径约 229）和中心壳。留出这段间隙，中心才不会出现
+## 随旋转跳变的橙色三角块。
+const GARGANTUA_SHELL_INNER := [260.0, 260.0, 260.0]
 const GARGANTUA_SHELL_OUTER := [646.0, 558.0, 1211.0]
 var gargantua: Node3D
 ## 带自发光的材质。吸积盘壳用的是 ShaderMaterial，视界壳仍是 StandardMaterial3D，
 ## 所以这里存基类 Material。
 var gargantua_glow_materials: Array[Material] = []
-## 带自发光的子网格 —— 只转它们，不转整个 gargantua 节点。
+## 吸积盘与外圈尘埃的 shader 材质。只更新它们的图案相位，不旋转低模网格。
+var gargantua_shader_materials: Array[ShaderMaterial] = []
+## 保留这个数组供诊断使用。视觉自转已经改为 shader 相位，不再旋转网格节点。
 var gargantua_glow_nodes: Array[MeshInstance3D] = []
+var gargantua_spin_phase := 0.0
 var solar_intensity := 0.0
 var death_timer := 0.0
 var death_duration := 3.8
@@ -326,10 +333,13 @@ func _setup_stream_prewarm_viewport() -> void:
 func _build_world_progressive() -> void:
 	await _yield_frame()
 	_stage_begin()
-	# 开局只建母星；其他行星会在离开初始区域后逐颗准备。
-	#   否则菜单相机要等 44 秒才建得出来，玩家看到纯黑屏。
-	#   详见 _build_planets 头部注释。
-	await _build_planets(true)
+	if FULL_BAKED_WORLD:
+		# 先把母星和菜单所需节点挂上，剩余固定快照在菜单可见后后台入场。
+		# --rebake-runtime 仍会走同一入口，但 Planet 会明确使用程序化路径产出快照。
+		await _build_planets(true)
+	else:
+		# 兼容旧的渐进式建场模式。
+		await _build_planets(true)
 	_stage_end("planet home")
 	await _yield_frame()
 	_stage_begin()
@@ -340,7 +350,7 @@ func _build_world_progressive() -> void:
 	# attachment before handing control to the player so boarding cannot hitch.
 	_stage_begin()
 	await RuntimeBakeScript.prepare_generated(get_tree(), "station")
-	_build_station()
+	await _build_station()
 	_stage_end("station initial")
 	await _yield_frame()
 	_stage_begin()
@@ -414,10 +424,6 @@ func _build_world_progressive() -> void:
 	guide_card.name = "GuideCard"
 	add_child(guide_card)
 	guide_card.setup(self)
-	run_summary = RunSummaryScript.new()
-	run_summary.name = "RunSummary"
-	add_child(run_summary)
-	run_summary.setup(self)
 	_stage_end("hud")
 	await _yield_frame()
 	_stage_begin()
@@ -433,12 +439,28 @@ func _build_world_progressive() -> void:
 	collision_budget.name = "PlanetCollisionBudget"
 	collision_budget.game = self
 	add_child(collision_budget)
+	if FULL_BAKED_WORLD:
+		_world_stream_requested = true
+		world_build_remaining = true
 	world_ready = true
 	if "--profile-runtime" in OS.get_cmdline_user_args():
 		var probe: Node = load("res://scripts/performance_probe.gd").new()
 		probe.game = self
 		add_child(probe)
 	world_ready_finished.emit()
+	if FULL_BAKED_WORLD:
+		# 菜单已经可见。剩余 19 颗星球从固定快照后台进入场景，
+		# 不再把远端星球或碰撞留到玩家接近时处理。
+		await _yield_frame()
+		_stage_begin()
+		await _build_planets(false)
+		_stage_end("fixed baked remote planets")
+		world_build_remaining = false
+		_build_attic()
+		await _yield_frame()
+		world_areas_ready = true
+		world_areas_ready_finished.emit()
+		return
 
 	# Delay remote areas until the player leaves the initial planet. They are
 	# prepared ahead of arrival while the ship is in transit.
@@ -680,6 +702,8 @@ func dev_jump_to_ending() -> bool:
 func dev_unlock_records() -> void:
 	var added := 0
 	for anomaly in anomalies:
+		if not is_instance_valid(anomaly):
+			continue
 		if not discovered.has(anomaly.anomaly_id):
 			discovered[anomaly.anomaly_id] = true
 			added += 1
@@ -746,7 +770,7 @@ func _dev_clear_overlays() -> void:
 ##   meteor  流星频率（白天的天空设 0）
 ##   flow    流转速度（星层差速自转 + 星云漂移的总开关）
 ## 可选 -> {n_axis, n_band, n_scale, n_warp, n_thr, n_seed, n_struct}
-##   大尺度结构（星云 / 高空云）的**形状**。上一版六个世界共用同一套 fbm，
+##   大尺度结构（星云 / 高空云）的**形状**。上一版五个口袋世界共用同一套 fbm，
 ##   只换颜色与密度，云的轮廓是同一片；现在每个世界各给一套噪声基：
 ##     n_axis   带子朝向           n_band   带子集中度（1 = 铺满全天）
 ##     n_scale  噪声尺度（小=大团）  n_warp   域扭曲（小=软团，大=长丝）
@@ -822,14 +846,6 @@ const SKY_PRESETS := {
 		"n_axis": Vector3(0.86, 0.16, 0.48), "n_band": 3.2, "n_scale": 2.6,
 		"n_warp": 2.35, "n_thr": 0.34, "n_seed": Vector3(1.9, 6.3, 8.1), "n_struct": 0.18,
 	},
-	"dungeon": {
-		"zenith": Vector3(0.012, 0.018, 0.03), "horizon": Vector3(0.05, 0.07, 0.11), "grad": 1.8,
-		"stars": 0.22, "nebula": 0.35, "haze": 0.05, "haze_color": Vector3(0.1, 0.13, 0.18),
-		"twinkle": 0.18, "meteor": 0.0, "flow": 0.5,
-		# 镜牢：窄而高的云缝，碎、暗、压抑
-		"n_axis": Vector3(-0.16, 0.86, 0.48), "n_band": 5.0, "n_scale": 5.8,
-		"n_warp": 1.50, "n_thr": 0.46, "n_seed": Vector3(3.1, 4.4, 7.7), "n_struct": 0.08,
-	},
 }
 
 
@@ -859,7 +875,7 @@ func apply_sky(key: String) -> void:
 	sky_material.set_shader_parameter("nebula_color_a", neb_a)
 	sky_material.set_shader_parameter("nebula_color_b", neb_b)
 	# 大尺度结构的**形状**：每个世界一套自己的噪声基（轴向/带宽/尺度/扭曲/阈值/种子）。
-	# 只推颜色和密度的话，六个世界的云是同一片 —— 上一版就是这样。
+	# 只推颜色和密度的话，五个口袋世界的云是同一片 —— 上一版就是这样。
 	sky_material.set_shader_parameter("nebula_axis", preset.get("n_axis", Vector3(0.22, 0.82, -0.46)))
 	sky_material.set_shader_parameter("nebula_band", float(preset.get("n_band", 4.0)))
 	sky_material.set_shader_parameter("nebula_scale", float(preset.get("n_scale", 4.2)))
@@ -1291,7 +1307,7 @@ func _build_planets(home_only := false) -> void:
 		planet.base_color = definition.color
 		planet.accent_color = definition.accent
 		planet.description = definition.description
-		planet.stream_proxy = not home_only and DisplayServer.get_name() != "headless"
+		planet.stream_proxy = not FULL_BAKED_WORLD and not home_only and DisplayServer.get_name() != "headless"
 		add_child(planet)
 		if not planet.runtime_scene_ready:
 			await planet.runtime_scene_ready_finished
@@ -1912,33 +1928,51 @@ func _build_gargantua() -> void:
 	# 面积会忽大忽小，看上去像「一层黄、一层黑」在跳。所以按层号拉开亮度，
 	# 层与层之间留余量，遮挡时不会整片塌成黑。
 	#
-	# 自转交给 _update_gargantua，那里只转发光子节点，不动名牌、不动节点本身。
+	# 自转交给 _update_gargantua，那里只更新 shader 图案相位，不动网格节点。
 	var disk_shader: Shader = load(GARGANTUA_DISK_SHADER)
 	var haze_shader: Shader = load(GARGANTUA_HAZE_SHADER)
 	var glow_layers: Array[MeshInstance3D] = []
-	var layer_index := 0
+	gargantua_shader_materials.clear()
+	gargantua_glow_materials.clear()
 	for node in gargantua.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := node as MeshInstance3D
 		var mesh: Mesh = mesh_instance.mesh
+		var has_disk_surface := false
 		for surface in range(mesh.get_surface_count()):
 			var material := mesh_instance.get_active_material(surface)
 			if not (material is StandardMaterial3D):
 				continue
 			var standard := (material as StandardMaterial3D).duplicate() as StandardMaterial3D
 			var mat_name: String = standard.resource_name if standard.resource_name != "" else ""
-			if standard.emission_enabled:
+			var texture_key := ""
+			if standard.albedo_texture != null:
+				texture_key = standard.albedo_texture.resource_path.to_lower()
+			var mat_key := mat_name.to_lower()
+			var lookup_key := mat_key if not mat_key.is_empty() else texture_key
+			var disk_index := -1
+			var is_haze := lookup_key.contains("blackoutside") or lookup_key.begins_with("ring") \
+				or (mat_key.is_empty() and lookup_key.contains("blackholering"))
+			if not is_haze and lookup_key.contains("light1"):
+				disk_index = 0
+			elif not is_haze and lookup_key.contains("light2"):
+				disk_index = 1
+			elif not is_haze and lookup_key.contains("light3"):
+				disk_index = 2
+			if disk_index >= 0:
 				# 吸积盘丝带 —— 换成按半径求值的 shader。
+				has_disk_surface = true
 				var disk := ShaderMaterial.new()
 				disk.shader = disk_shader
-				disk.set_shader_parameter("inner_radius", GARGANTUA_SHELL_INNER[layer_index])
-				disk.set_shader_parameter("outer_radius", GARGANTUA_SHELL_OUTER[layer_index])
+				disk.set_shader_parameter("inner_radius", GARGANTUA_SHELL_INNER[disk_index])
+				disk.set_shader_parameter("outer_radius", GARGANTUA_SHELL_OUTER[disk_index])
+				disk.set_shader_parameter("rotation_phase", gargantua_spin_phase)
 				disk.set_shader_parameter("ramp_max", GARGANTUA_DISK_RAMP_MAX)
 				# 层号每多一层，亮度稍降一点；下限 0.55，别让外环彻底黑掉。
 				#
 				# 亮度不能高：这三层壳在半径上大面积重叠（light1 到 646、light2 到 558、
 				# light3 到 1211），加法混合下中心会被叠三次。base 0.45 × 三层 ≈ 1.2，
 				# 刚好过曝一点点、还有层次；再高就糊成一团纯白。
-				var layer := clampf(1.0 - layer_index * 0.12, 0.55, 1.0)
+				var layer := clampf(1.0 - disk_index * 0.12, 0.55, 1.0)
 				disk.set_shader_parameter("energy", 0.45 * layer)
 				disk.set_shader_parameter("band_frequency", GARGANTUA_DISK_BAND_FREQ)
 				disk.set_shader_parameter("band_strength", 0.5)
@@ -1947,8 +1981,8 @@ func _build_gargantua() -> void:
 				disk.set_shader_parameter("core_fade", 0.012)
 				mesh_instance.set_surface_override_material(surface, disk)
 				gargantua_glow_materials.append(disk)
-				layer_index += 1
-			elif mat_name.begins_with("black hole blackoutside") or mat_name.begins_with("ring"):
+				gargantua_shader_materials.append(disk)
+			elif is_haze:
 				# 外圈浮尘 / 碎屑：同一张横向条纹贴图，也会变成虚线状暗环，
 				# 所以同样换成按半径求值（更暗、更薄），且从吸积盘外缘才开始画。
 				var haze := ShaderMaterial.new()
@@ -1958,31 +1992,36 @@ func _build_gargantua() -> void:
 				haze.set_shader_parameter("energy", 0.34)
 				haze.set_shader_parameter("band_frequency", 0.009)
 				haze.set_shader_parameter("band_strength", 0.55)
+				haze.set_shader_parameter("rotation_phase", gargantua_spin_phase)
 				mesh_instance.set_surface_override_material(surface, haze)
+				gargantua_shader_materials.append(haze)
 			else:
 				# 视界与扭曲壳：纯黑，本来就没有贴图。
 				standard.vertex_color_use_as_albedo = false
-				standard.cull_mode = BaseMaterial3D.CULL_DISABLED
+				if mat_key.contains("black hole center"):
+					standard.cull_mode = BaseMaterial3D.CULL_BACK
+				elif mat_key.contains("black hole distortion"):
+					standard.cull_mode = BaseMaterial3D.CULL_FRONT
+				else:
+					standard.cull_mode = BaseMaterial3D.CULL_DISABLED
 				mesh_instance.set_surface_override_material(surface, standard)
-		if layer_index > 0:
+		if has_disk_surface:
 			glow_layers.append(mesh_instance)
 	gargantua_glow_nodes = glow_layers
 
 
 ## 吸积盘自转。
 ##
-## 以前是 gargantua.rotate_object_local(Vector3.UP, …)，转的是**整个节点**：
-## 盘面跟着一起绕轴，侧过去时会缩成一条线，于是画面周期性「变黑又变亮」。
-## 现在只转带自发光的那几个子网格，节点本身保持固定姿态，转速也压慢，
-## 看上去就是盘面在匀速转，而不是整体在晃。
-## 另外不再做亮度呼吸 —— 那点 ±6% 的脉动会和上面的遮挡问题叠在一起，越看越像闪。
+## 以前旋转的是包含视界、扭曲壳和吸积盘的整张低模网格，
+## 侧视时壳体遮挡关系会周期性改变，画面就像闪烁。
+## 现在只改变 disk/haze shader 的图案相位，几何遮挡关系保持固定。
 func _update_gargantua(delta: float) -> void:
 	if gargantua == null:
 		return
-	var step := delta * GARGANTUA_SPIN
-	for node in gargantua_glow_nodes:
-		if is_instance_valid(node):
-			node.rotate_object_local(Vector3.UP, step)
+	gargantua_spin_phase = fmod(gargantua_spin_phase + delta * GARGANTUA_SPIN, TAU)
+	for material in gargantua_shader_materials:
+		if is_instance_valid(material):
+			material.set_shader_parameter("rotation_phase", gargantua_spin_phase)
 
 
 func _build_comet() -> void:
@@ -2071,9 +2110,12 @@ func _build_station() -> void:
 	station = StationScript.new()
 	station.name = "HomecomingStation"
 	station.game = self
+	station.orbit_planet = home
 	station.position = Vector3(4300.0, 1180.0, -1500.0) * ORBIT_SCALE
 	station.rotation.y = 0.42
 	add_child(station)
+	if not station.runtime_scene_ready:
+		await station.runtime_scene_ready_finished
 
 
 ## 两座远景空间站（外部模型，CC BY 4.0，作者 re1monsen）。
@@ -2393,7 +2435,6 @@ func _process(delta: float) -> void:
 	if in_attic:
 		elapsed += 0.0
 		_update_fishing(delta)
-		_update_dungeon(delta)
 	else:
 		elapsed += delta
 	_update_sun_visual(delta)
@@ -2555,6 +2596,10 @@ func _set_mouse_capture(requested := true) -> void:
 
 func start_game() -> void:
 	if state != "menu":
+		return
+	if FULL_BAKED_WORLD and world_build_remaining:
+		if hud != null:
+			hud.show_toast("星系正在加载固定烘焙场景，请稍候", 2.4)
 		return
 	elapsed = 0.0
 	if roast != null:
@@ -2726,9 +2771,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		if scope_active:
 			_exit_scope()
 			return
-		if run_summary != null and run_summary.open:
-			run_summary.close()
-			return
 		if journal_book_open:
 			toggle_travel_journal()
 		elif codex_open:
@@ -2809,30 +2851,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			bag_scroll(1)
 		elif code_name == "Up":
 			bag_scroll(-1)
-	elif dungeon_combat_active() and event is InputEventKey and event.is_action_pressed("jump"):
-		# 镜牢里 Space 是闪避（原作：空格闪避）
-		dungeon_dodge()
-	elif dungeon_combat_active() and event is InputEventKey and event.pressed and not event.echo:
-		# 1 / 2 / 3 换武器（原作：棱镜杖 / 镜刃 / 折光弩）
-		var weapon_code: String = OS.get_keycode_string((event as InputEventKey).physical_keycode)
-		match weapon_code:
-			"1":
-				dungeon_switch_weapon("wand")
-			"2":
-				dungeon_switch_weapon("blade")
-			"3":
-				dungeon_switch_weapon("crossbow")
-	elif dungeon_combat_active() and event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			dungeon_attack("glow")
-		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			dungeon_attack("blast")
 	elif event.is_action_pressed("interact"):
 		if scope_active:
 			_exit_scope()
-			return
-		if run_summary != null and run_summary.open:
-			run_summary.close()
 			return
 		_interact()
 
@@ -3067,16 +3088,6 @@ func _interact() -> void:
 					if hole >= 0:
 						start_fishing(hole)
 						return
-				# 静镜室：取一枚镜印
-				if pocket_key == "dungeon":
-					var boon_index := near_dungeon_boon()
-					if boon_index >= 0:
-						take_dungeon_boon(boon_index)
-						return
-				# 镜界里的镜牢门
-				if pocket_key == "mirror" and near_dungeon_gate():
-					enter_dungeon()
-					return
 				# 听雨院：先点灯，再坐下
 				if pocket_key == "alley":
 					var court_lamp := near_court_lamp()
@@ -3372,6 +3383,8 @@ func _hidden_echo_progress() -> Array:
 	var total := 0
 	var found := 0
 	for anomaly in anomalies:
+		if not is_instance_valid(anomaly):
+			continue
 		if route_link.key_for(anomaly.anomaly_id) != "":
 			continue
 		if anomaly.anomaly_id in ["qinglan", "zheya", "cangbo", "xuanjing", "xuanyuan"]:
@@ -3524,6 +3537,8 @@ func _find_scan_target() -> Node3D:
 	var best_score := INF
 	var result: Node3D = null
 	for anomaly in anomalies:
+		if not is_instance_valid(anomaly):
+			continue
 		if not route_link.can_scan(anomaly.anomaly_id):
 			continue
 		var target: Vector3 = anomaly.scan_position() if anomaly.has_method("scan_position") \
@@ -3603,13 +3618,11 @@ const AtticWorldsScript = preload("res://scripts/attic_worlds.gd")
 const MinigameScript = preload("res://scripts/minigame.gd")
 const ProgressScript = preload("res://scripts/progress.gd")
 const BagPanelScript = preload("res://scripts/bag_panel.gd")
-const DungeonScript = preload("res://scripts/dungeon.gd")
 const FishingHudScript = preload("res://scripts/fishing_hud.gd")
 const HandbookScript = preload("res://scripts/handbook.gd")
 const CodexScript = preload("res://scripts/codex.gd")
 const TravelJournalScript = preload("res://scripts/travel_journal.gd")
 const GuideScript = preload("res://scripts/guide.gd")
-const RunSummaryScript = preload("res://scripts/run_summary.gd")
 
 const ATTIC_ORIGIN := Vector3(0.0, -40000.0, 0.0)
 const ATTIC_GRAVITY := 18.0
@@ -3982,8 +3995,8 @@ func next_worth_doing() -> String:
 	var tea_step: int = attic.tea_step if attic != null else 0
 	if tea_step < 3:
 		return "四件纪念都归架了。回阁楼茶桌，慢慢泡完一壶茶。"
-	if not dungeon_cleared():
-		return "主线已经完成。阁楼的穿衣镜通向镜界回廊，可以带回棱镜之心，也可进入东侧镜牢参加自愿试炼。"
+	if not has_prism_heart:
+		return "主线已经完成。阁楼的穿衣镜通向镜界回廊，可以带回棱镜之心。"
 	# 三个小游戏都留过成绩
 	var games_ok := true
 	if progress != null:
@@ -3994,19 +4007,10 @@ func next_worth_doing() -> String:
 		return "主线已经完成。云海风律、森林萤火与雨巷檐雨各有一处独立小游戏，可以去留下成绩。"
 	if attic_worlds != null and not attic_worlds.court_rested:
 		return "主线已经完成。雨巷尽头的旧门后还藏着一座听雨院，点亮三盏听雨灯，在檐下坐一会儿。"
-	var clears: int = int(progress.dungeon.get("clears", 0)) if progress != null else 0
-	if clears < 1:
-		return "主线已经完成。还可以走进镜界东侧的镜牢门，试试三种武器与三形态的镜心余影。"
 	# 风琴礁：三种来风都听过没有
 	if not wind_organ_solved():
 		return "主线已经完成。云海栈桥东侧还有一座风琴礁，可以去听三种来风。"
-	if progress != null and not bool(progress.dungeon.get("flawless", false)):
-		return "主线已经完成。镜牢的最佳纪录已写进行囊；下一次可以试试无伤通关，结算会给出 S 评价与「毫发无伤」。"
-	return "这趟旅程的主线已经完成，镜心与镜牢也都安静过了。可以继续刷镜印、填满鱼类图鉴，或只是回任意世界看看风景。"
-
-
-func dungeon_cleared() -> bool:
-	return has_prism_heart
+	return "这趟旅程的主线已经完成，可以继续填满鱼类图鉴、完成小游戏，或只是回任意世界看看风景。"
 
 
 func wind_organ_solved() -> bool:
@@ -4118,8 +4122,6 @@ var codex_open := false
 ## 旅行小册（阁楼茶几上，按 E 翻开）
 var travel_journal: CanvasLayer
 var journal_book_open := false
-## 镜牢结算画面
-var run_summary: CanvasLayer
 ## 是否坐在云舟上（相机与位置跟随船）
 var boat_seated := false
 ## 望远镜：是否在看 / 看之前的相机变换
@@ -4135,13 +4137,6 @@ var guide_start_timer := -1.0
 var guide_turned_dial := false
 var guide_opened_door := false
 var guide_entered_world := false
-## 本次镜牢捡到的镜币（离开时结算进金币）
-var dungeon_coins := 0
-## 镜牢回廊状态
-var dungeon_controller: Node3D
-var dungeon_room := 0
-var dungeon_time := 0.0
-var dungeon_active := false
 ## 冰钓状态：-1 表示没在钓
 ##   phase: "" 空 / "wait" 等咬钩 / "reel" 收线中
 var fishing_hole := -1
@@ -4231,10 +4226,6 @@ func _clear_attic_context() -> void:
 		attic_worlds.boat_active = false
 	fishing_hole = -1
 	fishing_phase = ""
-	dungeon_active = false
-	if is_instance_valid(dungeon_controller):
-		dungeon_controller.queue_free()
-		dungeon_controller = null
 	guide_start_timer = -1.0
 	guide_turned_dial = false
 	guide_opened_door = false
@@ -4459,19 +4450,6 @@ func leave_pocket() -> void:
 	player.reparent(attic, false)
 	var back := Vector3(0.0, 1.05, 1.4)
 	match key:
-		"dungeon":
-			# 从镜牢出来回镜界，不回阁楼
-			var mirror: Node3D = attic_worlds.world_node("mirror")
-			if mirror != null:
-				dungeon_active = false
-				pocket_key = "mirror"
-				player.reparent(mirror, false)
-				player.global_position = attic_worlds.spawn_position("mirror")
-				player.velocity = Vector3.ZERO
-				player.reset_physics_interpolation()
-				apply_sky("mirror")
-				audio.play_ui(420.0)
-				return
 		"mirror":
 			back = Vector3(-attic.ROOM_HALF_X + 1.5, 1.05, 0.9)
 		_:
@@ -4771,224 +4749,6 @@ func near_court_bench() -> bool:
 	return player.global_position.distance_to((anchor as Node3D).global_position) < 2.2
 
 
-## 镜界里：是否站在镜牢门前。
-func near_dungeon_gate() -> bool:
-	if pocket_key != "mirror" or attic_worlds == null or player == null:
-		return false
-	var anchor = attic_worlds.dungeon_gate_anchor()
-	if anchor == null:
-		return false
-	return player.global_position.distance_to((anchor as Node3D).global_position) < 3.0
-
-
-## 走进镜牢回廊。
-func enter_dungeon() -> void:
-	if attic_worlds == null or player == null:
-		return
-	var world: Node3D = attic_worlds.world_node("dungeon")
-	if world == null:
-		return
-	pocket_key = "dungeon"
-	apply_sky("dungeon")
-	dungeon_active = true
-	dungeon_room = 0
-	dungeon_coins = 0
-	dungeon_time = 0.0
-	player.reparent(world, true)
-	player.global_position = attic_worlds.spawn_position("dungeon")
-	player.velocity = Vector3.ZERO
-	player.reset_physics_interpolation()
-	player.camera.current = true
-	audio.play_ui(420.0)
-	if dungeon_controller != null and is_instance_valid(dungeon_controller):
-		dungeon_controller.queue_free()
-	dungeon_controller = DungeonScript.new()
-	dungeon_controller.name = "DungeonCombat"
-	world.add_child(dungeon_controller)
-	dungeon_controller.start(self)
-	if progress != null:
-		if progress.unlock("dungeon_first"):
-			hud.show_toast("成就 · 镜牢初探 · 按 B 查看行囊", 4.0)
-		progress.save()
-	hud.show_toast("镜牢回廊 · 往深处走，尽头是镜心内厅（%d 间）" % attic_worlds.dungeon_room_count(), 3.6)
-
-
-## 逐帧：更新所在房间与用时，抵达尽头就结算。
-func _update_dungeon(delta: float) -> void:
-	if not dungeon_active or pocket_key != "dungeon" or player == null:
-		return
-	dungeon_time += delta
-	var room: int = attic_worlds.dungeon_room_at(player.global_position)
-	if room != dungeon_room:
-		dungeon_room = room
-		var kind: String = attic_worlds.dungeon_room_kind(room)
-		var titles := {"combat": "镜室", "boon": "静镜室", "boss": "镜心内厅"}
-		# 镜币：镜室 +12，镜心内厅 +60（原作口径）
-		if kind == "combat":
-			dungeon_coins += 12
-		elif kind == "boss":
-			dungeon_coins += 60
-		hud.show_toast("第 %d 间 · %s" % [room + 1, String(titles.get(kind, kind))], 2.2)
-	var finish = attic_worlds.dungeon_finish_anchor()
-	if finish != null and player.global_position.distance_to((finish as Node3D).global_position) < 3.0:
-		finish_dungeon(true)
-
-
-## 结算镜牢：评价、最佳纪录、成就。
-func finish_dungeon(cleared: bool) -> void:
-	if not dungeon_active:
-		return
-	dungeon_active = false
-	var seconds := dungeon_time
-	var rooms := dungeon_room + 1
-	var rank := "B"
-	var rank_name := ""
-	var best_text := ""
-	var kills := 0
-	var hits := 0
-	var boons: Array = []
-	if dungeon_controller != null and is_instance_valid(dungeon_controller):
-		kills = int(dungeon_controller.kills)
-		hits = int(dungeon_controller.hits_taken)
-		boons = dungeon_controller.boons.duplicate()
-	# 镜币结算：离开镜牢时存入行囊
-	var coin_gain := dungeon_coins
-	if progress != null and coin_gain > 0:
-		progress.add_coins(coin_gain)
-		progress.mirror_coins_total += coin_gain
-		progress.mirror_coins = coin_gain
-	dungeon_coins = 0
-	if progress != null:
-		var record: Dictionary = progress.record_dungeon(seconds, rooms, cleared, kills, hits, boons)
-		rank = String(record["rank"])
-		rank_name = String(record.get("rank_name", ""))
-		if bool(record["is_best"]):
-			best_text = " · 新的最好成绩"
-		elif float(record["best_seconds"]) > 0.0:
-			best_text = " · 最好 %s %s" % [String(record["best_rank"]), progress.time_text(float(record["best_seconds"]))]
-		if cleared and progress.unlock("dungeon_clear"):
-			hud.show_toast("成就 · 走到尽头 · 按 B 查看行囊", 4.0)
-		if cleared and hits == 0 and progress.unlock("dungeon_flawless"):
-			hud.show_toast("成就 · 毫发无伤 · 按 B 查看行囊", 4.0)
-		progress.save()
-	# 结算画面（照原作 run-summary 版式）
-	var record_for_summary: Dictionary = {}
-	if progress != null:
-		record_for_summary = progress.dungeon.duplicate()
-		progress.push_recent_run(seconds, rooms, cleared, kills, hits, coin_gain, rank)
-		progress.save()
-	if run_summary != null:
-		run_summary.show_summary({
-			"cleared": cleared,
-			"failed": not cleared,
-			"rank": rank,
-			"rank_name": rank_name,
-			"rank_note": String(record_for_summary.get("rank_note", "")),
-			"time_text": progress.time_text(seconds) if progress != null else "00:00",
-			"hits": hits,
-			"kills": kills,
-			"coins": coin_gain,
-			"rooms": rooms,
-			"boons": boons.size(),
-			"depth": rooms,
-			"best_rank": String(record_for_summary.get("best_rank", "")),
-			"best_seconds": float(record_for_summary.get("best_seconds", 0.0)),
-			"is_best": best_text.contains("新的最好成绩"),
-			"has_best": float(record_for_summary.get("best_seconds", 0.0)) > 0.0,
-		})
-	hud.show_toast("镜牢回廊 · %s · %s %s · %s · 镜币 +%d · %d 间 · 击退 %d · 受击 %d · 镜印 %d%s" % [
-		"抵达尽头" if cleared else "中途退出",
-		rank, rank_name, progress.time_text(seconds) if progress != null else "",
-		coin_gain, rooms, kills, hits, boons.size(), best_text], 5.6)
-	audio.play_ui(780.0 if cleared else 340.0)
-	if dungeon_controller != null and is_instance_valid(dungeon_controller):
-		dungeon_controller.stop()
-	# 回到镜界
-	pocket_key = ""
-	var mirror: Node3D = attic_worlds.world_node("mirror")
-	if mirror != null:
-		player.reparent(mirror, false)
-		player.global_position = attic_worlds.spawn_position("mirror")
-		pocket_key = "mirror"
-		apply_sky("mirror")
-	player.velocity = Vector3.ZERO
-	player.reset_physics_interpolation()
-
-
-## 静镜室里：站在哪枚镜印旁（返回序号，-1 表示没有）
-func near_dungeon_boon() -> int:
-	if pocket_key != "dungeon" or attic_worlds == null or player == null or dungeon_controller == null:
-		return -1
-	if attic_worlds.dungeon_room_kind(dungeon_room) != "boon":
-		return -1
-	for i in range(attic_worlds.dungeon_boon_count(dungeon_room)):
-		var anchor = attic_worlds.dungeon_boon_anchor(dungeon_room, i)
-		if anchor == null:
-			continue
-		if player.global_position.distance_to((anchor as Node3D).global_position) < 2.2:
-			return i
-	return -1
-
-
-## 取走一枚镜印
-func take_dungeon_boon(index: int) -> void:
-	if dungeon_controller == null or not is_instance_valid(dungeon_controller):
-		return
-	var info: Dictionary = dungeon_controller.pick_boon(dungeon_room, index)
-	if info.is_empty():
-		return
-	audio.play_ui(680.0)
-	hud.show_toast("镜印 · %s · %s" % [String(info["name"]), String(info["desc"])], 5.0)
-
-
-## 镜牢战斗是否可用
-func dungeon_combat_active() -> bool:
-	return pocket_key == "dungeon" and dungeon_controller != null and is_instance_valid(dungeon_controller) and dungeon_controller.active
-
-
-## 镜牢里被镜影打空生命：按失败结算并退出
-func on_dungeon_defeat() -> void:
-	if not dungeon_active:
-		return
-	hud.show_toast("镜影涌上来 · 你被推出了镜牢", 4.0)
-	finish_dungeon(false)
-
-
-## 镜牢里换武器
-func dungeon_switch_weapon(id: String) -> void:
-	if not dungeon_combat_active():
-		return
-	if dungeon_controller.set_weapon(id):
-		audio.play_ui(620.0)
-
-
-## 镜牢里闪避
-func dungeon_dodge() -> void:
-	if not dungeon_combat_active() or player == null:
-		return
-	var forward := -player.global_transform.basis.z
-	if dungeon_controller.dodge(forward):
-		audio.play_ui(500.0)
-
-
-## 三种武器的输入入口：kind = glow / blast / special
-func dungeon_attack(kind: String) -> void:
-	if not dungeon_combat_active() or player == null:
-		return
-	var camera: Camera3D = get_active_camera()
-	var aim := Vector3.FORWARD
-	if camera != null:
-		aim = -camera.global_transform.basis.z
-	var origin: Vector3 = player.global_position + Vector3(0, 1.2, 0)
-	match kind:
-		"glow":
-			dungeon_controller.attack_glow(aim, origin)
-		"blast":
-			dungeon_controller.attack_blast(origin)
-		"special":
-			dungeon_controller.attack_special(origin)
-
-
 ## 小世界里：站在哪个小游戏入口旁边（返回 chime / firefly / rain，空串表示没有）。
 func near_minigame() -> String:
 	if pocket_key == "" or pocket_key == "mirror" or pocket_key == "snow" or attic_worlds == null or player == null:
@@ -5071,6 +4831,8 @@ func continue_after_end() -> void:
 
 func _anomaly_by_id(id: String) -> Node3D:
 	for anomaly in anomalies:
+		if not is_instance_valid(anomaly):
+			continue
 		if anomaly.anomaly_id == id:
 			return anomaly
 	return null

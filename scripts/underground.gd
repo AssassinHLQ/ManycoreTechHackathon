@@ -44,7 +44,7 @@ static func build(planet, kind: String) -> void:
 	var anchor := Node3D.new()
 	anchor.name = "CaveAnomalyAnchor"
 	# 窟穴陈设（批六的 cave-* 资产）
-	_build_cave_props(root, planet, chamber_radius, floor_y, ceiling_y, shaft_radius)
+	_build_cave_props(root, planet, chamber_radius, floor_y, ceiling_y, shaft_radius, body)
 	# 窟穴交互点：让玩家在洞里也有事可做，而不是只能看一眼
 	_build_cave_interactives(root, planet, chamber_radius, floor_y, ceiling_y, shaft_radius)
 	anchor.position = Vector3(0, floor_y + 0.1, -chamber_radius * 0.26)
@@ -58,7 +58,7 @@ static func build(planet, kind: String) -> void:
 ## ⚠ 位置都是 root 局部坐标（root 已经被 prop_scale 放大），
 ##   所以这里用的尺寸都是「设计米数」。
 static func _build_cave_props(root: Node3D, planet, chamber_radius: float,
-		floor_y: float, ceiling_y: float, shaft_radius: float) -> void:
+		floor_y: float, ceiling_y: float, shaft_radius: float, body: StaticBody3D) -> void:
 	if planet == null or not planet.has_method("_prop_mesh"):
 		return
 	var clear_r: float = shaft_radius + 2.0        # 竖井 + 坡道不能堵
@@ -90,6 +90,7 @@ static func _build_cave_props(root: Node3D, planet, chamber_radius: float,
 		if prop != null:
 			prop.position = row[2]
 			root.add_child(prop)
+		_add_cave_prop_colliders(body, root, prop, planet, row[0])
 	var placed := 0
 	for entry in table:
 		var pid: String = entry[0]
@@ -131,6 +132,7 @@ static func _build_cave_props(root: Node3D, planet, chamber_radius: float,
 					pass
 			mi.transform = Transform3D(basis, Vector3(cos(ang) * rad, y, sin(ang) * rad))
 			root.add_child(mi)
+			_add_cave_prop_colliders(body, root, mi, planet, pid)
 			placed += 1
 	var bridge := loader.instantiate("cave-bridge", 0.5, ["res://assets/models/props/"])
 	if bridge != null:
@@ -157,6 +159,34 @@ static func _build_cave_props(root: Node3D, planet, chamber_radius: float,
 				bridge_body.add_child(shape)
 	if placed > 0:
 		print("[CAVE] %s：摆入 %d 件陈设" % [planet.planet_id, placed])
+
+
+static func _add_cave_prop_colliders(body: StaticBody3D, cave_root: Node3D,
+		prop_root: Node, planet, prop_id: String) -> void:
+	var mesh_nodes: Array = []
+	if prop_root is MeshInstance3D:
+		mesh_nodes.append(prop_root)
+	mesh_nodes.append_array(prop_root.find_children("*", "MeshInstance3D", true, false))
+	var mesh_index := 0
+	for item in mesh_nodes:
+		var mesh_instance := item as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var mesh_to_root := Transform3D.IDENTITY
+		var walker: Node = mesh_instance
+		while walker != cave_root:
+			if walker is Node3D:
+				mesh_to_root = (walker as Node3D).transform * mesh_to_root
+			walker = walker.get_parent()
+		var parts: Array = planet._prop_collision_shapes("cave_%s_%d" % [prop_id, mesh_index], mesh_instance.mesh)
+		for part_index in range(parts.size()):
+			var collision := CollisionShape3D.new()
+			collision.name = "CavePropShape_%s_%d_%d_%d" % [
+				prop_id, body.get_child_count(), mesh_index, part_index]
+			collision.shape = parts[part_index]["shape"] as Shape3D
+			collision.transform = mesh_to_root * (parts[part_index]["transform"] as Transform3D)
+			body.add_child(collision)
+		mesh_index += 1
 
 
 static func _limit_range(node: Node, end: float) -> void:

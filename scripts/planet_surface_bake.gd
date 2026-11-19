@@ -1,7 +1,7 @@
 extends RefCounted
 ## Preserve the exact terrain and collision geometry; calculate it before export.
 const DIRECTORY := "res://assets/runtime_bakes/streamed/"
-const VERSION := 1
+const VERSION := 2
 
 
 static func _signature(planet: Node3D) -> Dictionary:
