@@ -88,6 +88,7 @@ static func _build_home(root: Node3D, planet) -> void:
 		var angle := TAU * float(i) / 12.0
 		var block := _box(root, Vector3(2.2, 0.8, 1.0), Vector3(cos(angle) * 11.5, 2.0, sin(angle) * 11.5), stone)
 		block.rotation.y = -angle
+	_home_approach_ramp(root, stone, planet)
 
 	# 石砌底层（留出入口门洞）、木构上层、金属箍带与压扁的穹顶。
 	_wall_ring(root, UndergroundScript.HOME_WALL_RADIUS, UndergroundScript.HOME_WALL_HEIGHT, UndergroundScript.HOME_WALL_CENTER_Y, UndergroundScript.HOME_WALL_SEGMENTS, stone, UndergroundScript.HOME_DOOR_ANGLE, UndergroundScript.HOME_DOOR_HALF, 0.62)
@@ -200,6 +201,40 @@ static func _build_home(root: Node3D, planet) -> void:
 		var window := _box(root, Vector3(0.9, 1.3, 0.08), Vector3(cos(angle) * 6.9, 4.6, sin(angle) * 6.9), warm_glow)
 		window.rotation.y = -angle
 	UndergroundScript.build_interior(root, planet, "qinglan")
+
+
+static func _home_approach_ramp(root: Node3D, material: Material, planet) -> void:
+	var half_width := 2.8
+	var start_z := 27.0
+	var end_z := 11.9
+	var ground_y: float = _ground_y(root, planet, 0.0, start_z)
+	var platform_top := 1.755
+	var low_left := Vector3(-half_width, ground_y, start_z)
+	var low_right := Vector3(half_width, ground_y, start_z)
+	var lower_end_left := Vector3(-half_width, ground_y, end_z)
+	var lower_end_right := Vector3(half_width, ground_y, end_z)
+	var high_left := Vector3(-half_width, platform_top, end_z)
+	var high_right := Vector3(half_width, platform_top, end_z)
+	var faces: Array[Vector3] = [
+		low_left, low_right, high_right,
+		low_left, high_right, high_left,
+		low_left, lower_end_left, lower_end_right,
+		low_left, lower_end_right, low_right,
+		low_left, high_left, lower_end_left,
+		low_right, high_right, lower_end_right,
+		lower_end_left, high_left, high_right,
+		lower_end_left, high_right, lower_end_right,
+	]
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for vertex in faces:
+		tool.add_vertex(vertex)
+	tool.generate_normals()
+	var ramp := MeshInstance3D.new()
+	ramp.name = "WindmillApproachRamp"
+	ramp.mesh = tool.commit()
+	ramp.material_override = material
+	root.add_child(ramp)
 
 
 # -----------------------------------------------------------------------------
@@ -1050,6 +1085,10 @@ static func _add_collision(root: Node3D) -> void:
 	for node in meshes:
 		var mesh_instance := node as MeshInstance3D
 		if mesh_instance.mesh == null:
+			continue
+		# Authored decoration batches are visual-only. One convex hull around
+		# disconnected trim pieces can fill doorways and create invisible walls.
+		if mesh_instance.has_meta("detail_pieces"):
 			continue
 		# A convex hull fills the hole in a torus and turns decorative rings
 		# into solid discs. Those discs can span a doorway at walking height.

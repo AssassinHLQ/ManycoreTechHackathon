@@ -70,6 +70,15 @@ func _run() -> void:
 	for i in range(20):
 		await physics_frame
 	var arch: Node3D = game.home.find_child("Architecture_Qinglan", true, false)
+	var approach_up: Vector3 = (game.player.global_position - game.home.global_position).normalized()
+	var approach_direction: Vector3 = arch.global_position - game.player.global_position
+	approach_direction = (approach_direction - approach_up * approach_direction.dot(approach_up)).normalized()
+	game.player.global_basis = Basis.looking_at(approach_direction, approach_up)
+	game.player.velocity = Vector3.ZERO
+	var approach_run: Array = await _walk("move_forward", 240)
+	var approach_local: Vector3 = arch.global_transform.affine_inverse() * game.player.global_position
+	_check(approach_run[0] < 1.5, "walking from spawn toward the windmill is continuous")
+	_check(approach_local.z < 5.0, "the ground approach reaches the windmill doorway")
 
 	_place(arch, Vector3(8.0, 1.9, 0.0))
 	# 2026-11-11 物理插值开启后，从 0.29 米高处落地要约 15 帧才稳定；
