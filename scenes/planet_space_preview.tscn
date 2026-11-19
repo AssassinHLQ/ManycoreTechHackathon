@@ -1,0 +1,41 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/models/qinglan-planet-v5/model.glb" id="1_planet"]
+
+[sub_resource type="Environment" id="Environment_space"]
+background_mode = 1
+background_color = Color(0.003, 0.006, 0.02, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.12, 0.16, 0.28, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="Material_ring"]
+albedo_color = Color(0.08, 0.16, 0.3, 1)
+emission_enabled = true
+emission = Color(0.03, 0.08, 0.2, 1)
+emission_energy_multiplier = 1.8
+
+[node name="PlanetSpacePreview" type="Node3D"]
+
+[node name="SpaceEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_space")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-28, -38, 0)
+light_color = Color(1, 0.92, 0.78, 1)
+light_energy = 2.2
+shadow_enabled = true
+
+[node name="Planet_Qinglan" parent="." instance=ExtResource("1_planet")]
+
+[node name="PlanetGlow" type="MeshInstance3D" parent="."]
+visible = false
+mesh = null
+material_override = SubResource("Material_ring")
+
+[node name="PreviewCamera" type="Camera3D" parent="."]
+position = Vector3(0, 0, 2600)
+rotation_degrees = Vector3(0, 180, 0)
+fov = 45.0
+current = true
