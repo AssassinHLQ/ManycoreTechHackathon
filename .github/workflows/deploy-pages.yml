@@ -1,0 +1,62 @@
+name: Deploy web build to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Assemble same-origin web site
+        env:
+          WEB_RELEASE_BASE: https://github.com/AssassinHLQ/ManycoreTechHackathon/releases/download/web-2026-11-19-r1
+        run: |
+          set -euo pipefail
+          mkdir -p site/demo
+          cp index.html site/index.html
+          cp .nojekyll site/.nojekyll
+          cp -a demo/. site/demo/
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "$WEB_RELEASE_BASE/index.pck" \
+            --output site/demo/index.pck
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "$WEB_RELEASE_BASE/index.wasm" \
+            --output site/demo/index.wasm
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "$WEB_RELEASE_BASE/index.audio.worklet.js" \
+            --output site/demo/index.audio.worklet.js
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "$WEB_RELEASE_BASE/index.audio.position.worklet.js" \
+            --output site/demo/index.audio.position.worklet.js
+          test "$(stat -c '%s' site/demo/index.pck)" = "566925924"
+          test "$(stat -c '%s' site/demo/index.wasm)" = "39513091"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@v4

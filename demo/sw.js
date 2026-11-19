@@ -1,4 +1,4 @@
-const CACHE = 'starward-web-v1';
+const CACHE = 'starward-web-v2';
 const WASM_PATTERN = /\/index\.wasm$/;
 
 function cleanResponse(response) {
