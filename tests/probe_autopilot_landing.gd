@@ -143,7 +143,8 @@ func _instant_impact(label: String, planet, velocity_in: Vector3, expect_land: b
 	await physics_frame
 	var hull_after: float = game.ship.hull
 	var landed: bool = game.ship.landed
-	var expected_hull: float = 100.0 if expect_land else maxf(0.0, 100.0 - effective * 0.42)
+	var expected_hull: float = 100.0 if expect_land else maxf(0.0,
+		100.0 - effective * 0.42 * game.ship.HULL_DAMAGE_MULTIPLIER)
 	_log("")
 	_log("=== %s ===" % label)
 	_log("  输入 |v| = %.1f  地面 |v| = %.1f  相对 |v| = %.1f" % [

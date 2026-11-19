@@ -49,21 +49,21 @@ var repair_progress := 0.0
 ## 修理一次从开始到满要多久（秒）。船体 0→100 的最短时间。
 ## 取 3.2 秒：比烤棉花糖（8 秒）短得多，不至于让玩家等着无聊，
 ## 又长到能看见进度条在走。
-const REPAIR_DURATION := 3.2
+const REPAIR_DURATION := 1.8
 ## 能否开始修理的判定半径（米）。玩家要在飞船附近。
 ##
 ## ⚠ 2026-11-11 用户：「飞船修理的判断范围太小了」。
 ##   原来是 6 米，而且量的是**相机到飞船原点**的距离 —— 飞船半长 3.25 米，
 ##   站在机头旁边光这段就吃掉 3~4 米余量，稍微一站偏就判不到。
 ##   现在放大到 14 米，并改成量**到船体包围盒**的距离（见 repair_check）。
-const REPAIR_RANGE := 14.0
+const REPAIR_RANGE := 24.0
 ## 对着飞船的判定：视线方向与「玩家→飞船」夹角余弦要大于它（≈ 45°）。
 ##
 ## 原来 0.906（≈25°）要求盯住**船体中心点**，贴着船身站时视线常落在别处，
 ## 手感很差。放宽到 0.707（≈45°），并且**近距离直接免掉瞄准判定**。
 const REPAIR_AIM_COS := 0.707
 ## 贴得这么近（米）就不检查瞄准了 —— 都站到船身上了，不用再抬头找中心。
-const REPAIR_CONTACT_RANGE := 8.0
+const REPAIR_CONTACT_RANGE := 12.0
 ## 修理中被打断（走开/松开 F）后，进度是否保留。保留 —— 否则手一抖就白干。
 var repair_active := false
 
@@ -72,6 +72,8 @@ const HULL_X := 1.75
 const HULL_Y := 1.0
 const HULL_Z := 3.25
 const MAX_FUEL := 200.0
+## 撞击和热伤害按此比例扣除船体耐久。
+const HULL_DAMAGE_MULTIPLIER := 0.75
 const AUTOPILOT_ACCEL := 230.0
 ## 自动航行进入减速段时使用的高速制动能力，速度剖面也按它计算。
 ## 在上一版高速刹车基础上提高 4 倍，避免无上限巡航接近目标时刹不住。
@@ -2238,7 +2240,7 @@ func _physics_process(delta: float) -> void:
 			global_position = planet.global_position + planet.surface_position(normal, 5.0)
 			velocity = ground_velocity + normal * maxf(12.0, impact_speed * 0.42)
 			if impact_cooldown <= 0.0:
-				hull = maxf(0.0, hull - impact_speed * 0.42)
+				hull = maxf(0.0, hull - impact_speed * 0.42 * HULL_DAMAGE_MULTIPLIER)
 				impact_cooldown = 1.2
 				autopilot = false
 				game.hud.show_toast("撞击警告 · 船体 %d%% · X 制动后按 E 着陆" % int(hull), 3.2)
@@ -2252,7 +2254,7 @@ func _physics_process(delta: float) -> void:
 	if sun_distance < game.sun_radius + 22.0:
 		game.begin_death("飞船坠入了恒星", 4.6)
 	elif sun_distance < 950.0:
-		var heat_damage := (950.0 - sun_distance) / 950.0 * 22.0 * delta
+		var heat_damage := (950.0 - sun_distance) / 950.0 * 22.0 * delta * HULL_DAMAGE_MULTIPLIER
 		hull = maxf(0.0, hull - heat_damage)
 		if hull <= 0.0:
 			game.begin_death("船体被恒星高温熔穿", 4.2)
@@ -2527,7 +2529,7 @@ func _move_with_station_collision(delta: float) -> bool:
 			velocity = Vector3.ZERO
 			game.hud.show_toast("自动航行中止：前方是%s" % station.display_name, 3.0)
 		elif impact_speed > 14.0 and impact_cooldown <= 0.0:
-			hull = maxf(0.0, hull - (impact_speed - 10.0) * 0.55)
+			hull = maxf(0.0, hull - (impact_speed - 10.0) * 0.55 * HULL_DAMAGE_MULTIPLIER)
 			impact_cooldown = 1.2
 			game.hud.show_toast("撞击空间站 · 船体 %d%% · X 制动" % int(hull), 3.2)
 			game.audio.play_impact()
@@ -2597,7 +2599,7 @@ func _move_with_planet_asset_collision(motion: Vector3) -> bool:
 	if normal_speed < 0.0:
 		velocity -= normal * normal_speed
 	if impact_speed > 14.0 and impact_cooldown <= 0.0:
-		hull = maxf(0.0, hull - (impact_speed - 10.0) * 0.45)
+		hull = maxf(0.0, hull - (impact_speed - 10.0) * 0.45 * HULL_DAMAGE_MULTIPLIER)
 		impact_cooldown = 1.2
 		autopilot = false
 		game.hud.show_toast("撞上星球 · 船体 %d%% · X 制动" % int(hull), 3.2)

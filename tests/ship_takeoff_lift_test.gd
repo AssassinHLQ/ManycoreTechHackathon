@@ -33,6 +33,14 @@ class MockHud extends RefCounted:
 		pass
 
 
+class MockPlayer extends Node3D:
+	var camera: Camera3D
+
+	func _init() -> void:
+		camera = Camera3D.new()
+		add_child(camera)
+
+
 class MockGame extends Node:
 	var state := "ship"
 	var paused := false
@@ -44,6 +52,7 @@ class MockGame extends Node:
 	var sun_radius := 0.0
 	var audio := MockAudio.new()
 	var hud := MockHud.new()
+	var player: MockPlayer
 	var home: MockPlanet
 
 	func nearest_planet(_world_position: Vector3) -> MockPlanet:
@@ -78,6 +87,8 @@ func _run() -> void:
 			InputMap.add_action(action)
 	var game := MockGame.new()
 	root.add_child(game)
+	game.player = MockPlayer.new()
+	game.add_child(game.player)
 	var planet := MockPlanet.new()
 	game.home = planet
 	game.add_child(planet)
@@ -115,11 +126,29 @@ func _run() -> void:
 	barrier.global_position = ship.global_position + forward * 20.0
 	await physics_frame
 	var before_barrier: Vector3 = ship.global_position
+	ship.hull = 100.0
+	ship.impact_cooldown = 0.0
 	ship.velocity = forward * 60.0
 	var blocked: bool = ship._move_with_planet_asset_collision(forward * 50.0)
 	_check(blocked, "ship asset collision sweep remains enabled")
 	_check(ship.global_position.distance_to(before_barrier) < 50.0,
 		"ship stops before a solid asset collider")
+	_check(ship.hull > 80.0, "reinforced ship hull takes reduced collision damage")
+
+	ship.landed = true
+	game.state = "walk"
+	var repair_direction: Vector3 = ship.global_transform.basis.x.normalized()
+	var repair_camera_position: Vector3 = ship.global_position + repair_direction * 20.0
+	game.player.camera.global_transform = Transform3D(
+		Basis.looking_at(-repair_direction, ship.global_transform.basis.y.normalized()),
+		repair_camera_position)
+	ship.hull = 25.0
+	ship.repair_progress = 0.25
+	_check(bool(ship.repair_check()[0]),
+		"repair interaction works from 20 m away when aiming at the ship")
+	ship.repair_tick(0.9, true)
+	_check(is_equal_approx(ship.hull, 75.0),
+		"ship repair restores half its hull in 0.9 seconds")
 
 	game.free()
 	await process_frame
