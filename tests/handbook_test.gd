@@ -124,19 +124,12 @@ func _run() -> void:
 	_check(step7.contains("听雨院"), "小游戏之后指向听雨院")
 
 	game.attic_worlds.court_rested = true
-	game.progress.dungeon = {"runs": 0, "clears": 0, "best_rank": "", "best_seconds": 0.0, "total_boons": 0}
 	var step8: String = game.next_worth_doing()
-	_check(step8.contains("镜牢"), "听雨院之后指向镜牢")
-
-	game.progress.dungeon = {"runs": 1, "clears": 1, "best_rank": "B", "best_seconds": 300.0, "total_boons": 1}
-	game.progress.wind_solved = false
-	var step9: String = game.next_worth_doing()
-	_check(step9.contains("风琴礁"), "镜牢通关后指向风琴礁")
+	_check(step8.contains("风琴礁"), "听雨院之后指向风琴礁")
 
 	game.progress.wind_solved = true
-	game.progress.dungeon["flawless"] = false
-	var step10: String = game.next_worth_doing()
-	_check(step10.contains("无伤"), "最后指向无伤通关")
+	var step9: String = game.next_worth_doing()
+	_check(step9.contains("主线已经完成"), "完成风琴礁后提示主线完成")
 
 	game.queue_free()
 	await process_frame

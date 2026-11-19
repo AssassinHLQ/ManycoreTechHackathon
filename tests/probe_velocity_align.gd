@@ -93,9 +93,7 @@ func _run() -> void:
 	# ── 2. 鼠标灵敏度变低 ──
 	print("\n=== 2. 鼠标灵敏度 ===")
 	print("   AIM_SENSITIVITY = %.6f 弧度/像素（旧值 0.0022）" % ship.AIM_SENSITIVITY)
-	print("   MAX_TURN_RATE = %.2f 弧度/秒（旧值 2.4）" % ship.MAX_TURN_RATE)
-	_check(ship.AIM_SENSITIVITY < 0.0015, "mouse sensitivity was reduced")
-	_check(ship.MAX_TURN_RATE < 1.5, "ship turn rate was reduced")
+	_check(ship.AIM_SENSITIVITY <= 0.0001, "mouse sensitivity is set to the slower value")
 
 	# ── 3. 速度上限已彻底移除 ──
 	print("\n=== 3. 速度上限已移除 ===")

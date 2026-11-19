@@ -249,7 +249,7 @@ const PROP_INSTANCE_CAP := {
 ##   尺寸单位是「设计米数」，运行时会再乘 prop_scale。
 const PLANET_PROPS := {
 	"qinglan": [["ruin-arch", 3, 20, 31, true], ["obelisk", 4, 24, 42, false],
-		["dome-habitat", 2, 20, 30, true], ["rock-cluster", 6, 12, 24, false]],
+		["rock-cluster", 6, 12, 24, false]],
 	"zheya": [["vent", 8, 14, 26, false], ["rock-spire", 10, 18, 42, false],
 		["signal-tower", 3, 26, 46, true], ["ruin-arch", 2, 18, 28, false]],
 	"cangbo": [["crystal-cluster", 10, 12, 26, false], ["dome-habitat", 3, 18, 28, true],

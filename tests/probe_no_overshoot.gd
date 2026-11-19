@@ -143,7 +143,7 @@ func _run() -> void:
 	# ── 3. 灵敏度与燃料精度 ──
 	print("\n=== 3. 参数检查 ===")
 	print("   AIM_SENSITIVITY = %.5f（应更低）" % ship.AIM_SENSITIVITY)
-	_check(ship.AIM_SENSITIVITY < 0.0006, "mouse sensitivity is lower again (%.5f)" % ship.AIM_SENSITIVITY)
+	_check(ship.AIM_SENSITIVITY <= 0.0001, "mouse sensitivity is set to the slower value (%.5f)" % ship.AIM_SENSITIVITY)
 
 	# ── 4. 快速拖动（用户报的原始场景）──
 	#

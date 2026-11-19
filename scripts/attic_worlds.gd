@@ -12,7 +12,7 @@ const Authoring = preload("res://scripts/attic_world_authoring.gd")
 var use_authored_scenes := true
 const AUTHORED_WORLD_KEYS := ["snow", "cloud", "firefly", "alley"]
 
-const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror", "dungeon"]
+const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror"]
 const SCOPE_ARCHIVE_ORDER := ["cloud", "firefly", "alley", "snow"]
 const SCOPE_ARCHIVE_NAMES := {
 	"cloud": "云海",
@@ -20,16 +20,6 @@ const SCOPE_ARCHIVE_NAMES := {
 	"alley": "雨巷",
 	"snow": "雪夜",
 }
-
-## 镜牢回廊的门禁碰撞（每道隔墙一个），战斗室清空前挡住门洞
-var _dungeon_door_blockers: Array = []
-## 静镜室的镜印台：room -> [三枚镜印碎片节点 + 锚点]
-var _dungeon_boon_stands: Dictionary = {}
-
-## 镜牢回廊的房间序列：战斗室 / 静镜室（镜印）/ 内厅（镜心）
-const DUNGEON_ROOM_KINDS := ["combat", "boon", "combat", "combat", "boon", "boss"]
-const DUNGEON_ROOM_LENGTH := 12.0
-const DUNGEON_ROOM_HALF_X := 4.5
 
 const PLATFORM_HALF := 13.0
 ## 原作四个远方的场地尺度（来自伴随版 HTML 的可行走区域），
@@ -109,8 +99,6 @@ func build() -> void:
 				entry = _build_alley(content)
 			"mirror":
 				entry = _build_mirror(content)
-			"dungeon":
-				entry = _build_dungeon(content)
 		# 出生点写在内容层的坐标里，换算到 holder 空间（玩家在这一层）
 		if entry.has("spawn"):
 			var spawn_local: Vector3 = entry["spawn"]
@@ -171,7 +159,7 @@ func set_active_world(key: String) -> void:
 
 # --- Lux3D 摆件加载（2026-11-12 接入）----------------------------------------
 #
-# 六个口袋世界里的独立摆件（松树/路灯/望远镜/飞艇/灯笼/镜塔…）改用
+# 五个口袋世界里的独立摆件（松树/路灯/望远镜/飞艇/灯笼…）改用
 # Aholo Lux3D 文生 3D 的写实模型；**地形、墙、栈桥、隔墙保持程序化** —— 
 # 那些必须精确对齐、能走上去，AI 模型尺寸不可控会穿模。
 #
@@ -770,34 +758,8 @@ func _build_mirror(holder: Node3D) -> Dictionary:
 	_light(holder, Vector3(0, 3.0, 4.2), Color("dfe9f6"), 1.15, 11.0)
 	var heart_anchor := _anchor(holder, "WorldAnchor_PrismHeart", Vector3(0, 1.6, 1.2))
 	var portal_anchor := _build_return_portal(holder, "mirror", Color("cfe0e6"), Vector3(0, 0, 8.4))
-	# 镜牢门：镜界东侧一道更高的门，通向镜牢回廊
-	var gate_root := Node3D.new()
-	gate_root.name = "DungeonGate"
-	gate_root.position = Vector3(4.25, 0.0, -1.0)
-	holder.add_child(gate_root)
-	var gate_mat := _mat(Color("3a4250"))
-	gate_mat.roughness = 0.3
-	gate_mat.metallic = 0.46
-	var gate_glow := _mat(Color("9bc7cd"), 0.45)
-	var gate_field := StandardMaterial3D.new()
-	gate_field.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	gate_field.albedo_color = Color("35474f", 0.72)
-	gate_field.metallic = 0.3
-	gate_field.roughness = 0.28
-	for side in [-1.0, 1.0]:
-		_box(gate_root, Vector3(0.36, 4.0, 0.5), Vector3(side * 1.3, 2.0, 0), gate_mat)
-	_box(gate_root, Vector3(3.0, 0.5, 0.5), Vector3(0, 4.2, 0), gate_mat)
-	var gate_pane := _box(gate_root, Vector3(2.2, 3.6, 0.06), Vector3(0, 2.0, 0.06), gate_field)
-	gate_pane.name = "DungeonGatePane"
-	for side in [-1.0, 1.0]:
-		_box(gate_root, Vector3(0.055, 3.35, 0.09), Vector3(side * 1.05, 2.0, 0.13), gate_glow)
-	for bar_x in [-0.5, 0.0, 0.5]:
-		_box(gate_root, Vector3(0.06, 3.25, 0.1), Vector3(bar_x, 2.0, 0.15), gate_mat)
-	_box(gate_root, Vector3(2.0, 0.05, 0.09), Vector3(0, 0.42, 0.14), gate_glow)
-	_light(gate_root, Vector3(0, 2.2, 0.8), Color("9bc7cd"), 0.85, 9.0)
-	var gate_anchor := _anchor(gate_root, "WorldAnchor_DungeonGate", Vector3(0, 1.0, 1.4))
 	return {"spawn": Vector3(0, 1.05, 6.0), "return": portal_anchor,
-		"heart": heart_bundle, "heart_anchor": heart_anchor, "gate_anchor": gate_anchor, "title": "镜界"}
+		"heart": heart_bundle, "heart_anchor": heart_anchor, "title": "镜界"}
 
 
 # --- 对外接口 ---------------------------------------------------------------
@@ -2176,208 +2138,6 @@ func rest_in_court() -> bool:
 		return false
 	court_rested = true
 	return true
-
-
-# --- 镜牢回廊：六间房沿 -Z 排成一条走廊 ----------------------------------------
-
-func _build_dungeon(holder: Node3D) -> Dictionary:
-	var floor_mat := _mat(Color("2b313a"), 0.14)
-	var wall_mat := _mat(Color("3f4753"), 0.18)
-	var trim := _mat(Color("8894a2"))
-	var glow := _mat(Color("cfe0e6"), 1.4)
-	_build_ground(holder, floor_mat, true)
-
-	var room_anchors: Array = []
-	var total: int = DUNGEON_ROOM_KINDS.size()
-	var leg := DUNGEON_ROOM_LENGTH
-	var half_x := DUNGEON_ROOM_HALF_X
-	for i in range(total):
-		# 每间房的地板与两侧墙；房间沿 -Z 依次排开
-		var center_z: float = -float(i) * leg
-		_box(holder, Vector3(half_x * 2.0, 0.2, leg), Vector3(0, 0.1, center_z), floor_mat)
-		for side in [-1.0, 1.0]:
-			_box(holder, Vector3(0.3, 3.4, leg), Vector3(side * half_x, 1.7, center_z), wall_mat)
-			# 墙上的灯带
-			_box(holder, Vector3(0.06, 0.08, leg * 0.6), Vector3(side * (half_x - 0.2), 2.4, center_z), glow)
-		# 房间之间的隔墙，中间留门洞
-		if i < total - 1:
-			var divider_z: float = center_z - leg * 0.5
-			for side in [-1.0, 1.0]:
-				var piece_w: float = half_x - 1.0
-				_box(holder, Vector3(piece_w, 3.4, 0.28),
-					Vector3(side * (1.0 + piece_w * 0.5), 1.7, divider_z), wall_mat)
-			_box(holder, Vector3(2.0, 0.7, 0.28), Vector3(0, 3.05, divider_z), wall_mat)
-			# 门框发光边
-			for side in [-1.0, 1.0]:
-				_box(holder, Vector3(0.08, 2.7, 0.34), Vector3(side * 1.0, 1.35, divider_z), glow)
-			# 门禁：战斗室还有镜影时挡住门洞，清空后由战斗控制器打开
-			var blocker_body := StaticBody3D.new()
-			blocker_body.name = "DungeonDoor_%d" % i
-			blocker_body.collision_layer = 1
-			blocker_body.collision_mask = 0
-			var blocker_shape := CollisionShape3D.new()
-			var box := BoxShape3D.new()
-			box.size = Vector3(2.0, 3.4, 0.3)
-			blocker_shape.shape = box
-			blocker_shape.position = Vector3(0, 1.7, divider_z)
-			blocker_body.add_child(blocker_shape)
-			holder.add_child(blocker_body)
-			_dungeon_door_blockers.append(blocker_shape)
-		# 房间中央的镜塔（不同房型不同配色）与地面嵌线
-		var kind: String = DUNGEON_ROOM_KINDS[i]
-		var accent: Color = {
-			"combat": Color("9fb0c0"),
-			"boon": Color("d8e0a0"),
-			"boss": Color("c8a0d8"),
-		}.get(kind, Color("9fb0c0"))
-		var pillar_mat := _mat(accent, 0.4 if kind != "boss" else 0.9)
-		# 镜塔：用 Lux3D 六边形镜面塔当外观，内部保留一根细发光柱 ——
-		# 不同房型配色不同（combat 银 / boon 黄绿 / boss 紫），模型本身不带这层色，
-		# 所以发光柱必须留着，否则「房型区分」就丢了。
-		var tower_prop := _prop("mirror-tower", 2.6)
-		if tower_prop != null:
-			tower_prop.position = Vector3(0, 0, center_z)
-			holder.add_child(tower_prop)
-			_cyl(holder, 0.18, 0.24, 2.4, Vector3(0, 1.2, center_z), pillar_mat, 8)
-		else:
-			_cyl(holder, 0.5, 0.7, 2.6, Vector3(0, 1.3, center_z), pillar_mat, 8)
-		_cyl(holder, 0.9, 0.9, 0.06, Vector3(0, 0.22, center_z), trim, 20)
-		room_anchors.append(_anchor(holder, "DungeonRoomAnchor_%d" % i, Vector3(0, 1.0, center_z + leg * 0.1)))
-		if kind == "boon":
-			_dungeon_boon_stands[i] = _build_boon_stand(holder, center_z, i)
-
-	# 归途门：入口处（玩家出生点旁）
-	var return_anchor := _build_return_portal(holder, "dungeon", Color("cfe0e6"), Vector3(0, 0, leg * 0.42))
-	# 镜心内厅的终点：最后一间房尽头的门
-	var finish_root := Node3D.new()
-	finish_root.name = "DungeonFinish"
-	finish_root.position = Vector3(0, 0, -float(total - 1) * leg - leg * 0.45)
-	holder.add_child(finish_root)
-	var finish_mat := _mat(Color("c8a0d8"), 1.6)
-	_box(finish_root, Vector3(3.2, 3.6, 0.25), Vector3(0, 1.8, 0), finish_mat)
-	var finish_anchor := _anchor(finish_root, "DungeonFinishAnchor", Vector3(0, 1.0, 1.2))
-	return {"spawn": Vector3(0, 1.05, leg * 0.30), "return": return_anchor,
-		"room_anchors": room_anchors, "finish_anchor": finish_anchor,
-		"room_count": total, "title": "镜牢回廊"}
-
-
-## 第 i 道隔墙的门禁碰撞形状（位于房间 i 与 i+1 之间）
-func dungeon_door_blocker(index: int):
-	if index < 0 or index >= _dungeon_door_blockers.size():
-		return null
-	return _dungeon_door_blockers[index]
-
-
-## 静镜室的镜印台：三枚悬浮的镜印碎片，挑一枚带走。
-func _build_boon_stand(holder: Node3D, center_z: float, room: int) -> Array:
-	var stand := Node3D.new()
-	stand.name = "BoonStand_%d" % room
-	stand.position = Vector3(0, 0, center_z - 3.4)
-	holder.add_child(stand)
-	var stone := _mat(Color("5a6472"), 0.2)
-	var brass := _mat(Color("b8913f"), 0.25)
-	_cyl(stand, 1.0, 1.2, 0.6, Vector3(0, 0.3, 0), stone, 14)
-	_cyl(stand, 1.15, 1.15, 0.08, Vector3(0, 0.64, 0), brass, 16)
-	var entries: Array = []
-	for i in range(3):
-		var angle := TAU * float(i) / 3.0 + 0.4
-		var pos := Vector3(cos(angle) * 0.62, 1.05, sin(angle) * 0.62)
-		var shard_mat := _mat(Color("d8e0a0"), 1.6)
-		var shard := _cyl(stand, 0.0, 0.17, 0.42, pos, shard_mat, 6)
-		shard.name = "BoonShard_%d_%d" % [room, i]
-		# 碎片上再叠一小片，做出棱镜感
-		var cap := _cyl(stand, 0.17, 0.0, 0.2, pos + Vector3(0, 0.3, 0), shard_mat, 6)
-		cap.name = "BoonCap_%d_%d" % [room, i]
-		var anchor := _anchor(stand, "BoonAnchor_%d_%d" % [room, i], pos + Vector3(0, -0.35, 0.0))
-		entries.append({"shard": shard, "cap": cap, "anchor": anchor, "taken": false})
-	# 台座中央的灯
-	_light(stand, Vector3(0, 1.2, 0), Color("d8e0a0"), 1.6, 9.0)
-	return entries
-
-
-## 静镜室里第 index 枚镜印的锚点
-func dungeon_boon_anchor(room: int, index: int):
-	if not _dungeon_boon_stands.has(room):
-		return null
-	var entries: Array = _dungeon_boon_stands[room]
-	if index < 0 or index >= entries.size():
-		return null
-	if bool(entries[index]["taken"]):
-		return null
-	return entries[index]["anchor"]
-
-
-func dungeon_boon_count(room: int) -> int:
-	if not _dungeon_boon_stands.has(room):
-		return 0
-	return (_dungeon_boon_stands[room] as Array).size()
-
-
-## 取走一枚镜印：该房间剩下的碎片一并收起（每个静镜室只带走一枚）
-func dungeon_take_boon(room: int, index: int) -> bool:
-	if not _dungeon_boon_stands.has(room):
-		return false
-	var entries: Array = _dungeon_boon_stands[room]
-	if index < 0 or index >= entries.size() or bool(entries[index]["taken"]):
-		return false
-	for entry in entries:
-		entry["taken"] = true
-		(entry["shard"] as MeshInstance3D).visible = false
-		(entry["cap"] as MeshInstance3D).visible = false
-	return true
-
-
-func dungeon_boon_room_taken(room: int) -> bool:
-	if not _dungeon_boon_stands.has(room):
-		return true
-	for entry in _dungeon_boon_stands[room]:
-		if not bool(entry["taken"]):
-			return false
-	return true
-
-
-func dungeon_room_count() -> int:
-	if not worlds.has("dungeon"):
-		return 0
-	return int(worlds["dungeon"]["room_count"])
-
-
-func dungeon_room_kind(index: int) -> String:
-	if index < 0 or index >= DUNGEON_ROOM_KINDS.size():
-		return ""
-	return DUNGEON_ROOM_KINDS[index]
-
-
-func dungeon_room_anchor(index: int):
-	if not worlds.has("dungeon"):
-		return null
-	var list: Array = worlds["dungeon"]["room_anchors"]
-	if index < 0 or index >= list.size():
-		return null
-	return list[index]
-
-
-func dungeon_finish_anchor():
-	if not worlds.has("dungeon"):
-		return null
-	return worlds["dungeon"]["finish_anchor"]
-
-
-## 镜界里的镜牢门锚点
-func dungeon_gate_anchor():
-	if not worlds.has("mirror"):
-		return null
-	return worlds["mirror"].get("gate_anchor", null)
-
-
-## 根据玩家所在的 z 判断在第几间房（0 起）；超出走廊返回最后一间。
-func dungeon_room_at(world_position: Vector3) -> int:
-	if not worlds.has("dungeon"):
-		return 0
-	var holder: Node3D = worlds["dungeon"]["node"]
-	var local_z: float = holder.to_local(world_position).z
-	var index := int(floor((-local_z + DUNGEON_ROOM_LENGTH * 0.5) / DUNGEON_ROOM_LENGTH))
-	return clampi(index, 0, DUNGEON_ROOM_KINDS.size() - 1)
 
 
 func world_node(key: String) -> Node3D:

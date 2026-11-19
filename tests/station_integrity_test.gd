@@ -38,6 +38,7 @@ class TestWorld extends Node3D:
 	var in_station := true
 	var elapsed := 0.0
 	var sun_radius := 0.0
+	var gargantua = null
 	var station
 	var player
 	var ship = null
@@ -220,6 +221,26 @@ func _run() -> void:
 		var walked: Vector3 = game.player.position
 		_check(walked.dot(direction) > 43.0 and absf(walked.y + 1.97) < 0.1,
 			"player walks through door %d and stays on the corridor floor (%s)" % [door, walked])
+		if door == 0:
+			var room_corridor: Node3D = station.corridor_roots[0]
+			var room_capsule := CapsuleShape3D.new()
+			room_capsule.radius = 0.34
+			room_capsule.height = 1.65
+			var room_query := PhysicsShapeQueryParameters3D.new()
+			room_query.shape = room_capsule
+			room_query.collision_mask = 1
+			room_query.exclude = [game.player.get_rid()]
+			for room_x: float in [-84.0, -56.0, -28.0, 28.0, 56.0, 84.0]:
+				for room_side: float in [-1.0, 1.0]:
+					var room_start := Vector3(room_x, -1.97, 0.0)
+					var room_target := Vector3(room_x, -1.97, room_side * 5.8)
+					var start_world: Vector3 = room_corridor.to_global(room_start)
+					room_query.transform = Transform3D(room_corridor.global_basis,
+						start_world + station.up_direction() * 0.82)
+					room_query.motion = room_corridor.to_global(room_target) - start_world
+					var entry_motion: PackedFloat32Array = space.cast_motion(room_query)
+					_check(entry_motion[0] > 0.98,
+					"cabin entrance x=%.0f side=%+.0f clears the player capsule" % [room_x, room_side])
 		for i in range(30):
 			await physics_frame
 		lo = game.player.position

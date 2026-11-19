@@ -42,10 +42,19 @@ func _run() -> void:
 	game.station.set_physics_process(false)
 	for planet in game.planets: planet.set_physics_process(false)
 	await physics_frame
+	var ship = game.ship
+	ship.velocity = Vector3.RIGHT * ship.LIGHT_SPEED_MPS * 1.01
+	ship._clamp_collision_speed()
+	_check(ship.velocity.length() <= ship.LIGHT_SPEED_MPS,
+		"collision response caps a superluminal velocity at light speed")
+	ship.velocity = Vector3.RIGHT * 120.0
+	ship._clamp_collision_speed()
+	_check(is_equal_approx(ship.velocity.length(), 120.0),
+		"collision speed clamp preserves ordinary flight velocity")
 	var collision_normal := Vector3.RIGHT
-	_check(is_equal_approx(game.ship._station_normal_impact_speed(Vector3(-5.0, 0.0, 100.0), collision_normal), 5.0),
+	_check(is_equal_approx(ship._station_normal_impact_speed(Vector3(-5.0, 0.0, 100.0), collision_normal), 5.0),
 		"high-speed tangential station pass uses only its 5 m/s normal impact")
-	_check(is_equal_approx(game.ship._station_normal_impact_speed(Vector3(-20.0, 0.0, 100.0), collision_normal), 20.0),
+	_check(is_equal_approx(ship._station_normal_impact_speed(Vector3(-20.0, 0.0, 100.0), collision_normal), 20.0),
 		"direct station impact retains its real 20 m/s normal speed")
 	var stations: Array = [game.station]
 	stations.append_array(game.distant_stations)

@@ -58,9 +58,6 @@ const ACHIEVEMENTS := {
 	"tea_full": ["一壶茶", "在阁楼茶桌泡满一壶"],
 	"court_rest": ["檐下听雨", "点亮相听雨灯，在檐下坐一会儿"],
 	"games_all": ["三段小游戏", "风律、萤火、檐雨都玩过一次"],
-	"dungeon_first": ["镜牢初探", "第一次走进镜牢回廊"],
-	"dungeon_clear": ["走到尽头", "第一次抵达镜牢回廊的尽头"],
-	"dungeon_flawless": ["毫发无伤", "一次都没有被镜影碰到就抵达尽头"],
 	# 以下为同伴版原作成就表里的其余条目（名称与条件照抄）
 	"ice-lanterns": ["三盏冰灯", "完成静冰湾的三尾剧情鱼"],
 	"dex-half": ["半册鱼谱", "图鉴收集 5 种鱼"],
@@ -72,11 +69,7 @@ const ACHIEVEMENTS := {
 	"firefly-guide": ["萤火引路", "在「萤火引路」中取得 100 分"],
 	"rain-tempo": ["檐雨合拍", "在「檐雨合拍」中取得 120 分"],
 	"listening-court": ["听雨院", "点亮三盏听雨灯，并在檐下坐一会儿"],
-	"deep-run": ["向深处走", "在镜牢中抵达第 3 层"],
-	"three-faces": ["三相皆明", "击破镜心的三种形态"],
-	"mirror-calm": ["镜心安静", "完成镜界试炼"],
 	"wind_organ": ["三种来风", "在风琴礁把北风、西风、回风各听一次"],
-	"voyage_first": ["第一份委托", "完成一次有去有回的航行"],
 }
 
 var save_path := SAVE_PATH_DEFAULT
@@ -95,15 +88,9 @@ var game_best: Dictionary = {}
 ## 风琴礁：三种来风（北风/西风/回风）是否各听过一次
 var wind_heard: Array = [false, false, false]
 var wind_solved := false
-## 镜牢里捡到的镜币；离开镜牢时结算进 coins
-var mirror_coins := 0
-## 累计获得过的镜币（成就用）
-var mirror_coins_total := 0
 
 ## 新手引导是否已经看过（看过就不再自动弹）
 var guide_done := false
-## 最近 5 次远行的记录（最新在前）：{seconds, rooms, cleared, kills, hits, coins, rank, at}
-var recent_runs: Array = []
 ## 当前航行委托：由 main.gd 的 VoyageContract 驱动，跟行囊一起存档。
 var voyage_contract: Dictionary = {}
 
@@ -115,8 +102,6 @@ const WIND_LINES := [
 	"回风绕岛一圈，每一根音管都轻轻相和",
 ]
 const WIND_SOLVED_LINE := "三种来风在管间和鸣，风琴礁把整片云海染成了金色"
-## 镜牢纪录：runs / clears / best_seconds / best_rank / best_rooms
-var dungeon: Dictionary = {}
 var last_unlocks: Array = []
 
 
@@ -397,92 +382,6 @@ func record_game(kind: String, score: int) -> Dictionary:
 func games_played() -> int:
 	return game_best.size()
 
-
-## 原作段位表：S 无瑕（无伤且 7 分钟内）/ A 稳镜（受击≤2 且 10 分钟内）/ B 初净
-const DUNGEON_RANKS := {
-	"S": ["无瑕", "无伤且 7 分钟内通关"],
-	"A": ["稳镜", "受击不超过 2 次且 10 分钟内通关"],
-	"B": ["初净", "完成一次镜牢"],
-}
-
-
-## 按原作规则给段位：先看受击次数与用时
-static func dungeon_rank(seconds: float, hits := 0, cleared := true) -> String:
-	if not cleared:
-		return "B"
-	if hits == 0 and seconds <= 420.0:
-		return "S"
-	if hits <= 2 and seconds <= 600.0:
-		return "A"
-	return "B"
-
-
-static func dungeon_rank_name(rank: String) -> String:
-	var entry: Array = DUNGEON_RANKS.get(rank, ["初净", ""])
-	return String(entry[0])
-
-
-static func dungeon_rank_note(rank: String) -> String:
-	var entry: Array = DUNGEON_RANKS.get(rank, ["初净", ""])
-	return String(entry[1])
-
-
-## 记一次镜牢：返回 {rank, is_best, best_seconds, best_rank, clears, runs}
-## 记一次镜牢远行（最近 5 次，最新在前）
-func push_recent_run(seconds: float, rooms: int, cleared: bool, kills: int, hits: int,
-		coins: int, rank: String) -> void:
-	recent_runs.push_front({
-		"seconds": seconds,
-		"rooms": rooms,
-		"cleared": cleared,
-		"kills": kills,
-		"hits": hits,
-		"coins": coins,
-		"rank": rank,
-		"at": Time.get_datetime_string_from_system(),
-	})
-	while recent_runs.size() > 5:
-		recent_runs.pop_back()
-
-
-func record_dungeon(seconds: float, rooms: int, cleared: bool, kills := 0, hits := 0,
-		boons: Array = []) -> Dictionary:
-	var rank := dungeon_rank(seconds, hits, cleared)
-	var previous_best: float = float(dungeon.get("best_seconds", 0.0))
-	var is_best: bool = cleared and (previous_best <= 0.0 or seconds < previous_best)
-	dungeon["runs"] = int(dungeon.get("runs", 0)) + 1
-	if cleared:
-		dungeon["clears"] = int(dungeon.get("clears", 0)) + 1
-		if is_best:
-			dungeon["best_seconds"] = seconds
-			dungeon["best_rank"] = rank
-			dungeon["best_rooms"] = rooms
-		dungeon["total_kills"] = int(dungeon.get("total_kills", 0)) + kills
-		dungeon["total_boons"] = int(dungeon.get("total_boons", 0)) + boons.size()
-		dungeon["last_boons"] = boons.duplicate()
-		if hits == 0:
-			dungeon["flawless"] = true
-	return {
-		"rank": rank,
-		"rank_name": dungeon_rank_name(rank),
-		"rank_note": dungeon_rank_note(rank),
-		"boons": boons,
-		"is_best": is_best,
-		"kills": kills,
-		"hits": hits,
-		"flawless": cleared and hits == 0,
-		"best_seconds": float(dungeon.get("best_seconds", 0.0)),
-		"best_rank": String(dungeon.get("best_rank", "")),
-		"clears": int(dungeon.get("clears", 0)),
-		"runs": int(dungeon.get("runs", 0)),
-	}
-
-
-func time_text(seconds: float) -> String:
-	var whole := int(maxf(0.0, seconds))
-	return "%02d:%02d" % [whole / 60, whole % 60]
-
-
 ## 面板用的汇总
 func summary() -> Dictionary:
 	return {
@@ -507,11 +406,7 @@ func save() -> void:
 		"game_best": game_best,
 		"wind_heard": wind_heard,
 		"wind_solved": wind_solved,
-		"mirror_coins": mirror_coins,
-		"mirror_coins_total": mirror_coins_total,
 		"guide_done": guide_done,
-		"recent_runs": recent_runs,
-		"dungeon": dungeon,
 		"voyage_contract": voyage_contract,
 		"rod": rod,
 		"sold_total": sold_total,
@@ -542,11 +437,7 @@ func load_progress() -> void:
 	game_best = data.get("game_best", {})
 	wind_heard = data.get("wind_heard", [false, false, false])
 	wind_solved = bool(data.get("wind_solved", false))
-	mirror_coins = int(data.get("mirror_coins", 0))
-	mirror_coins_total = int(data.get("mirror_coins_total", 0))
 	guide_done = bool(data.get("guide_done", false))
-	recent_runs = data.get("recent_runs", [])
-	dungeon = data.get("dungeon", {})
 	voyage_contract = data.get("voyage_contract", {})
 	rod = String(data.get("rod", "bamboo"))
 	sold_total = int(data.get("sold_total", 0))
@@ -561,11 +452,7 @@ func reset() -> void:
 	game_best = {}
 	wind_heard = [false, false, false]
 	wind_solved = false
-	mirror_coins = 0
-	mirror_coins_total = 0
 	guide_done = false
-	recent_runs = []
-	dungeon = {}
 	voyage_contract = {}
 	rod = "bamboo"
 	sold_total = 0

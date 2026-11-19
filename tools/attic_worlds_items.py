@@ -1,4 +1,4 @@
-"""阁楼外面（六个口袋世界）的 Lux3D 资产清单与提示词。
+"""阁楼外面（五个口袋世界）的 Lux3D 资产清单与提示词。
 
 按「玩家看到的多少」和「是否独立摆件」挑选。
 ⚠ 只做**独立摆件**：地形、墙、栈桥、隔墙保持程序化（要精确对齐/可行走）。
@@ -68,11 +68,8 @@ ITEMS = [
      "A small folded paper boat made of cream paper, crisp folds, slightly damp look, "
      "realistic paper material"),
 
-    # ── 镜界 / 镜牢：棱镜之心 + 镜塔 ───────────────────────────────
+    # ── 镜界：棱镜之心 ───────────────────────────────────────────
     ("prism-heart", 12000, 0.45,
      "A floating faceted crystal prism shaped like a heart, pale icy blue with sharp cut facets, "
      "subtle inner glow, realistic glass-like PBR materials"),
-    ("mirror-tower", 16000, 1.8,
-     "A slender hexagonal tower of stacked mirrored panels with a dark metal frame, "
-     "polished reflective surfaces, realistic PBR materials"),
 ]

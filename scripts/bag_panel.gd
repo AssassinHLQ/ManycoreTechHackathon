@@ -1,19 +1,18 @@
 extends CanvasLayer
 
-## 行囊面板（B 键）：总览 / 鱼类详情两页。全部用代码绘制。
+## 行囊面板（B 键）：总览 / 鱼类详情 / 成就三页。全部用代码绘制。
 ##
 ## 页（← / → 轮转）：
 ##   "overview"  金币 / 九鱼一览 / 进度
 ##   "dex"       鱼类详情：一页一条鱼，大字显示星级、最长纪录、已钓数量
 ##   "achievements"  成就总览：按类别分组，已解锁高亮
-##   "runs"      最近远行：最近 5 次镜牢探索记录
 
 var game
 var font: Font
 var painter: Painter
 var open := false
 var scroll := 0.0
-## 当前页："overview" / "dex" / "achievements" / "runs"
+## 当前页："overview" / "dex" / "achievements"
 var page := "overview"
 ## 成就总览的滚动行（↑ / ↓ 一次移一行）
 var ach_scroll := 0
@@ -86,7 +85,7 @@ func toggle_page() -> void:
 			page = "achievements"
 			ach_scroll = 0
 		"achievements":
-			page = "runs"
+			page = "overview"
 		_:
 			page = "overview"
 	if game.audio != null:
@@ -148,8 +147,6 @@ func draw_panel(control: Control) -> void:
 		draw_dex_page(control, panel)
 	elif page == "achievements":
 		draw_achievements_page(control, panel)
-	elif page == "runs":
-		draw_runs_page(control, panel)
 	else:
 		draw_overview(control, panel)
 
@@ -164,7 +161,7 @@ func draw_overview(control: Control, panel: Rect2) -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.7, 0.8, 0.8, 0.6))
 	# 页码提示
 	control.draw_string(font, panel.position + Vector2(panel.size.x - 168, 54),
-		"总览 · 1 / 4", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.74, 0.74, 0.8))
+		"总览 · 1 / 3", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.74, 0.74, 0.8))
 
 	# --- 鱼类图鉴（一览）---
 	var y := left.y + 78.0
@@ -255,15 +252,6 @@ func draw_overview(control: Control, panel: Rect2) -> void:
 	control.draw_string(font, bottom, "纪念 %d / 4 · 茶席 %d / 3 · %s" % [
 		game.keepsakes.size(), game.attic.tea_step if game.attic != null else 0, game_text],
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.78, 0.86, 0.86, 0.9))
-	if game.progress != null and not game.progress.dungeon.is_empty():
-		var dungeon: Dictionary = game.progress.dungeon
-		control.draw_string(font, bottom + Vector2(0, 46),
-			"镜牢 · 探索 %d · 通关 %d · 最好 %s %s · 累计镜印 %d" % [
-				int(dungeon.get("runs", 0)), int(dungeon.get("clears", 0)),
-				String(dungeon.get("best_rank", "")),
-				game.progress.time_text(float(dungeon.get("best_seconds", 0.0))),
-				int(dungeon.get("total_boons", 0))],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.82, 0.78, 0.9, 0.9))
 	if game.attic != null and game.attic_worlds != null:
 		control.draw_string(font, bottom + Vector2(0, 24),
 			"冰钓 %d / 3 · 听雨灯 %d / 3%s · %s" % [
@@ -289,7 +277,7 @@ func draw_dex_page(control: Control, panel: Rect2) -> void:
 	control.draw_string(font, left, "鱼 类 详 情", HORIZONTAL_ALIGNMENT_LEFT, -1, 30,
 		Color(0.92, 0.96, 0.95))
 	control.draw_string(font, panel.position + Vector2(panel.size.x - 168, 54),
-		"详情 · 2 / 4", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.74, 0.74, 0.8))
+		"详情 · 2 / 3", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.74, 0.74, 0.8))
 	control.draw_string(font, left + Vector2(0, 34), "B / Esc 收起 · ← / → 换一条 · ↓ 回总览",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.7, 0.8, 0.8, 0.6))
 
@@ -367,8 +355,6 @@ const ACH_GROUPS := [
 		"keepsake_all", "wind_organ"]],
 	["阁楼日常", ["tea_full", "court_rest", "listening-court", "prism_heart"]],
 	["三处小游戏", ["wind-song", "firefly-guide", "rain-tempo", "games_all"]],
-	["镜界与镜牢", ["mirror-calm", "three-faces", "dungeon_first", "dungeon_clear",
-		"dungeon_flawless", "deep-run"]],
 ]
 
 
@@ -385,7 +371,7 @@ func draw_achievements_page(control: Control, panel: Rect2) -> void:
 	control.draw_string(font, left + Vector2(110, 2), "%d / %d" % [total, ach_all],
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.95, 0.85, 0.6))
 	control.draw_string(font, panel.position + Vector2(panel.size.x - 176, 54),
-		"成就 · 3 / 4", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.74, 0.74, 0.8))
+		"成就 · 3 / 3", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.74, 0.74, 0.8))
 	control.draw_string(font, left + Vector2(0, 34),
 		"B / Esc 收起 · ← / → 翻页 · ↑ / ↓ 滚动", HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
 		Color(0.7, 0.8, 0.8, 0.6))
@@ -433,106 +419,4 @@ func draw_achievements_page(control: Control, panel: Rect2) -> void:
 
 	control.draw_string(font, panel.position + Vector2(34, panel.size.y - 30),
 		"✦ 已解锁　· 未解锁 · 继续走，它们会自己亮起来",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.72, 0.72, 0.85))
-
-## 最近远行页：最近 5 次镜牢探索（最新在前）
-func draw_runs_page(control: Control, panel: Rect2) -> void:
-	var _data: Dictionary = game.progress.summary()
-	var dungeon: Dictionary = game.progress.dungeon
-	var runs: Array = game.progress.recent_runs
-
-	var left := panel.position + Vector2(34, 54)
-	control.draw_string(font, left, "最 近 远 行", HORIZONTAL_ALIGNMENT_LEFT, -1, 30,
-		Color(0.92, 0.96, 0.95))
-	control.draw_string(font, panel.position + Vector2(panel.size.x - 168, 54),
-		"远行 · 4 / 4", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.74, 0.74, 0.8))
-	control.draw_string(font, left + Vector2(0, 34),
-		"B / Esc 收起 · ← / → 翻页 · 镜牢的最近五次探索",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.7, 0.8, 0.8, 0.6))
-
-	# 顶部汇总：探索次数 / 通关次数 / 最佳
-	var y := left.y + 74.0
-	var best_rank := String(dungeon.get("best_rank", ""))
-	var best_seconds := float(dungeon.get("best_seconds", 0.0))
-	var best_text := "—"
-	if best_rank != "" and best_seconds > 0.0:
-		best_text = "%s · %s" % [best_rank, game.progress.time_text(best_seconds)]
-	control.draw_string(font, Vector2(left.x, y),
-		"探索 %d 次 · 通关 %d 次 · 最佳 %s" % [
-			int(dungeon.get("runs", 0)), int(dungeon.get("clears", 0)), best_text],
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0.88, 0.9, 0.82))
-	y += 22.0
-	var flawless: bool = bool(dungeon.get("flawless", false))
-	control.draw_string(font, Vector2(left.x, y),
-		"累计镜币 %d · 累计镜印 %d · %s" % [
-			game.progress.mirror_coins_total, int(dungeon.get("total_boons", 0)),
-			"有无伤纪录" if flawless else "还没有无伤通关"],
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.72, 0.8, 0.8, 0.9))
-
-	# 分隔线
-	var sep_y := y + 26.0
-	control.draw_line(Vector2(panel.position.x + 34, sep_y),
-		Vector2(panel.position.x + panel.size.x - 34, sep_y), Color(0.3, 0.45, 0.48, 0.5), 1.0)
-
-	# 表头
-	var head_y := sep_y + 28.0
-	control.draw_string(font, Vector2(left.x + 6, head_y), "序",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.56, 0.68, 0.68, 0.85))
-	control.draw_string(font, Vector2(left.x + 52, head_y), "结果",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.56, 0.68, 0.68, 0.85))
-	control.draw_string(font, Vector2(left.x + 152, head_y), "用时",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.56, 0.68, 0.68, 0.85))
-	control.draw_string(font, Vector2(left.x + 252, head_y), "受击",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.56, 0.68, 0.68, 0.85))
-	control.draw_string(font, Vector2(left.x + 332, head_y), "击杀",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.56, 0.68, 0.68, 0.85))
-	control.draw_string(font, Vector2(left.x + 412, head_y), "镜币",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.56, 0.68, 0.68, 0.85))
-	control.draw_string(font, Vector2(left.x + 500, head_y), "评级",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.56, 0.68, 0.68, 0.85))
-	control.draw_string(font, Vector2(left.x + 580, head_y), "层",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(0.56, 0.68, 0.68, 0.85))
-
-	var row_y := head_y + 26.0
-	if runs.is_empty():
-		control.draw_string(font, Vector2(left.x + 6, row_y), "还没有远行记录。走进镜牢回廊，尽头会记下你这一趟。",
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.56, 0.64, 0.64, 0.85))
-	else:
-		for i in range(runs.size()):
-			var run: Dictionary = runs[i]
-			var cleared: bool = bool(run.get("cleared", false))
-			var rank := String(run.get("rank", ""))
-			var row_color := Color(0.86, 0.92, 0.9) if cleared else Color(0.66, 0.7, 0.72, 0.85)
-			control.draw_string(font, Vector2(left.x + 6, row_y), str(i + 1),
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.58, 0.7, 0.7, 0.85))
-			control.draw_string(font, Vector2(left.x + 52, row_y),
-				"抵达尽头" if cleared else "中途退出", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, row_color)
-			control.draw_string(font, Vector2(left.x + 152, row_y),
-				game.progress.time_text(float(run.get("seconds", 0.0))),
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, row_color)
-			control.draw_string(font, Vector2(left.x + 252, row_y),
-				str(int(run.get("hits", 0))), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, row_color)
-			control.draw_string(font, Vector2(left.x + 332, row_y),
-				str(int(run.get("kills", 0))), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, row_color)
-			control.draw_string(font, Vector2(left.x + 412, row_y),
-				"+%d" % int(run.get("coins", 0)), HORIZONTAL_ALIGNMENT_LEFT, -1, 16,
-				Color(0.94, 0.86, 0.6))
-			var rank_color := Color(0.5, 0.56, 0.58, 0.6)
-			if cleared:
-				match rank:
-					"S":
-						rank_color = Color(0.98, 0.84, 0.46)
-					"A":
-						rank_color = Color(0.72, 0.92, 0.78)
-					_:
-						rank_color = Color(0.76, 0.84, 0.92)
-			control.draw_string(font, Vector2(left.x + 500, row_y), rank if rank != "" else "—",
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, rank_color)
-			control.draw_string(font, Vector2(left.x + 580, row_y),
-				str(int(run.get("rooms", 0))), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, row_color)
-			row_y += 30.0
-
-	# 底部
-	control.draw_string(font, panel.position + Vector2(34, panel.size.y - 30),
-		"镜币在离开镜牢时结算进行囊 · 最佳纪录只被更好的成绩覆盖",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.62, 0.72, 0.72, 0.85))

@@ -1,5 +1,5 @@
 extends SceneTree
-# 原作外围道具：木牌 / 风琴礁三来风 / 各处小交互 / 旅行小册 / 镜币。
+# 原作外围道具：木牌 / 风琴礁三来风 / 各处小交互 / 旅行小册。
 # 用法：godot --headless --path . --script res://tests/props_test.gd
 
 var game
@@ -178,15 +178,6 @@ func _run() -> void:
 	game.toggle_travel_journal()
 	await process_frame
 	_check(not game.travel_journal.open, "能合上小册")
-
-	# ---------- 六、镜币 ----------
-	game.progress.reset()
-	game.progress.add_coins(0)
-	var coins_before: int = game.progress.coins
-	game.progress.add_coins(72)
-	game.progress.mirror_coins_total += 72
-	_check(game.progress.coins == coins_before + 72, "镜币结算进金币")
-	_check(game.progress.mirror_coins_total == 72, "镜币累计记下来了")
 
 	game.queue_free()
 	await process_frame

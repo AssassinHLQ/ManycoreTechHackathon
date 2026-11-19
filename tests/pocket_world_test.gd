@@ -5,7 +5,7 @@ extends SceneTree
 var game
 var failures := 0
 
-## 这五个世界从阁楼的门进出；镜牢（dungeon）从镜界进、回镜界，由 dungeon_test 覆盖
+## 五个世界从阁楼的门进出，镜界也保留为独立可进入世界。
 const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror"]
 
 
@@ -37,7 +37,7 @@ func _run() -> void:
 	if game.attic_worlds == null:
 		quit(1)
 		return
-	_check(game.attic_worlds.worlds.size() == 6, "六个世界（四扇门 + 镜界 + 镜牢）都存在")
+	_check(game.attic_worlds.worlds.size() == 5, "五个世界（四扇门 + 镜界）都存在")
 
 	# 四扇门的定义齐全
 	_check(game.attic.doors.size() == 4, "阁楼有四扇门")

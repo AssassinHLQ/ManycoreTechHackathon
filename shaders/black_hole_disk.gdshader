@@ -51,6 +51,7 @@ uniform float swirl_amount = 0.045;
 uniform float edge_fade = 0.16;
 /// 内缘淡出宽度（相对 ramp_max）
 uniform float core_fade = 0.05;
+uniform float rotation_phase = 0.0;
 
 uniform vec4 hot_color : source_color = vec4(1.00, 0.98, 0.90, 1.0);
 uniform vec4 mid_color : source_color = vec4(1.00, 0.74, 0.33, 1.0);
@@ -89,7 +90,10 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 d = local_pos.xz;
+	float c = cos(rotation_phase);
+	float s = sin(rotation_phase);
+	vec2 raw = local_pos.xz;
+	vec2 d = vec2(raw.x * c - raw.y * s, raw.x * s + raw.y * c);
 	float r = length(d);
 	float t = clamp(r / max(1.0, ramp_max), 0.0, 1.0);
 

@@ -41,6 +41,27 @@ func _visible_mesh_hit_y(root_node: Node3D, from: Vector3, to: Vector3) -> float
 	return hit_y
 
 
+func _lux3d_surface_blocks_cave_mouth(planet: Node3D) -> bool:
+	var lux_root := planet.get("_lux_root") as Node3D
+	if lux_root == null:
+		return true
+	var planet_inverse: Transform3D = planet.global_transform.affine_inverse()
+	var cos_limit: float = cos(planet.cave_hole_angle)
+	for item in lux_root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := item as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var mesh_to_planet: Transform3D = planet_inverse * mesh_instance.global_transform
+		var faces := mesh_instance.mesh.get_faces()
+		for index in range(0, faces.size(), 3):
+			var a: Vector3 = mesh_to_planet * faces[index]
+			var b: Vector3 = mesh_to_planet * faces[index + 1]
+			var c: Vector3 = mesh_to_planet * faces[index + 2]
+			if (a + b + c).normalized().dot(planet.cave_direction) > cos_limit:
+				return true
+	return false
+
+
 func _run() -> void:
 	var test_save := "user://starward_smoke_test.json"
 	if FileAccess.file_exists(test_save):
@@ -139,13 +160,51 @@ func _run() -> void:
 	_check(game.planets[1].find_child("Cave_Zheya", true, false) != null, "ember hides a lava cave")
 	_check(game.planets[3].find_child("Cave_Xuanjing", true, false) != null, "shard hides a crystal cave")
 	_check(game.planets[2].find_child("Cave_Cangbo", true, false) == null, "tide has no cave")
-	_check(game.home.find_child("CaveCollision", true, false).get_child_count() > 40, "cave shell, ramp and chamber all collide")
+	var cave: Node = game.home.find_child("Cave_Qinglan", true, false)
+	var cave_collision := game.home.find_child("CaveCollision", true, false) as StaticBody3D
+	_check(cave_collision != null and cave_collision.get_child_count() > 40, "cave shell, ramp and chamber all collide")
+	var cave_prop_visuals: Array = cave.find_children("CaveProp_*", "MeshInstance3D", true, false)
+	var cave_prop_shapes: Array = cave.find_children("CavePropShape_*", "CollisionShape3D", true, false)
+	_check(not cave_prop_visuals.is_empty() and cave_prop_shapes.size() >= cave_prop_visuals.size(),
+		"cave rock and crystal props have mesh-derived collision")
+	var cave_mine_cart_meshes := 0
+	var ship_fighter_meshes := 0
+	for mesh_node in game.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := mesh_node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var mesh_path := String(mesh_instance.mesh.resource_path).to_lower()
+		if mesh_path.contains("cave-mine-cart"):
+			cave_mine_cart_meshes += 1
+		if mesh_path.contains("ship-fighter"):
+			ship_fighter_meshes += 1
+	_check(cave_mine_cart_meshes == 0, "cave mine cart prop is removed")
+	_check(ship_fighter_meshes > 0 and game.ship._ship_model_root != null,
+		"ship-fighter remains loaded as the player's ship")
+	var active_cave_prop_shapes := 0
+	var physics_space: PhysicsDirectSpaceState3D = game.get_world_3d().direct_space_state
+	for prop_shape_node in cave_prop_shapes:
+		var prop_shape := prop_shape_node as CollisionShape3D
+		var shape_query := PhysicsShapeQueryParameters3D.new()
+		shape_query.shape = prop_shape.shape
+		shape_query.transform = prop_shape.global_transform
+		shape_query.collision_mask = game.player.collision_mask
+		var overlaps: Array[Dictionary] = physics_space.intersect_shape(shape_query, 512)
+		for overlap in overlaps:
+			if overlap.get("collider") != cave_collision:
+				continue
+			var owner_id: int = cave_collision.shape_find_owner(int(overlap.get("shape", -1)))
+			if cave_collision.shape_owner_get_owner(owner_id) == prop_shape:
+				active_cave_prop_shapes += 1
+				break
+	_check(active_cave_prop_shapes == cave_prop_shapes.size(),
+		"cave prop mesh colliders are active in the player's physics mask")
 	_check(game.home.find_child("InteriorAnomalyAnchor", true, false) != null, "observatory interior is enterable")
 	_check(game.planets[2].find_child("InteriorAnomalyAnchor", true, false) != null, "tide station interior is enterable")
 	_check(game.quantum != null and game.quantum.positions.size() >= 5, "quantum shard has multiple resting places")
 	_check(game.sun_detail != null and game.sun_detail.get_child_count() >= 8, "sun builds a near-field prominence LOD")
 	_check(game.comet.find_child("IonTail", true, false) != null and game.comet.find_child("DustTailMesh", true, false) != null, "comet keeps one ion tail and one dust tail")
-	var cave = game.home.find_child("Cave_Qinglan", true, false)
+	_check(not _lux3d_surface_blocks_cave_mouth(game.home), "Lux3D visible terrain leaves the cave mouth open")
 	# ⚠ 2026-11-11 B 方案：洞穴整体按 prop_scale（×5）放大，井深从 13 米变 65 米。
 	#   这两个高度是**世界空间的绝对米数**，必须跟着放大，否则射线只打到 -22 米
 	#   （= 洞局部 -4.4 米），压根够不到洞底。
@@ -172,7 +231,7 @@ func _run() -> void:
 		var ramp_local: Vector3 = cave.global_transform.affine_inverse() * ramp_hit.position
 		_check(ramp_local.y > -1.6, "the ramp is level with the surface at its top")
 	var platform_probes := [
-		[game.home, Vector3(3.2, 6.0, 3.2), "observatory platform"],
+		[game.home, Vector3(9.0, 6.0, 0.0), "observatory platform"],
 		[game.planets[1], Vector3(6.0, 6.0, 0.0), "ember platform"],
 		[game.planets[3], Vector3(5.0, 14.0, 0.0), "shard temple tiers"],
 		[game.planets[4], Vector3(0.0, 5.0, 8.0), "eye gate platform"],
@@ -325,12 +384,12 @@ func _run() -> void:
 	_check(licences_complete, "bundled engine component licence texts are preserved")
 
 	# ── 每个世界自己的云 ────────────────────────────────────────────
-	# 上一版六个世界共用同一套 fbm，只换颜色与密度，「换个世界」其实只是同一片云
+	# 上一版五个口袋世界共用同一套 fbm，只换颜色与密度，「换个世界」其实只是同一片云
 	# 换了个色调。这里逐世界读回真正推给 GPU 的参数，要求两两都不同 ——
 	# 哪个世界漏了字段、或者复制粘贴时忘了改，都会立刻在这里现形。
 	var signatures := {}
 	var duplicated := []
-	var worlds := ["space", "attic", "snow", "cloud", "firefly", "alley", "mirror", "dungeon"]
+	var worlds := ["space", "attic", "snow", "cloud", "firefly", "alley", "mirror"]
 	for key in worlds:
 		game.apply_sky(key)
 		var sig := "%s|%s|%.3f|%.3f|%.3f|%.3f|%.3f|%.3f" % [
@@ -459,6 +518,14 @@ func _run() -> void:
 	_check(not game.roast.active and game.player.oxygen >= 99.0 and game.player.fuel >= 99.0, "a golden marshmallow refills oxygen and fuel")
 	game.discover("qinglan")
 	_check(game.discovered.has("qinglan"), "scanning writes persistent knowledge")
+	var freed_anomaly := Node3D.new()
+	game.add_child(freed_anomaly)
+	game.anomalies.append(freed_anomaly)
+	freed_anomaly.free()
+	var scan_candidate: Node3D = game._find_scan_target()
+	game.anomalies.erase(freed_anomaly)
+	_check(scan_candidate == null or is_instance_valid(scan_candidate),
+		"scanner skips freed anomaly references")
 	_check(game._migrate_legacy_knowledge_key("ember_cave") == "zheya_cave" and game._migrate_legacy_knowledge_key("eye") == "xuanyuan" and game._migrate_legacy_knowledge_key("qinglan") == "qinglan", "old save keys migrate to the new planet ids")
 	_check(game.missing_clues().size() == 3, "eye begins with three missing coordinates")
 	game.discovered["zheya"] = true
@@ -692,6 +759,43 @@ func _run() -> void:
 	# 钉四点：范围外完全自由、越近越大、内圈推力顶不住、压到视界就死。
 	var bh_ship = game.ship
 	var hole: Vector3 = game.gargantua.global_position
+	var bh_player = game.player
+	var player_test_position: Vector3 = hole + Vector3(bh_ship.BH_PULL_RANGE * 0.9, 0.0, 0.0)
+	var player_pull: Vector3 = bh_player._black_hole_acceleration_at(player_test_position)
+	_check(player_pull.length() > 0.0 and player_pull.normalized().dot((hole - player_test_position).normalized()) > 0.999,
+		"black-hole gravity pulls the walking player toward Gargantua")
+	_check(bh_player._black_hole_acceleration_at(hole + Vector3(bh_ship.BH_PULL_RANGE + 1.0, 0.0, 0.0)) == Vector3.ZERO,
+		"walking player is unaffected outside the black-hole pull range")
+	var player_saved_position: Vector3 = bh_player.global_position
+	var state_before_player_capture: String = game.state
+	bh_player.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_HORIZON - 1.0)
+	var player_captured: bool = bh_player._apply_black_hole_capture()
+	_check(player_captured and game.state == "dying",
+		"crossing the black-hole horizon swallows the walking player")
+	bh_player.global_position = player_saved_position
+	game.state = state_before_player_capture
+	game.death_timer = 0.0
+	var ship_saved_position: Vector3 = bh_ship.global_position
+	bh_ship.global_position = hole + Vector3(0.0, 0.0, 10000.0)
+	bh_ship.velocity = Vector3(0.0, 0.0, 3000.0)
+	bh_ship.bh_captured = false
+	bh_ship.bh_warn_cooldown = 5.0
+	bh_ship._apply_black_hole_capture(1.0 / 60.0)
+	_check(bh_ship.bh_captured and bh_ship.velocity.dot((hole - bh_ship.global_position).normalized()) >= bh_ship.BH_FORCE_INWARD,
+		"3000 m/s outward ship is captured before it can escape the black-hole field")
+	bh_ship.global_position = ship_saved_position
+	bh_ship.velocity = Vector3.ZERO
+	bh_ship.bh_captured = false
+	# 捕获速度可以与机头垂直或朝机尾。手动前向约束不能把它投影掉，
+	# 否则捕获警告出现后飞船会停在原处或继续绕行。
+	bh_ship.global_position = hole + Vector3(bh_ship.BH_FORCE_CAPTURE * 0.8, 0.0, 0.0)
+	bh_ship.global_basis = Basis.IDENTITY
+	bh_ship.velocity = Vector3(-bh_ship.BH_FORCE_INWARD, 0.0, 0.0)
+	bh_ship.bh_captured = true
+	bh_ship._constrain_manual_velocity_to_forward()
+	_check(bh_ship.velocity.is_equal_approx(Vector3(-bh_ship.BH_FORCE_INWARD, 0.0, 0.0)),
+		"manual forward constraints preserve inward velocity after black-hole capture")
+	bh_ship.bh_captured = false
 	bh_ship.global_position = hole + Vector3(0.0, 0.0, bh_ship.BH_PULL_RANGE + 1500.0)
 	bh_ship.velocity = Vector3.ZERO
 	_check(bh_ship._black_hole_pull(0.016) == Vector3.ZERO,

@@ -76,7 +76,7 @@ func _run() -> void:
 	_check(not space.intersect_shape(pedestal_query, 1).is_empty(), "central hologram display base blocks the player")
 	_check(station.orbit_planet == game.home, "station orbits the nearest planet")
 	var orbit_offset: Vector3 = station.global_position - station.orbit_planet.global_position
-	_check(orbit_offset.length() > float(station.orbit_planet.radius) + 1000.0, "station keeps a distant orbit")
+	_check(orbit_offset.length() > float(station.orbit_planet.radius) + 17000.0, "station keeps at least 17 km clearance from the planet")
 	_check(absf(orbit_offset.length() - station.orbit_radius) < 50.0, "station holds its orbital radius")
 	var orbit_before: Vector3 = station.global_position
 	for i in range(60):

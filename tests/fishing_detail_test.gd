@@ -102,28 +102,10 @@ func _run() -> void:
 	await process_frame
 	_check(true, "成就页能画出来")
 
-	# 再按一次 → 到最近远行页
+	# → 从成就页回到总览
 	game.bag_page_next()
 	await process_frame
-	_check(game.bag.page == "runs", "成就页再按 → 进入最近远行")
-	game.bag.painter.queue_redraw()
-	await process_frame
-	_check(true, "最近远行页能画出来（空记录也不崩）")
-
-	# 有记录时也能画
-	game.progress.reset()
-	for i in range(7):
-		game.progress.push_recent_run(120.0 + float(i), 5, i != 3, 8, 1, 60, "A")
-	_check(game.progress.recent_runs.size() == 5, "远行记录只留 5 条")
-	game.bag.page = "runs"
-	game.bag.painter.queue_redraw()
-	await process_frame
-	_check(true, "最近远行页有记录时也能画出来")
-
-	# → 从远行页回到总览
-	game.bag_page_next()
-	await process_frame
-	_check(game.bag.page == "overview", "远行页再按 → 回到总览")
+	_check(game.bag.page == "overview", "成就页再按 → 回到总览")
 
 	# 分组表覆盖了所有成就
 	var grouped: Array = []

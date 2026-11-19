@@ -48,27 +48,27 @@ shadow_enabled = true
 [node name="Qinglan_MainPlanet" parent="." instance=ExtResource("1_qinglan")]
 scale = Vector3(4600, 4600, 4600)
 
-[node name="Surface_RuinArch" parent="."]
-position = Vector3(0, 1900, 0)
+[node name="Surface_RuinArch" parent="." instance=ExtResource("21_arch")]
+position = Vector3(0, 2309, 0)
 scale = Vector3(18, 18, 18)
 
-[node name="Surface_Obelisk" parent="."]
-position = Vector3(620, 1750, 320)
+[node name="Surface_Obelisk" parent="." instance=ExtResource("22_obelisk")]
+position = Vector3(620, 2203, 320)
 rotation_degrees = Vector3(0, 28, 0)
 scale = Vector3(22, 22, 22)
 
-[node name="Surface_DomeHabitat" parent="."]
-position = Vector3(-720, 1710, -420)
+[node name="Surface_DomeHabitat" parent="." instance=ExtResource("23_dome")]
+position = Vector3(-720, 2151, -420)
 rotation_degrees = Vector3(0, -35, 0)
 scale = Vector3(16, 16, 16)
 
-[node name="Surface_RockCluster" parent="."]
-position = Vector3(430, 1840, -760)
+[node name="Surface_RockCluster" parent="." instance=ExtResource("24_rock")]
+position = Vector3(430, 2132, -760)
 rotation_degrees = Vector3(0, 18, 0)
 scale = Vector3(12, 12, 12)
 
-[node name="Surface_WindTurbine" parent="."]
-position = Vector3(-420, 1820, 680)
+[node name="Surface_WindTurbine" parent="." instance=ExtResource("25_turbine")]
+position = Vector3(-420, 2164, 680)
 rotation_degrees = Vector3(0, 145, 0)
 scale = Vector3(14, 14, 14)
 

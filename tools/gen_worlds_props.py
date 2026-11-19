@@ -1,4 +1,4 @@
-"""批量生成阁楼外面（六个口袋世界）的 Lux3D 摆件。
+"""批量生成阁楼外面（五个口袋世界）的 Lux3D 摆件。
 
 产物 → assets/models/props/attic-worlds/<name>/
 ⚠ 该路径在 .gitignore 的例外名单里（与 attic/ 同级处理，见 .gitignore 注释）。

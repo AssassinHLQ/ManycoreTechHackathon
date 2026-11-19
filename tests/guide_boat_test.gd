@@ -1,5 +1,5 @@
 extends SceneTree
-# 新手引导 / 结算画面 / 云舟划桨 / 最近远行记录。
+# 新手引导 / 云舟划桨。
 # 用法：godot --headless --path . --script res://tests/guide_boat_test.gd
 
 var game
@@ -76,45 +76,7 @@ func _run() -> void:
 	game.guide_card.finish()
 	await process_frame
 
-	# ---------- 二、结算画面 ----------
-	_check(game.run_summary != null, "结算画面已创建")
-	_check(not game.run_summary.open, "结算画面初始不显示")
-	game.run_summary.show_summary({
-		"cleared": true, "failed": false, "rank": "S", "rank_name": "无瑕",
-		"rank_note": "无伤且 7 分钟内通关", "time_text": "04:31",
-		"hits": 0, "kills": 12, "coins": 96, "rooms": 6, "boons": 2, "depth": 6,
-		"best_rank": "S", "best_seconds": 271.0, "is_best": true, "has_best": true,
-	})
-	await process_frame
-	_check(game.run_summary.open, "能弹出结算画面")
-	_check(game.run_summary.painter.visible, "结算画面可见")
-	_check(String(game.run_summary.data["rank"]) == "S", "记下了 S 评级")
-	game.run_summary.close()
-	await process_frame
-	_check(not game.run_summary.open, "能收起结算画面")
-
-	# 未通关形态也能画
-	game.run_summary.show_summary({
-		"cleared": false, "failed": true, "rank": "B", "rank_name": "初净",
-		"time_text": "02:10", "hits": 5, "kills": 3, "coins": 24,
-		"rooms": 3, "boons": 1, "depth": 3,
-		"best_rank": "", "best_seconds": 0.0, "is_best": false, "has_best": false,
-	})
-	await process_frame
-	_check(true, "未通关形态也能画出来")
-	game.run_summary.close()
-	await process_frame
-
-	# ---------- 三、最近 5 次远行 ----------
-	game.progress.reset()
-	_check(game.progress.recent_runs.is_empty(), "远行记录初始为空")
-	for i in range(7):
-		game.progress.push_recent_run(100.0 + float(i), 4, true, 10, 0, 48, "A")
-	_check(game.progress.recent_runs.size() == 5, "远行记录只保留最近 5 次")
-	_check(float(game.progress.recent_runs[0]["seconds"]) == 106.0, "最新的排在最前")
-	_check(float(game.progress.recent_runs[4]["seconds"]) == 102.0, "最旧的一笔被挤出")
-
-	# ---------- 四、云舟划桨 ----------
+	# ---------- 二、云舟划桨 ----------
 	var worlds = game.attic_worlds
 	_check(worlds.boat_node != null, "云舟已建造")
 	_check(worlds.buoy_nodes.size() == 3, "三盏云灯浮标已建造")

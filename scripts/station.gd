@@ -18,7 +18,6 @@ const Placement := preload("res://scripts/prop_placement.gd")
 const Precision = preload("res://scripts/procedural_dressing.gd")
 const PrecisionGeometry = preload("res://scripts/procedural_geometry.gd")
 const RuntimeBake = preload("res://scripts/runtime_bake.gd")
-const HOME_STATION_MODEL := "res://assets/models/space-station-3/model.glb"
 
 const STATION_PROP_DIR := "res://assets/models/props/station/"
 var _prop_placer := Placement.new()
@@ -39,7 +38,7 @@ const ARM_HALF_HEIGHT := 8.0
 const POD_HALF_LENGTH := 22.0
 const POD_HALF_WIDTH := 17.0
 const POD_HALF_HEIGHT := 12.0
-const STATION_ORBIT_SPEED := 0.004
+const STATION_ORBIT_LINEAR_SPEED := 34.4
 const HUB_RADIUS := 30.0
 const CORRIDOR_COUNT := 6
 const CORRIDOR_HALF_LENGTH := 105.0
@@ -92,6 +91,7 @@ var orbit_ready := false
 ## before docking or entering it.
 var stream_proxy := false
 var stream_loading := false
+var stream_load_attempted := false
 var _orbit_time := 0.0
 var corridor_roots: Array[Node3D] = []
 var corridor_shapes: Array = []
@@ -139,11 +139,16 @@ func _ready() -> void:
 		runtime_scene_ready_finished.emit()
 		return
 	if not "--rebake-runtime" in OS.get_cmdline_user_args() and await RuntimeBake.load_generated(self, "station"):
-		_build_imported_exterior()
-		_hide_legacy_exterior_visuals()
+		_restore_procedural_exterior()
 		runtime_scene_ready = true
 		runtime_scene_ready_finished.emit()
 		return
+	_build_station_scene()
+	runtime_scene_ready = true
+	runtime_scene_ready_finished.emit()
+
+
+func _build_station_scene() -> void:
 	_font = load("res://assets/ui_font.ttf")
 	_build_materials()
 	_build_exterior()
@@ -153,11 +158,7 @@ func _ready() -> void:
 	_build_hub()
 	Precision.station_exterior(exterior_hub_shell, ring_root)
 	_merge_exterior_meshes()
-	_build_imported_exterior()
-	_hide_legacy_exterior_visuals()
 	set_meta("bake_children", get_children())
-	runtime_scene_ready = true
-	runtime_scene_ready_finished.emit()
 
 
 func _build_stream_proxy_visual() -> void:
@@ -184,19 +185,25 @@ func _build_stream_proxy_visual() -> void:
 ## Replace the distant marker with the already exported station snapshot.
 ## No procedural station build runs on this path.
 func load_streamed_snapshot() -> void:
-	if not stream_proxy or stream_loading:
+	if not stream_proxy or stream_loading or stream_load_attempted:
 		return
+	stream_load_attempted = true
 	stream_loading = true
 	var loaded := await RuntimeBake.load_generated(self, "station")
 	if loaded:
 		var proxy := get_node_or_null("StreamProxyVisual")
+		_restore_procedural_exterior()
 		if proxy != null:
 			proxy.queue_free()
-		_build_imported_exterior()
-		_hide_legacy_exterior_visuals()
 		stream_proxy = false
 	else:
-		push_warning("归航站固定快照加载失败，继续使用远景代理")
+		push_warning("归航站快照校验失败，使用当前站体代码构建一次")
+		var proxy := get_node_or_null("StreamProxyVisual")
+		if proxy != null:
+			remove_child(proxy)
+			proxy.free()
+		stream_proxy = false
+		_build_station_scene()
 	stream_loading = false
 	stream_loaded_finished.emit()
 
@@ -263,8 +270,6 @@ func _physics_process(delta: float) -> void:
 		hub_root.visible = in_station
 		if exterior_hub_shell != null:
 			exterior_hub_shell.visible = not in_station
-		if exterior_model_root != null:
-			exterior_model_root.visible = not in_station
 		for pod in end_pods:
 			pod.visible = not in_station
 		var idx := -1
@@ -360,10 +365,8 @@ func _setup_orbit() -> void:
 	if projected.length_squared() < 1.0:
 		projected = orbit_u
 	orbit_phase = atan2(projected.dot(orbit_v), projected.dot(orbit_u))
-	# ⚠ 2026-11-11 行星半径 ×3、轨道 ×10 之后，环绕半径不能再写死 2200：
-	#   那会让归航站贴着放大后的行星表面（1200 米半径的星球只剩 1000 米余量）。
-	#   偏移量与下限都按「行星半径放大倍数」同步放宽。
-	orbit_radius = maxf(float(best.radius) + 2200.0 * 3.0, 2600.0 * 3.0)
+	# Keep the station visibly clear of the enlarged home planet throughout its orbit.
+	orbit_radius = maxf(float(best.radius) + 18000.0, 20000.0)
 	_orbit_time = float(game.elapsed)
 	orbit_ready = true
 
@@ -386,7 +389,7 @@ func _update_orbit() -> void:
 		orbit_u = Vector3.RIGHT.cross(radial)
 	orbit_u = orbit_u.normalized()
 	var orbit_v := radial.cross(orbit_u).normalized()
-	var angle := orbit_phase + _orbit_time * STATION_ORBIT_SPEED
+	var angle := orbit_phase + _orbit_time * STATION_ORBIT_LINEAR_SPEED / orbit_radius
 	var next_position := center + (orbit_u * cos(angle) + orbit_v * sin(angle)) * orbit_radius
 	if global_position != next_position:
 		global_position = next_position
@@ -774,40 +777,18 @@ func _build_exterior() -> void:
 	_build_shuttle(Vector3(0.0, 24.0, -55.0), 2.2)
 
 
-func _build_imported_exterior() -> void:
-	var packed := load(HOME_STATION_MODEL) as PackedScene
-	if packed == null:
-		push_warning("归航站外部模型缺失：%s" % HOME_STATION_MODEL)
-		return
-	exterior_model_root = Node3D.new()
-	exterior_model_root.name = "ImportedExteriorModel"
-	exterior_model_root.scale = Vector3.ONE * 0.62
-	exterior_model_root.rotation.y = deg_to_rad(18.0)
-	add_child(exterior_model_root)
-	var model := packed.instantiate() as Node3D
-	exterior_model_root.add_child(model)
-	for node in exterior_model_root.find_children("*", "MeshInstance3D", true, false):
-		var mesh_instance := node as MeshInstance3D
-		for surface in range(mesh_instance.mesh.get_surface_count()):
-			var material := mesh_instance.get_active_material(surface)
-			if material is StandardMaterial3D:
-				var adjusted := (material as StandardMaterial3D).duplicate() as StandardMaterial3D
-				adjusted.cull_mode = BaseMaterial3D.CULL_DISABLED
-				adjusted.metallic = clampf(adjusted.metallic, 0.0, 0.82)
-				adjusted.roughness = clampf(adjusted.roughness, 0.3, 1.0)
-				mesh_instance.set_surface_override_material(surface, adjusted)
-
-
-func _hide_legacy_exterior_visuals() -> void:
-	# 旧程序化外壳仍保留碰撞和尺寸基准，但由导入模型负责可见外观。
-	# 内部根节点和新模型保留可见，其余站外节点只隐藏渲染，不影响物理碰撞。
+func _restore_procedural_exterior() -> void:
+	var imported_model := get_node_or_null("ImportedExteriorModel")
+	if imported_model == null and is_instance_valid(exterior_model_root):
+		imported_model = exterior_model_root
+	if imported_model != null:
+		imported_model.queue_free()
+	exterior_model_root = null
 	for child in get_children():
-		if child == interior_root or child == hub_root or child == exterior_model_root:
-			continue
 		if child.name == "StationHub" or child.name == "Interior" or child.name.begins_with("CorridorContainer"):
 			continue
 		if child is Node3D:
-			(child as Node3D).visible = false
+			(child as Node3D).visible = true
 
 
 func _make_open_tube_mesh(length: float, half_height: float, half_width: float) -> ArrayMesh:
@@ -2076,7 +2057,7 @@ func _furnish(kind: String, x: float, side: float, z_center: float) -> void:
 				_cylinder(self, 0.08, 0.08, 1.2, Vector3(x + offset, CEILING_Y - 0.5, z_center + side * 1.2), _mat_warm)
 			_box(self, Vector3(4.0, 0.09, 0.3), Vector3(x, CEILING_Y - 0.12, z_center), _mat_glow)
 		"canteen":
-			_box(self, Vector3(6.5, 1.0, 0.9), Vector3(x, FLOOR_TOP + 0.5, z_center - side * 2.1), _mat_trim, Vector3.ZERO, true)
+			_box(self, Vector3(6.5, 1.0, 0.9), Vector3(x, FLOOR_TOP + 0.5, z_center + side * 2.1), _mat_trim, Vector3.ZERO, true)
 			for offset: float in [-2.1, 2.1]:
 				_box(self, Vector3(1.6, 0.1, 1.6), Vector3(x + offset, FLOOR_TOP + 0.82, z_center + side * 0.9), _mat_warm, Vector3.ZERO, true)
 				for chair: float in [-0.7, 0.7]:
@@ -2091,7 +2072,7 @@ func _furnish(kind: String, x: float, side: float, z_center: float) -> void:
 			_box(self, Vector3(1.4, 0.7, 0.1), Vector3(x + 3.8, FLOOR_TOP + 1.3, z_center - side * 2.5), _mat_glass)
 		"archive":
 			for offset: float in [-2.6, 0.0, 2.6]:
-				_box(self, Vector3(2.0, 2.3, 0.55), Vector3(x + offset, FLOOR_TOP + 1.15, z_center - side * 2.2), _mat_dark, Vector3.ZERO, true)
+				_box(self, Vector3(2.0, 2.3, 0.55), Vector3(x + offset, FLOOR_TOP + 1.15, z_center + side * 2.2), _mat_dark, Vector3.ZERO, true)
 				for row in range(3):
 					for col in range(3):
 						_box(self, Vector3(0.42, 0.36, 0.42), Vector3(x + offset - 0.55 + col * 0.55, FLOOR_TOP + 0.5 + row * 0.62, z_center - side * 1.9), _mat_orange if (row + col) % 2 == 0 else _mat_teal)
@@ -2107,10 +2088,10 @@ func _furnish(kind: String, x: float, side: float, z_center: float) -> void:
 				_box(self, Vector3(2.6, 0.12, 1.2), Vector3(x + offset, FLOOR_TOP + 0.98, z_center + side * 0.6), _mat_white, Vector3.ZERO, true)
 				_cylinder(self, 0.35, 0.35, 1.1, Vector3(x + offset, FLOOR_TOP + 1.62, z_center + side * 0.6), _mat_glass)
 				_sphere(self, 0.36, Vector3(x + offset, FLOOR_TOP + 2.0, z_center + side * 0.6), _mat_teal)
-			_box(self, Vector3(3.4, 1.8, 0.5), Vector3(x, FLOOR_TOP + 0.9, z_center - side * 2.4), _mat_dark, Vector3.ZERO, true)
-			_box(self, Vector3(2.2, 0.8, 0.08), Vector3(x, FLOOR_TOP + 1.2, z_center - side * 2.68), _mat_glow)
+			_box(self, Vector3(3.4, 1.8, 0.5), Vector3(x, FLOOR_TOP + 0.9, z_center + side * 2.4), _mat_dark, Vector3.ZERO, true)
+			_box(self, Vector3(2.2, 0.8, 0.08), Vector3(x, FLOOR_TOP + 1.2, z_center + side * 2.68), _mat_glow)
 		"repair":
-			_box(self, Vector3(5.5, 1.0, 0.9), Vector3(x, FLOOR_TOP + 0.5, z_center - side * 1.8), _mat_trim, Vector3.ZERO, true)
+			_box(self, Vector3(5.5, 1.0, 0.9), Vector3(x, FLOOR_TOP + 0.5, z_center + side * 1.8), _mat_trim, Vector3.ZERO, true)
 			for i in range(3):
 				_box(self, Vector3(0.6, 0.6, 0.5), Vector3(x - 1.8 + i * 1.8, FLOOR_TOP + 1.15, z_center - side * 2.4), _mat_orange)
 			_box(self, Vector3(1.6, 0.9, 1.6), Vector3(x + 3.4, FLOOR_TOP + 0.45, z_center + side * 1.8), _mat_dark, Vector3.ZERO, true)
@@ -2118,8 +2099,9 @@ func _furnish(kind: String, x: float, side: float, z_center: float) -> void:
 			_add_collider(Vector3(0.6, 4.4, 0.6), Vector3(x - 3.9, FLOOR_TOP + 2.2, z_center + side * 2.2))
 		"storage":
 			for i in range(6):
-				var cx := x - 2.8 + float(i % 3) * 2.8
-				var cz := z_center - side * 1.1 + (float(i / 3)) * side * 1.7
+				var cx := x + (-3.2 if i % 2 == 0 else 3.2)
+				var row := int(i / 2)
+				var cz := z_center + side * (1.8 - float(row) * 1.8)
 				# 储藏舱的箱体：Lux3D 货运箱优先（碰撞沿用原尺寸，不依赖模型）
 				var crate_prop := _prop("cargo-crate", 1.1)
 				if crate_prop != null:
@@ -2133,7 +2115,7 @@ func _furnish(kind: String, x: float, side: float, z_center: float) -> void:
 			_add_collider(Vector3(1.0, 1.3, 1.0), Vector3(x + 3.6, FLOOR_TOP + 0.65, z_center - side * 2.2))
 		"library":
 			for offset: float in [-3.2, 0.0, 3.2]:
-				_box(self, Vector3(2.2, 2.4, 0.55), Vector3(x + offset, FLOOR_TOP + 1.2, z_center - side * 2.2), _mat_dark, Vector3.ZERO, true)
+				_box(self, Vector3(2.2, 2.4, 0.55), Vector3(x + offset, FLOOR_TOP + 1.2, z_center + side * 2.2), _mat_dark, Vector3.ZERO, true)
 				for row in range(3):
 					for col in range(4):
 						_box(self, Vector3(0.28, 0.4, 0.32), Vector3(x + offset - 0.65 + col * 0.42, FLOOR_TOP + 0.45 + row * 0.65, z_center - side * 1.9), _mat_warm if (row + col) % 2 == 0 else _mat_teal)

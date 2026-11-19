@@ -5,7 +5,7 @@ extends SceneTree
 #
 # 机位固定、景色固定，所以两张图之间的差别只来自天空本身 —— 这正是要比的东西。
 
-const ALL_WORLDS := ["space", "attic", "snow", "cloud", "firefly", "alley", "mirror", "dungeon"]
+const ALL_WORLDS := ["space", "attic", "snow", "cloud", "firefly", "alley", "mirror"]
 # 抬高一点看天：地平线附近会被雾（haze）压住，看不出云的轮廓
 const PITCH_DEG := 22.0
 const YAW_DEG := 0.0

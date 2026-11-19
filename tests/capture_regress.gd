@@ -81,18 +81,8 @@ func _run() -> void:
 	game.progress.bait_charges["glow"] = 4
 	game.progress.bait_charges["star"] = 2
 	game.progress.game_best = {"chime": 62, "firefly": 118, "rain": 143}
-	game.progress.dungeon = {"runs": 3, "clears": 2, "best_rank": "S",
-		"best_seconds": 271.0, "total_boons": 5, "flawless": true}
 	game.progress.wind_heard = [true, true, true]
 	game.progress.wind_solved = true
-	game.progress.mirror_coins_total = 216
-	game.progress.recent_runs = [
-		{"seconds": 271.0, "rooms": 6, "cleared": true, "kills": 14, "hits": 0, "coins": 96, "rank": "S", "at": "2026-11-06 04:31:00"},
-		{"seconds": 344.0, "rooms": 6, "cleared": true, "kills": 11, "hits": 2, "coins": 72, "rank": "A", "at": "2026-11-06 03:12:00"},
-		{"seconds": 158.0, "rooms": 3, "cleared": false, "kills": 5, "hits": 4, "coins": 36, "rank": "B", "at": "2026-11-06 02:40:00"},
-		{"seconds": 402.0, "rooms": 6, "cleared": true, "kills": 9, "hits": 1, "coins": 72, "rank": "A", "at": "2026-11-05 23:18:00"},
-		{"seconds": 96.0, "rooms": 2, "cleared": false, "kills": 2, "hits": 5, "coins": 24, "rank": "C", "at": "2026-11-05 22:05:00"},
-	]
 	game.keepsakes = {"snow": true, "cloud": true, "firefly": true, "alley": true}
 	game.has_prism_heart = true
 	# 雪夜炉火默认第 2 档（添过一根柴）
@@ -129,19 +119,7 @@ func _run() -> void:
 	game.guide_card.skip()
 	await _frames(6)
 
-	# --- 2c 镜牢结算画面（S 评级）---
-	game.run_summary.show_summary({
-		"cleared": true, "failed": false, "rank": "S", "rank_name": "无瑕",
-		"rank_note": "无伤且 7 分钟内通关", "time_text": "04:31",
-		"hits": 0, "kills": 14, "coins": 96, "rooms": 6, "boons": 3, "depth": 6,
-		"best_rank": "S", "best_seconds": 271.0, "is_best": true, "has_best": true,
-	})
-	await _frames(10)
-	await _capture("02d_run_summary")
-	game.run_summary.close()
-	await _frames(4)
-
-	# --- 2e 窗台燕子（雨巷完成后出现在窗台）---
+	# --- 2d 窗台燕子（雨巷完成后出现在窗台）---
 	game.keepsakes["alley"] = true
 	game.attic.show_swallow()
 	await _frames(6)
@@ -174,7 +152,7 @@ func _run() -> void:
 	game.toggle_handbook()
 	await _frames(6)
 
-	# --- 5 行囊四页 ---
+	# --- 5 行囊三页 ---
 	game.toggle_bag()
 	await _frames(10)
 	await _capture("05_bag_overview")
@@ -189,7 +167,7 @@ func _run() -> void:
 	await _capture("07_bag_achievements")
 	game.bag_page_next()
 	await _frames(6)
-	await _capture("07b_bag_runs")
+	await _capture("07b_bag_overview_again")
 	game.toggle_bag()
 	await _frames(6)
 

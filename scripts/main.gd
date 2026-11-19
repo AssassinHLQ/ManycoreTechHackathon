@@ -304,6 +304,7 @@ var _dev_tap_last_ms := 0
 
 func _ready() -> void:
 	_migrate_legacy_user_data()
+	_configure_executable_storage()
 	_build_input_map()
 	stream_staging = Node3D.new()
 	stream_staging.name = "PlanetStreamStaging"
@@ -380,6 +381,8 @@ func _build_world_progressive() -> void:
 	_stage_begin()
 	settings = SettingsScript.new()
 	settings.game = self
+	if not save_path.begins_with("user://"):
+		settings.save_path = save_path.get_base_dir().path_join("starward_settings.json")
 	add_child(settings)
 	settings.load_and_apply()
 	_stage_end("settings")
@@ -576,6 +579,28 @@ func _migrate_legacy_user_data() -> void:
 			var source := base.path_join(directory).path_join(file)
 			if FileAccess.file_exists(source):
 				DirAccess.copy_absolute(source, target)
+
+
+func _configure_executable_storage() -> void:
+	const default_save_path := "user://starward_knowledge.json"
+	const default_progress_path := "user://starward_progress.json"
+	if OS.has_feature("web") or OS.has_feature("editor") \
+			or save_path != default_save_path or progress_path != default_progress_path:
+		return
+	var executable_directory := OS.get_executable_path().get_base_dir()
+	if executable_directory.is_empty():
+		return
+	var directory := executable_directory.path_join("借一扇晴天_数据")
+	if DirAccess.make_dir_recursive_absolute(directory) != OK:
+		push_warning("无法在游戏程序旁创建玩家数据目录：" + directory)
+		return
+	for file_name in ["starward_knowledge.json", "starward_progress.json", "starward_settings.json"]:
+		var source := OS.get_user_data_dir().path_join(file_name)
+		var target := directory.path_join(file_name)
+		if not FileAccess.file_exists(target) and FileAccess.file_exists(source):
+			DirAccess.copy_absolute(source, target)
+	save_path = directory.path_join("starward_knowledge.json")
+	progress_path = directory.path_join("starward_progress.json")
 
 
 func _build_input_map() -> void:
@@ -2448,12 +2473,11 @@ func _process(delta: float) -> void:
 			# Upload the full planet well before final approach so close range stays smooth.
 			if ship.target.get_script() == PlanetScript and target_distance < ship.target.radius + 60000.0:
 				_request_planet_stream(ship.target)
-		# The homecoming station is not part of the planet target list. Its fixed
-		# snapshot must therefore stream from its own distance check, even when the
-		# player has no planet selected or the station is the active target.
+		# Keep the Homecoming Station's large scene out of startup. Its distant
+		# marker is enough until the ship reaches the final approach range.
 		if station != null and station.stream_proxy and not station.stream_loading:
 			var station_distance := ship.global_position.distance_to(station.global_position)
-			if ship.target == station or station_distance < station.radius + 12000.0:
+			if station_distance < station.radius + 3000.0:
 				station.load_streamed_snapshot()
 	visual_time += delta
 	_update_guide(delta)

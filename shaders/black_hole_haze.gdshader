@@ -30,6 +30,7 @@ uniform float band_strength = 0.55;
 uniform float edge_fade = 0.35;
 /// 内缘淡出宽度（相对 outer_radius）
 uniform float core_fade = 0.12;
+uniform float rotation_phase = 0.0;
 
 uniform vec4 dust_color : source_color = vec4(0.72, 0.62, 0.48, 1.0);
 uniform vec4 outer_dust_color : source_color = vec4(0.30, 0.27, 0.26, 1.0);
@@ -66,7 +67,10 @@ void vertex() {
 }
 
 void fragment() {
-	vec2 d = local_pos.xz;
+	float c = cos(rotation_phase);
+	float s = sin(rotation_phase);
+	vec2 raw = local_pos.xz;
+	vec2 d = vec2(raw.x * c - raw.y * s, raw.x * s + raw.y * c);
 	float r = length(d);
 
 	float span = max(1.0, outer_radius - inner_radius);

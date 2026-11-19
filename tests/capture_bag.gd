@@ -45,7 +45,7 @@ func _run() -> void:
 	game.progress.coins = 300
 	game.progress.buy_rod("brass")
 	for id in ["first_fish", "keepsake_snow", "keepsake_cloud", "tea_full", "court_rest",
-			"dex-all", "angler", "rich", "listening-court", "three-faces"]:
+			"dex-all", "angler", "rich", "listening-court"]:
 		game.progress.unlock(id)
 	game.progress.record_game("chime", 132)
 	game.progress.record_game("rain", 96)

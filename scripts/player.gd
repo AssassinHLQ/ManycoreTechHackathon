@@ -12,6 +12,7 @@ const SCOPE_BASE_FOV := 35.0
 const SCOPE_MAX_ZOOM := 8.0
 const SCOPE_BLACK_HOLE_CLIP_NEAR := 30.0
 const SCOPE_BLACK_HOLE_MIN_DISTANCE := 10000.0
+const BLACK_HOLE_CAPTURE_MESSAGE := "你被卡冈图雅吞噬"
 var mouse_sensitivity := 0.0022
 const WEB_LOOK_SCALE := 0.5
 var bob_time := 0.0
@@ -187,6 +188,8 @@ func _physics_process(delta: float) -> void:
 	var horizontal := velocity - normal * vertical_speed
 	horizontal = horizontal.move_toward(wish * speed,
 		delta * (34.0 if is_on_floor() else 12.0) * body_scale)
+	var black_hole_acceleration := _black_hole_acceleration_at(global_position)
+	horizontal += black_hole_acceleration.slide(normal) * delta
 
 	if is_on_floor():
 		if vertical_speed < 0.0 or (planet != null and vertical_speed < 0.01):
@@ -204,6 +207,7 @@ func _physics_process(delta: float) -> void:
 			vertical_speed -= gravity_strength * delta
 		else:
 			vertical_speed -= clampf(gravity_strength * (1.0 - altitude / (planet.radius * 0.55)), 1.0, gravity_strength) * delta
+	vertical_speed += black_hole_acceleration.dot(normal) * delta
 
 	var jetting := false
 	if Input.is_action_pressed("jetpack") and fuel > 0.0 and not game.map_open:
@@ -237,6 +241,8 @@ func _physics_process(delta: float) -> void:
 	var local_before := position
 	var before_move := global_position
 	move_and_slide()
+	if _apply_black_hole_capture():
+		return
 	# 无输入接地时沿用控制器算出的减速速度，避免碰撞把竖直分量投影成
 	# 新的侧向/向上速度。正常松键减速继续生效，起跳和喷气不受影响。
 	if planet != null and get_parent() == planet and is_on_floor() \
@@ -289,6 +295,34 @@ func _physics_process(delta: float) -> void:
 		bob_time += delta * planar_speed / maxf(body_scale, 0.001) * 1.25
 	camera.position.y = (1.48 + sin(bob_time) * minf(planar_speed / (8.5 * body_scale), 1.0) * 0.035) * body_scale
 	_set_jetpack_audio(jetting)
+
+
+func _black_hole_acceleration_at(world_position: Vector3) -> Vector3:
+	if game == null or game.gargantua == null or game.ship == null:
+		return Vector3.ZERO
+	var ship = game.ship
+	var to_hole: Vector3 = game.gargantua.global_position - world_position
+	var distance := to_hole.length()
+	if distance > ship.BH_PULL_RANGE or distance < 0.001:
+		return Vector3.ZERO
+	var span: float = maxf(ship.BH_PULL_RANGE - ship.BH_HORIZON, 1.0)
+	var closeness := clampf((ship.BH_PULL_RANGE - distance) / span, 0.0, 1.0)
+	var strength: float = lerpf(ship.BH_ACCEL_FAR, ship.BH_ACCEL_NEAR, pow(closeness, 2.2))
+	if closeness > ship.BH_ESCAPE_FROM:
+		var layer_t: float = (closeness - ship.BH_ESCAPE_FROM) / maxf(1.0 - ship.BH_ESCAPE_FROM, 0.0001)
+		strength *= lerpf(1.0, ship.BH_ESCAPE_BOOST, pow(layer_t, 1.5))
+	return to_hole / distance * strength
+
+
+func _apply_black_hole_capture() -> bool:
+	if game == null or game.gargantua == null or game.ship == null:
+		return false
+	if global_position.distance_to(game.gargantua.global_position) > game.ship.BH_HORIZON:
+		return false
+	velocity = Vector3.ZERO
+	_set_jetpack_audio(false)
+	game.begin_death(BLACK_HOLE_CAPTURE_MESSAGE, 1.6)
+	return true
 
 
 func _set_jetpack_audio(active: bool) -> void:

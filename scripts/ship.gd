@@ -47,15 +47,13 @@ const ORBIT_LERP_SPEED := 8.0
 ## 修理进度 0..1。>0 表示正在修。
 var repair_progress := 0.0
 ## 修理一次从开始到满要多久（秒）。船体 0→100 的最短时间。
-## 取 3.2 秒：比烤棉花糖（8 秒）短得多，不至于让玩家等着无聊，
-## 又长到能看见进度条在走。
 const REPAIR_DURATION := 1.8
 ## 能否开始修理的判定半径（米）。玩家要在飞船附近。
 ##
 ## ⚠ 2026-11-11 用户：「飞船修理的判断范围太小了」。
 ##   原来是 6 米，而且量的是**相机到飞船原点**的距离 —— 飞船半长 3.25 米，
 ##   站在机头旁边光这段就吃掉 3~4 米余量，稍微一站偏就判不到。
-##   现在放大到 14 米，并改成量**到船体包围盒**的距离（见 repair_check）。
+##   现在放大到 24 米，并量**到船体包围盒**的距离（见 repair_check）。
 const REPAIR_RANGE := 24.0
 ## 对着飞船的判定：视线方向与「玩家→飞船」夹角余弦要大于它（≈ 45°）。
 ##
@@ -119,6 +117,7 @@ const BH_FUEL_MULTIPLIER := 3.0
 ## 倍率曲线的形状：1 = 线性，>1 = 外圈几乎无感、内圈陡增。
 const BH_FUEL_CURVE := 2.4
 var thrust_level := 0.0
+## 垂直推力的平滑状态，避免起飞或按 Space 时加速度瞬间跳满。
 var _vertical_thrust_level := 0.0
 var _takeoff_lift_active := false
 var mouse_sensitivity := 0.0018
@@ -268,10 +267,10 @@ var turn_budget := Quaternion.IDENTITY
 ## 让滚转也有惯性而不是「一下子就停」。
 var _roll_ramp := 0.0
 var _roll_dir := 0.0
-## 鼠标灵敏度（弧度/像素），约 10472 像素转 90°。
-const AIM_SENSITIVITY := 0.00015
+## 鼠标灵敏度（弧度/像素），约 15708 像素转 90°。
+const AIM_SENSITIVITY := 0.0001
 ## 鼠标目标姿态的响应时间常数。指数平滑保持不同帧率下的手感一致。
-const AIM_SMOOTH_TIME := 0.055
+const AIM_SMOOTH_TIME := 0.1
 ## 速度矢量向机头方向对齐的角速度（弧度/秒）。
 ##
 ## 用户：「往前飞, 鼠标掉头但不加速, 为什么还是往后飞」——
@@ -352,6 +351,9 @@ const SHIP_BOOST_THRUST := 300.0 * MANUAL_ACCEL_MULTIPLIER
 const SHIP_BRAKE_DECEL := 260.0 * MANUAL_ACCEL_MULTIPLIER
 const VERTICAL_THRUST_RISE_TIME := 1.2
 const VERTICAL_THRUST_FALL_TIME := 0.24
+## Moving collision surfaces can transfer normal velocity back into world space.
+## Cap only the collision result so free-flight thrust remains uncapped.
+const LIGHT_SPEED_MPS := 299792458.0
 
 ## ⚠ 速度上限**已彻底移除**（2026-11-10 用户：「为什么现在上限速度还是有, 3200」）
 ##
@@ -430,6 +432,8 @@ const BH_SINK_TO_INWARD := 0.9
 ##   现在缩到 1400（视界的 11.7 倍）：保留「进了就没救」的压迫感，
 ##   但在外面留出一段真正能挣扎的区间（1400~2400 之间不再硬判定）。
 const BH_FORCE_CAPTURE := 6000.0
+## 高速飞船在进入强制捕获圈前留出制止时间，避免高速掠过时错过捕获判定。
+const BH_CAPTURE_LEAD_TIME := 1.5
 ## 强制捕获时每秒最多砍掉多少 m/s 的切向速度（**固定量，不是比例**）。
 ##
 ## ⚠ 2026-11-10 用户实测「3200 和 1000 都是 3 秒失去速度」：
@@ -1782,9 +1786,10 @@ func _update_cockpit_camera_view() -> void:
 ## 手动飞行时只保留机头前向和机体竖向速度。
 ##
 ## 速度矢量不再因为掉头、滚转或上一帧的惯性而侧滑、倒飞。
+## 受控的竖直速度单独保留，避免同时被重复计入机头速度。
 ## 制动时保留完整速度，方便 S/X 匹配空间站的相对运动。
 func _constrain_manual_velocity_to_forward() -> void:
-	if Input.is_action_pressed("brake"):
+	if bh_captured or Input.is_action_pressed("brake"):
 		return
 	var nose_dir := -global_transform.basis.z.normalized()
 	var side_axis := global_transform.basis.x.normalized()
@@ -1825,8 +1830,6 @@ func _physics_process(delta: float) -> void:
 	var base_fov := 46.0 if focus else 72.0
 	var target_fov := maxf(base_fov / zoom, 3.0)
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 8.0))
-	_update_third_person_camera(delta)
-	_update_cockpit_camera_view()
 	if docked:
 		velocity = Vector3.ZERO
 		thrust_level = 0.0
@@ -1846,6 +1849,8 @@ func _physics_process(delta: float) -> void:
 			look_at(docked_station.dock_look_target(), docked_station.dock_up_direction())
 		if Input.is_action_just_pressed("jump"):
 			undock()
+		_update_third_person_camera(delta)
+		_update_cockpit_camera_view()
 		_update_engine(delta)
 		return
 	if landed:
@@ -1870,11 +1875,15 @@ func _physics_process(delta: float) -> void:
 			game.hud.set_fuel_harvest_hint(true)
 		if Input.is_action_just_pressed("jump"):
 			takeoff()
+		_update_third_person_camera(delta)
+		_update_cockpit_camera_view()
 		_update_engine(delta)
 		return
 
 	# ── 降落状态机接管（全程按真实速度推进，无瞬移）──
 	if _process_landing(delta):
+		_update_third_person_camera(delta)
+		_update_cockpit_camera_view()
 		_update_engine(delta)
 		return
 
@@ -2084,14 +2093,13 @@ func _physics_process(delta: float) -> void:
 		_constrain_manual_velocity_to_forward()
 
 		velocity += gravity * delta
-		if not Input.is_action_pressed("brake"):
+		if not Input.is_action_pressed("brake") and not bh_captured:
 			# 重力可能在本帧把速度投到机头后方，立即截断负向分量。
 			var nose_dir := -global_transform.basis.z.normalized()
 			var forward_speed := velocity.dot(nose_dir)
 			if forward_speed < 0.0:
 				velocity -= nose_dir * forward_speed
-			# 没有 Space/C 输入时，不保留上一帧的垂直漂移。
-			# 下一帧会把速度重新压回机头前向，避免持续绕圈。
+			# 只有没有垂直输入、起飞辅助和残余竖直推力时才清除竖直漂移。
 			var vertical_input := Input.get_axis("thrust_down", "jump")
 			if absf(vertical_input) <= 0.01 and not _takeoff_lift_active \
 					and _vertical_thrust_level <= 0.01:
@@ -2142,6 +2150,7 @@ func _physics_process(delta: float) -> void:
 		# 所以现在两处一起改：剖面改成动力学可行的（见 _autopilot_desired_speed），
 		# 豁免删掉 —— 自动驾驶要是真撞快了，它也得挨这一下。
 		if impact_speed < 14.0:
+			_clamp_collision_speed()
 			# ⚠ 2026-11-11 不再直接 land() 贴地。
 			#   轻触只代表「够慢、可以落」，交给降落状态机从 FLARE 走完最后一段：
 			#   抬机头 → 反推降到 0 → 落稳，全程按真实速度推进，没有瞬移。
@@ -2154,6 +2163,7 @@ func _physics_process(delta: float) -> void:
 		else:
 			global_position = planet.global_position + planet.surface_position(normal, 5.0)
 			velocity = ground_velocity + normal * maxf(12.0, impact_speed * 0.42)
+			_clamp_collision_speed()
 			if impact_cooldown <= 0.0:
 				hull = maxf(0.0, hull - impact_speed * 0.42 * HULL_DAMAGE_MULTIPLIER)
 				impact_cooldown = 1.2
@@ -2183,6 +2193,8 @@ func _physics_process(delta: float) -> void:
 			game.begin_death("推进剂耗尽，飞船在深空失去动力", 4.0)
 	else:
 		fuel_empty_time = 0.0
+	_update_third_person_camera(delta)
+	_update_cockpit_camera_view()
 	game.audio.set_engine(thrusting, thrust_level)
 	_update_engine(delta)
 
@@ -2320,16 +2332,17 @@ func _apply_black_hole_capture(delta: float) -> bool:
 		return true
 	# ── 强制捕获：进了内圈就别想走 ─────────────────────────────
 	# 引力本身只改方向、不改速度大小，所以理论上高速飞船还能靠双曲线轨道
-	# 擦边溜掉。BH_FORCE_CAPTURE 以内直接兜底：不管速度多少，都往视界里拽。
+	# 擦边溜掉。捕获边界按速度提前扩展，锁存后持续向视界内牵引。
 	# 这是「游戏性优先于物理正确性」的一处刻意选择 —— 卡冈图雅不是可以
 	# 刷引力弹弓的景点，靠近它就该有代价。
 	#
-	# 注意用 bh_captured 锁存：1600 全速时一帧能飞 26 单位，只在「这一帧
-	# 恰好落在半径内」判定会被直接穿过去（实测 3000 处 1600 速就从兜底圈
-	# 里漏了出去）。一旦进过捕获圈就记住，直到退出更外圈才解锁。
-	if bh_distance <= BH_FORCE_CAPTURE:
+	# 按速度提前启动捕获，给高速飞船留出减速和转向时间。锁存持续到驶出
+	# 整个引力场外圈，避免减速后捕获半径缩小、捕获状态突然解除。
+	var capture_radius := minf(BH_PULL_RANGE,
+		BH_FORCE_CAPTURE + velocity.length() * BH_CAPTURE_LEAD_TIME)
+	if bh_distance <= capture_radius:
 		bh_captured = true
-	elif bh_distance > BH_FORCE_CAPTURE * BH_CAPTURE_RELEASE:
+	elif bh_distance > BH_PULL_RANGE * BH_CAPTURE_RELEASE:
 		bh_captured = false
 	if bh_captured:
 		var inward: Vector3 = (game.gargantua.global_position - global_position).normalized()
@@ -2416,6 +2429,7 @@ func _move_with_station_collision(delta: float) -> bool:
 		if not _station_blocked(escape):
 			global_position = escape
 		velocity = normal * 8.0
+		_clamp_collision_speed()
 		return false
 	if motion.length_squared() < 0.000001:
 		return false
@@ -2439,6 +2453,7 @@ func _move_with_station_collision(delta: float) -> bool:
 		if relative_velocity.dot(hit_normal) < 0.0:
 			velocity -= hit_normal * relative_velocity.dot(hit_normal)
 		velocity *= 0.22
+		_clamp_collision_speed()
 		if autopilot:
 			autopilot = false
 			velocity = Vector3.ZERO
@@ -2513,6 +2528,7 @@ func _move_with_planet_asset_collision(motion: Vector3) -> bool:
 	var impact_speed := maxf(0.0, -normal_speed)
 	if normal_speed < 0.0:
 		velocity -= normal * normal_speed
+	_clamp_collision_speed()
 	if impact_speed > 14.0 and impact_cooldown <= 0.0:
 		hull = maxf(0.0, hull - (impact_speed - 10.0) * 0.45 * HULL_DAMAGE_MULTIPLIER)
 		impact_cooldown = 1.2
@@ -2532,6 +2548,12 @@ func _station_normal_impact_speed(relative_velocity: Vector3, surface_normal: Ve
 	if surface_normal.length_squared() < 0.000001:
 		return 0.0
 	return maxf(0.0, -relative_velocity.dot(surface_normal.normalized()))
+
+
+func _clamp_collision_speed() -> void:
+	var speed := velocity.length()
+	if speed > LIGHT_SPEED_MPS:
+		velocity = velocity / speed * LIGHT_SPEED_MPS
 
 
 func _station_blocked(at_position: Vector3) -> bool:
