@@ -1,4 +1,4 @@
-const CACHE = 'starward-web-v2';
+const CACHE = 'starward-web-v3';
 const WASM_PATTERN = /\/index\.wasm$/;
 
 function cleanResponse(response) {
@@ -60,7 +60,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (/\/index\.(pck|js|html)$/.test(url.pathname)) {
+  if (/\/index\.(js|html)$/.test(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       try {
