@@ -66,10 +66,12 @@ func _run() -> void:
 			quit(1)
 			return
 		children.append(planet._lux_root)
-		var collision: Node = planet.get_node_or_null("TerrainCollision")
-		if collision != null:
-			collision.free()
-		planet.terrain_collision_done = false
+		# Keep the baked terrain body in the snapshot. The shape resource is still
+		# stored separately, while the fixed scene restores the enabled collision
+		# without rebuilding or installing it during normal startup.
+		var terrain_collision: Node = planet.get_node_or_null("TerrainCollision")
+		if terrain_collision != null and not children.has(terrain_collision):
+			children.append(terrain_collision)
 		error = planet.RuntimeBake.save_generated(planet, "planet_" + planet.planet_id, [
 			# World orchestration changes do not invalidate static planet geometry.
 			# Geometry parameters remain covered by SurfaceBake._signature().

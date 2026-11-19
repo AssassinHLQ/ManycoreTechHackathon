@@ -346,12 +346,12 @@ func _build_world_progressive() -> void:
 	_build_environment()
 	_stage_end("environment")
 	await _yield_frame()
-	# The station is part of the initial playable space. Finish its cached
-	# attachment before handing control to the player so boarding cannot hitch.
+	# The station is part of the initial playable space, but it is not needed to
+	# enter the home planet. Start its fixed snapshot load in the background so
+	# the menu and walking state do not wait on the large station hierarchy.
 	_stage_begin()
-	await RuntimeBakeScript.prepare_generated(get_tree(), "station")
-	await _build_station()
-	_stage_end("station initial")
+	_build_station()
+	_stage_end("station initial background")
 	await _yield_frame()
 	_stage_begin()
 	_build_distant_stations()
@@ -456,6 +456,8 @@ func _build_world_progressive() -> void:
 		await _build_planets(false)
 		_stage_end("fixed baked remote planets")
 		world_build_remaining = false
+		if station != null and not station.runtime_scene_ready:
+			await station.runtime_scene_ready_finished
 		_build_attic()
 		await _yield_frame()
 		world_areas_ready = true
@@ -2596,10 +2598,6 @@ func _set_mouse_capture(requested := true) -> void:
 
 func start_game() -> void:
 	if state != "menu":
-		return
-	if FULL_BAKED_WORLD and world_build_remaining:
-		if hud != null:
-			hud.show_toast("星系正在加载固定烘焙场景，请稍候", 2.4)
 		return
 	elapsed = 0.0
 	if roast != null:
