@@ -10,6 +10,7 @@ const Placement := preload("res://scripts/prop_placement.gd")
 const Precision = preload("res://scripts/procedural_dressing.gd")
 const Authoring = preload("res://scripts/attic_world_authoring.gd")
 var use_authored_scenes := true
+const AUTHORED_WORLD_KEYS := ["snow", "cloud", "firefly", "alley"]
 
 const WORLD_KEYS := ["snow", "cloud", "firefly", "alley", "mirror", "dungeon"]
 const SCOPE_ARCHIVE_ORDER := ["cloud", "firefly", "alley", "snow"]
@@ -79,8 +80,12 @@ func build() -> void:
 		holder.name = "World_%s" % key.capitalize()
 		holder.position = origin
 		add_child(holder)
-		if use_authored_scenes and await Authoring.load_world(self, key, holder):
-			await get_tree().process_frame
+		if use_authored_scenes and AUTHORED_WORLD_KEYS.has(key):
+			if await Authoring.load_world(self, key, holder):
+				await get_tree().process_frame
+				continue
+			push_error("Authored pocket-world scene is missing or invalid: " + key)
+			holder.queue_free()
 			continue
 		# 内容层：按原作尺度缩放并平移对齐。玩家挂在外层 holder（不缩放），
 		# 所以放大场地不会改到玩家的重力、步速与体积。
@@ -148,8 +153,6 @@ func build() -> void:
 		if ARENA_SCALE.has(key):
 			Authoring.add_story_sign(content, key)
 			Authoring.stable_names(content)
-			if use_authored_scenes:
-				await Authoring.install(self, key)
 		await get_tree().process_frame
 	set_active_world("")
 	_build_scope_archive()

@@ -13,19 +13,15 @@ const SIGN_POSITIONS := {
 	"alley": Vector3(0.0, 0.0, -13.0),
 	"snow": Vector3(5.0, 0.0, -6.5),
 }
-const STORY_WALL_POSITIONS := {
-	"cloud": Vector3(10.5, 0.675, -3.5),
-	"firefly": Vector3(5.3, 0.675, -7.3),
-	"snow": Vector3(5.0, 0.675, -5.3),
-}
 const KEYED_FIELDS := ["device_states", "device_values", "device_nodes", "world_done", "minigame_anchors"]
 # These roots are visual-only. In particular, the return portal's glowing
-# pane must stay passable, otherwise its generated mesh collider becomes an
+# pane must stay passable, otherwise its baked mesh collider becomes an
 # invisible wall directly in front of the interaction anchor.
 const COLLISION_EXCLUDED_ROOTS := [
 	"Airship", "CloudBoat", "CloudSea", "Ground", "Snowfall", "Fireflies", "Rain", "ReturnPortal"
 ]
 const COLLISION_EXCLUDED_NODES := ["Ember", "Flame", "LanternGlow", "LampGlow", "Moon", "Puddle"]
+const CONCAVE_COLLISION_ROOTS := ["Precision_World_", "Prop_snow-drift"]
 const WORLD_FIELDS := {
 	"snow": ["fishing_holes", "hearth_node", "hearth_light"],
 	"cloud": ["bridge_node", "boat_node", "buoy_nodes", "airship_node"],
@@ -63,7 +59,6 @@ static func load_world(worlds: Node3D, key: String, holder: Node3D) -> bool:
 	var content := scene.instantiate() as Node3D
 	if content == null:
 		return false
-	add_story_wall(content, key)
 	var status := {"valid": true, "materials": {}}
 	var decoded: Dictionary = _decode(data.get_meta("bindings"), content, holder, status)
 	if not status.valid:
@@ -75,11 +70,10 @@ static func load_world(worlds: Node3D, key: String, holder: Node3D) -> bool:
 	for node in content.find_children("*", "GeometryInstance3D", true, false):
 		if status.materials.has(node.material_override):
 			node.material_override = status.materials[node.material_override]
-	# Attach authored visuals immediately. Collision extraction continues as a
-	# resumable coroutine so inactive pocket worlds never block gameplay.
+	# Authored scenes include their collision nodes. Loading only rebinds gameplay
+	# references and never walks mesh faces or creates geometry.
 	holder.add_child(content)
-	content.set_meta("collision_ready", false)
-	_install_static_mesh_collisions(content)
+	content.set_meta("collision_ready", true)
 	worlds.worlds[key] = decoded.world
 	for field in decoded.keyed:
 		worlds.get(field)[key] = decoded.keyed[field]
@@ -175,7 +169,6 @@ static func _decode(value, content: Node3D, holder: Node3D, status: Dictionary):
 
 
 static func add_story_sign(content: Node3D, key: String) -> void:
-	add_story_wall(content, key)
 	var sign_root := Node3D.new()
 	sign_root.name = "StorySign"
 	# Hide the board from the direct approach while keeping its reading face reachable.
@@ -212,40 +205,6 @@ static func add_story_sign(content: Node3D, key: String) -> void:
 	light.omni_range = 3.5
 	sign_root.add_child(light)
 
-
-static func add_story_wall(content: Node3D, key: String) -> void:
-	if not STORY_WALL_POSITIONS.has(key) or content.has_node("StoryWall"):
-		return
-	var wall := StaticBody3D.new()
-	wall.name = "StoryWall"
-	wall.position = STORY_WALL_POSITIONS[key]
-	wall.collision_layer = 1
-	wall.collision_mask = 0
-	var color := Color("77736d")
-	if key == "firefly":
-		color = Color("4b5042")
-	elif key == "snow":
-		color = Color("8a929a")
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	material.roughness = 0.96
-	var mesh_instance := MeshInstance3D.new()
-	mesh_instance.name = "WallVisual"
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(2.1, 1.35, 0.32)
-	mesh_instance.mesh = mesh
-	mesh_instance.material_override = material
-	mesh_instance.position.y = 0.0
-	wall.add_child(mesh_instance)
-	var collision := CollisionShape3D.new()
-	collision.name = "CollisionShape3D"
-	var shape := BoxShape3D.new()
-	shape.size = mesh.size
-	collision.shape = shape
-	wall.add_child(collision)
-	content.add_child(wall)
-
-
 static func _add_box(parent: Node3D, title: String, size: Vector3,
 		at: Vector3, material: Material) -> void:
 	var node := MeshInstance3D.new()
@@ -277,6 +236,8 @@ static func _own_children(parent: Node, scene_root: Node) -> void:
 
 
 static func save_content(content: Node3D, key: String) -> Error:
+	clear_baked_static_mesh_collisions(content)
+	bake_static_mesh_collisions(content)
 	_own_children(content, content)
 	var scene := PackedScene.new()
 	var result := scene.pack(content)
@@ -285,53 +246,13 @@ static func save_content(content: Node3D, key: String) -> Error:
 	return ResourceSaver.save(scene, DIRECTORY + key + ".tscn")
 
 
-static func install(worlds: Node3D, key: String) -> void:
-	var path := DIRECTORY + key + ".tscn"
-	if not ResourceLoader.exists(path):
-		return
-	var scene := load(path) as PackedScene
-	if scene == null:
-		return
-	var old: Node3D = worlds.worlds[key]["content"]
-	var replacement := scene.instantiate() as Node3D
-	if replacement == null:
-		return
-	add_story_wall(replacement, key)
-	var nodes := {old: replacement}
-	var resources := {}
-	for node in old.find_children("*", "", true, false):
-		var target := replacement.get_node_or_null(old.get_path_to(node))
-		if target != null:
-			nodes[node] = target
-			if node is GeometryInstance3D and target is GeometryInstance3D:
-				if node.material_override != null and target.material_override != null:
-					resources[node.material_override] = target.material_override
-	var properties: Array = worlds.get_script().get_script_property_list()
-	# Missing gameplay anchors must fall back safely, rather than leave stale references.
-	for property in properties:
-		if _missing_reference(worlds.get(property.name), old, nodes):
-			push_warning("Editable world %s is missing a gameplay node; using generated content." % key)
-			replacement.free()
-			return
-	var parent := old.get_parent()
-	_install_static_mesh_collisions(replacement)
-	parent.remove_child(old)
-	parent.add_child(replacement)
-	replacement.name = "Content"
-	for property in properties:
-		if property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
-			worlds.set(property.name, _rebind(worlds.get(property.name), nodes, resources))
-	_sync_authored_positions(worlds, key, replacement)
-	old.free()
+static func clear_baked_static_mesh_collisions(content: Node3D) -> void:
+	for node in content.find_children("MeshSelfCollision", "StaticBody3D", true, false):
+		node.free()
 
 
-
-static func _install_static_mesh_collisions(content: Node3D) -> void:
-	var tree := Engine.get_main_loop() as SceneTree
+static func bake_static_mesh_collisions(content: Node3D) -> void:
 	for prop_root in content.get_children():
-		await tree.process_frame
-		if not is_instance_valid(content) or not is_instance_valid(prop_root):
-			return
 		if not prop_root is Node3D or prop_root is CollisionObject3D:
 			continue
 		if COLLISION_EXCLUDED_ROOTS.has(String(prop_root.name)):
@@ -339,32 +260,51 @@ static func _install_static_mesh_collisions(content: Node3D) -> void:
 		if not prop_root.find_children("*", "CollisionObject3D", true, false).is_empty():
 			continue
 		var faces := PackedVector3Array()
-		await _collect_collision_faces(prop_root, Transform3D.IDENTITY, true, faces, tree)
-		if not is_instance_valid(content) or not is_instance_valid(prop_root):
-			return
+		_collect_collision_faces(prop_root, Transform3D.IDENTITY, true, faces)
 		if faces.size() < 3:
 			continue
-		var mesh_shape := ConcavePolygonShape3D.new()
-		mesh_shape.backface_collision = true
-		mesh_shape.set_faces(faces)
 		var collision_body := StaticBody3D.new()
 		collision_body.name = "MeshSelfCollision"
 		collision_body.collision_layer = 1
 		collision_body.collision_mask = 0
 		var collision_shape := CollisionShape3D.new()
 		collision_shape.name = "CollisionShape3D"
-		collision_shape.shape = mesh_shape
+		if _use_concave_collision(prop_root):
+			var mesh_shape := ConcavePolygonShape3D.new()
+			mesh_shape.backface_collision = true
+			mesh_shape.set_faces(faces)
+			collision_shape.shape = mesh_shape
+		else:
+			var bounds := _collision_bounds(faces)
+			if bounds.size.length_squared() < 0.000001:
+				continue
+			var box_shape := BoxShape3D.new()
+			box_shape.size = bounds.size
+			collision_shape.shape = box_shape
+			collision_shape.position = bounds.position + bounds.size * 0.5
 		collision_body.add_child(collision_shape)
 		prop_root.add_child(collision_body)
-	if is_instance_valid(content):
-		content.set_meta("collision_ready", true)
+	content.set_meta("collision_ready", true)
+
+
+static func _use_concave_collision(prop_root: Node) -> bool:
+	var root_name := String(prop_root.name)
+	for prefix in CONCAVE_COLLISION_ROOTS:
+		if root_name.begins_with(prefix):
+			return true
+	return false
+
+
+static func _collision_bounds(faces: PackedVector3Array) -> AABB:
+	var bounds := AABB(faces[0], Vector3.ZERO)
+	for index in range(1, faces.size()):
+		bounds = bounds.expand(faces[index])
+	return bounds
 
 
 static func _collect_collision_faces(node: Node, node_transform: Transform3D,
-		parent_visible: bool, faces: PackedVector3Array, tree: SceneTree) -> void:
-	if not is_instance_valid(node):
-		return
-	if COLLISION_EXCLUDED_NODES.has(String(node.name)):
+		parent_visible: bool, faces: PackedVector3Array) -> void:
+	if not is_instance_valid(node) or COLLISION_EXCLUDED_NODES.has(String(node.name)):
 		return
 	var visible := parent_visible
 	if node is GeometryInstance3D:
@@ -373,44 +313,12 @@ static func _collect_collision_faces(node: Node, node_transform: Transform3D,
 		var mesh_node := node as MeshInstance3D
 		if mesh_node.mesh != null and is_instance_valid(mesh_node.mesh) and mesh_node.mesh.get_surface_count() > 0:
 			var mesh_faces := mesh_node.mesh.get_faces()
-			for index in range(mesh_faces.size()):
-				if not is_instance_valid(node):
-					return
-				faces.append(node_transform * mesh_faces[index])
-				if index % 4096 == 4095:
-					await tree.process_frame
+			for face in mesh_faces:
+				faces.append(node_transform * face)
 	for child in node.get_children():
 		if not is_instance_valid(child):
 			continue
 		var child_transform := node_transform
 		if child is Node3D:
 			child_transform = node_transform * (child as Node3D).transform
-		await _collect_collision_faces(child, child_transform, visible, faces, tree)
-
-
-static func _missing_reference(value, old: Node, nodes: Dictionary) -> bool:
-	if value is Node:
-		return (value == old or old.is_ancestor_of(value)) and not nodes.has(value)
-	if value is Array:
-		for item in value:
-			if _missing_reference(item, old, nodes):
-				return true
-	elif value is Dictionary:
-		for item in value.values():
-			if _missing_reference(item, old, nodes):
-				return true
-	return false
-
-
-static func _rebind(value, nodes: Dictionary, resources: Dictionary):
-	if value is Node:
-		return nodes.get(value, value)
-	if value is Resource:
-		return resources.get(value, value)
-	if value is Array:
-		for index in range(value.size()):
-			value[index] = _rebind(value[index], nodes, resources)
-	elif value is Dictionary:
-		for key in value:
-			value[key] = _rebind(value[key], nodes, resources)
-	return value
+		_collect_collision_faces(child, child_transform, visible, faces)

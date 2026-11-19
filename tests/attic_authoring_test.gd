@@ -35,12 +35,10 @@ func _run() -> void:
 			key + " story sign is placed behind the approach obstruction")
 		_check(story_sign.rotation.y == 0.0, key + " story sign faces the reachable approach side")
 		_check(story_sign.scale.is_equal_approx(Vector3.ONE * 0.32), key + " story sign stays subtle in scale")
-		if key == "alley":
-			_check(content.get_node_or_null("StoryWall") == null, "alley sign uses the existing end wall")
-		else:
-			var story_wall := content.get_node_or_null("StoryWall") as StaticBody3D
-			_check(story_wall != null and story_wall.get_node_or_null("WallVisual") != null,
-				key + " story sign has a solid, visible screen wall")
+		_check(content.get_node_or_null("StoryWall") == null, key + " has no runtime story wall")
+		_check(content.find_children("MeshSelfCollision", "StaticBody3D", true, false).size() > 0,
+			key + " loads baked mesh collisions")
+		_check(content.get_meta("collision_ready", false), key + " collision state is ready on load")
 		for id in worlds.prop_ids_in(key):
 			_check(content.is_ancestor_of(worlds.prop_anchor(id)), key + " prop anchor " + id)
 		for index in range(3):
@@ -61,8 +59,8 @@ func _run() -> void:
 		"generated story sign uses the hidden snow placement")
 	_check(generated_content.get_node("StorySign").rotation.y == 0.0,
 		"generated story signs face the reachable approach side")
-	_check(generated_content.get_node_or_null("StoryWall") is StaticBody3D,
-		"generated story signs include a physical screen wall")
+	_check(generated_content.get_node_or_null("StoryWall") == null,
+		"generated story signs do not create a runtime screen wall")
 	generated_content.free()
 	worlds.use_winch()
 	worlds.update_bridge(0.2)
