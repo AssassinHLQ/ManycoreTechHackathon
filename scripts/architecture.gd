@@ -82,12 +82,29 @@ static func _build_home(root: Node3D, planet) -> void:
 	var accent_glow = planet._material(accent.lightened(0.2), 1.15)
 
 	# 分层石台与一圈不规则感矮护石。
-	_cyl(root, 13.0, 14.0, 1.2, Vector3(0, 0.6, 0), stone, 32)
-	_cyl(root, 12.0, 12.6, 0.55, Vector3(0, 1.48, 0), pale_stone, 32)
+	var platform_shell := _cyl(root, 13.0, 14.0, 1.2, Vector3(0, 0.6, 0), stone, 32)
+	platform_shell.set_meta("skip_architecture_collision", true)
+	var platform_cap := _cyl(root, 12.0, 12.6, 0.55, Vector3(0, 1.48, 0), pale_stone, 32)
+	platform_cap.set_meta("skip_architecture_collision", true)
+	var platform_body := StaticBody3D.new()
+	platform_body.name = "PlatformCollision"
+	platform_body.collision_layer = 8
+	platform_body.collision_mask = 0
+	for spec in [[14.0, 1.2, 0.6], [12.6, 0.55, 1.48]]:
+		var platform_shape := CylinderShape3D.new()
+		platform_shape.radius = float(spec[0])
+		platform_shape.height = float(spec[1])
+		var platform_collision := CollisionShape3D.new()
+		platform_collision.shape = platform_shape
+		platform_collision.position.y = float(spec[2])
+		platform_body.add_child(platform_collision)
+	root.add_child(platform_body)
 	for i in range(12):
 		var angle := TAU * float(i) / 12.0
 		var block := _box(root, Vector3(2.2, 0.8, 1.0), Vector3(cos(angle) * 11.5, 2.0, sin(angle) * 11.5), stone)
 		block.rotation.y = -angle
+		if absf(wrapf(angle - UndergroundScript.HOME_DOOR_ANGLE, -PI, PI)) < 0.28:
+			block.set_meta("skip_architecture_collision", true)
 	_home_approach_ramp(root, stone, planet)
 
 	# 石砌底层（留出入口门洞）、木构上层、金属箍带与压扁的穹顶。
@@ -234,7 +251,23 @@ static func _home_approach_ramp(root: Node3D, material: Material, planet) -> voi
 	ramp.name = "WindmillApproachRamp"
 	ramp.mesh = tool.commit()
 	ramp.material_override = material
+	ramp.set_meta("skip_architecture_collision", true)
 	root.add_child(ramp)
+
+	var ramp_body := StaticBody3D.new()
+	ramp_body.name = "WindmillApproachCollision"
+	ramp_body.collision_layer = 8
+	ramp_body.collision_mask = 0
+	var ramp_shape := BoxShape3D.new()
+	var ramp_length := start_z - end_z
+	ramp_shape.size = Vector3(half_width * 2.0, 0.42, ramp_length)
+	var ramp_collision := CollisionShape3D.new()
+	ramp_collision.shape = ramp_shape
+	var ramp_angle := atan2(platform_top - ground_y, ramp_length)
+	var ramp_center := Vector3(0.0, (ground_y + platform_top) * 0.5, (start_z + end_z) * 0.5)
+	ramp_collision.transform = Transform3D(Basis(Vector3.RIGHT, ramp_angle), ramp_center)
+	ramp_body.add_child(ramp_collision)
+	root.add_child(ramp_body)
 
 
 # -----------------------------------------------------------------------------
@@ -1075,7 +1108,7 @@ static func _ground_y(root: Node3D, planet, x: float, z: float) -> float:
 
 
 # -----------------------------------------------------------------------------
-# Architecture collision follows each visible mesh with a simplified convex hull.
+# Architecture collision follows each physical mesh with a box around its AABB.
 # -----------------------------------------------------------------------------
 static func _add_collision(root: Node3D) -> void:
 	var meshes: Array[Node] = root.find_children("*", "MeshInstance3D", true, false)
@@ -1086,12 +1119,13 @@ static func _add_collision(root: Node3D) -> void:
 		var mesh_instance := node as MeshInstance3D
 		if mesh_instance.mesh == null:
 			continue
-		# Authored decoration batches are visual-only. One convex hull around
-		# disconnected trim pieces can fill doorways and create invisible walls.
+		# Explicitly marked detail batches contain disconnected decoration whose
+		# combined bounds would create collision across empty space.
 		if mesh_instance.has_meta("detail_pieces"):
 			continue
-		# A convex hull fills the hole in a torus and turns decorative rings
-		# into solid discs. Those discs can span a doorway at walking height.
+		if mesh_instance.has_meta("skip_architecture_collision"):
+			continue
+		# A torus AABB would fill its hole and create an unwanted disc.
 		# Floors and walls have explicit colliders where a ring needs support.
 		if mesh_instance.mesh is TorusMesh:
 			continue
@@ -1102,22 +1136,24 @@ static func _add_collision(root: Node3D) -> void:
 				relative_transform = (current as Node3D).transform * relative_transform
 			current = current.get_parent()
 		var box := mesh_instance.mesh.get_aabb()
-		var shape: Shape3D = null
-		var collision_transform := relative_transform
-		# Decorative strips thinner than 10 cm are effectively planes for walking.
-		# Their AABB is a better stable proxy and avoids degenerate hull warnings.
-		var has_volume := box.size.x > 0.1 and box.size.y > 0.1 and box.size.z > 0.1
-		if has_volume:
-			shape = mesh_instance.mesh.create_convex_shape(true, true)
-		if shape is ConvexPolygonShape3D and (shape as ConvexPolygonShape3D).points.size() < 4:
-			shape = null
-		if shape == null or not shape is ConvexPolygonShape3D:
-			if box.size.length_squared() <= 0.000001:
-				continue
-			var fallback := BoxShape3D.new()
-			fallback.size = Vector3(maxf(box.size.x, 0.02), maxf(box.size.y, 0.02), maxf(box.size.z, 0.02))
-			shape = fallback
-			collision_transform = relative_transform * Transform3D(Basis.IDENTITY, box.get_center())
+		# Broad shallow cylinders are visual platform shells. Their AABB turns
+		# the whole circular edge into a vertical wall, including the approach.
+		if mesh_instance.mesh is CylinderMesh and box.size.x > 18.0 \
+				and box.size.z > 18.0 and box.size.y < 2.0:
+			continue
+		# A merged decorative strip can span the whole platform while being only
+		# a few centimeters thick. Its AABB becomes a giant invisible wall.
+		if box.size.x > 20.0 and box.size.z > 20.0 and box.size.y < 0.2:
+			continue
+		if box.size.length_squared() <= 0.000001:
+			continue
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(
+			maxf(box.size.x, 0.02),
+			maxf(box.size.y, 0.02),
+			maxf(box.size.z, 0.02))
+		var collision_transform := relative_transform * Transform3D(
+			Basis.IDENTITY, box.get_center())
 		entries.append({"shape": shape, "transform": collision_transform})
 	if entries.is_empty():
 		return
