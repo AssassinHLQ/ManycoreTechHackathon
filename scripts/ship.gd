@@ -663,7 +663,7 @@ func _wing_mesh(span: float, root_chord: float, tip_chord: float,
 
 ## 外部飞船模型（CC BY 4.0，见 assets/models/LICENSE_MANIFEST.json）。
 ## 为空串时退回 _build_model() 的程序化几何 —— 保留旧模板，换模型不影响可玩性。
-const SHIP_MODEL_PATH := ""
+const SHIP_MODEL_PATH := "res://assets/models/ship-fighter/model.glb"
 ## 模型的朝向**已经在 GLB 里烘焙好了**（tools/slim_ship.py 按 Godot 约定转成
 ## 机头 -Z、机顶 +Y、翼展 X），运行时**不要再转**。
 ## 旧版本这里写的是绕 X 轴 +90°，那是因为当时的 GLB 是 Y-up；
