@@ -117,6 +117,8 @@ const BH_FUEL_MULTIPLIER := 3.0
 ## 倍率曲线的形状：1 = 线性，>1 = 外圈几乎无感、内圈陡增。
 const BH_FUEL_CURVE := 2.4
 var thrust_level := 0.0
+var _vertical_thrust_level := 0.0
+var _takeoff_lift_active := false
 var mouse_sensitivity := 0.0018
 const WEB_LOOK_SCALE := 0.5
 var engine_materials: Array = []
@@ -384,6 +386,8 @@ const MANUAL_ACCEL_MULTIPLIER := 4.0
 const SHIP_THRUST := 144.0 * MANUAL_ACCEL_MULTIPLIER
 const SHIP_BOOST_THRUST := 300.0 * MANUAL_ACCEL_MULTIPLIER
 const SHIP_BRAKE_DECEL := 260.0 * MANUAL_ACCEL_MULTIPLIER
+const VERTICAL_THRUST_RISE_TIME := 1.2
+const VERTICAL_THRUST_FALL_TIME := 0.24
 
 ## ⚠ 速度上限**已彻底移除**（2026-11-10 用户：「为什么现在上限速度还是有, 3200」）
 ##
@@ -1868,14 +1872,16 @@ func _constrain_manual_velocity_to_forward() -> void:
 	var nose_dir := -global_transform.basis.z.normalized()
 	var side_axis := global_transform.basis.x.normalized()
 	var vertical_axis := side_axis.cross(nose_dir).normalized()
-	var current_speed := velocity.length()
+	var vertical_input := Input.get_axis("thrust_down", "jump")
+	var vertical_control_active := absf(vertical_input) > 0.01 \
+		or _takeoff_lift_active or _vertical_thrust_level > 0.01
+	var vertical_speed := velocity.dot(vertical_axis) if vertical_control_active else 0.0
+	var current_speed := (velocity - vertical_axis * vertical_speed).length()
 	var forward_speed := maxf(velocity.dot(nose_dir), 0.0)
 	# 转向时把已有速度重新对齐到机头，避免旧的侧向速度被丢掉后
 	# 只剩下竖向分量，表现成飞船原地转圈或不再向前飞。
 	if current_speed > 0.1:
 		forward_speed = maxf(forward_speed, current_speed)
-	var vertical_input := Input.get_axis("thrust_down", "jump")
-	var vertical_speed := velocity.dot(vertical_axis) if absf(vertical_input) > 0.01 else 0.0
 	velocity = nose_dir * forward_speed + vertical_axis * vertical_speed
 
 
@@ -1928,6 +1934,8 @@ func _physics_process(delta: float) -> void:
 	if landed:
 		velocity = Vector3.ZERO
 		thrust_level = 0.0
+		_vertical_thrust_level = 0.0
+		_takeoff_lift_active = false
 		# 已由行星父节点携带，直接保存局部停靠点，避免大世界坐标往返舍入。
 		if landed_planet != null and is_instance_valid(landed_planet):
 			var resting_position: Vector3 = landed_planet.surface_position(landing_normal, landing_rest_altitude)
@@ -2077,7 +2085,15 @@ func _physics_process(delta: float) -> void:
 		#   现在只读 move_forward 自己，方向靠下面取反。
 		forward_input = Input.get_action_strength("move_forward")
 		thrust.z = -forward_input          # 机头朝 -Z，所以向前的推力是负 z
-		thrust.y = Input.get_axis("thrust_down", "jump")
+		var vertical_target := Input.get_axis("thrust_down", "jump")
+		if _takeoff_lift_active:
+			vertical_target = 1.0
+		var vertical_rate := (1.0 / VERTICAL_THRUST_RISE_TIME
+			if vertical_target > _vertical_thrust_level
+			else 1.0 / VERTICAL_THRUST_FALL_TIME)
+		_vertical_thrust_level = move_toward(
+			_vertical_thrust_level, vertical_target, vertical_rate * delta)
+		thrust.y = _vertical_thrust_level
 		thrust = thrust.limit_length(1.0)
 		# 腹部喷焰只认「向上的推力分量」：按 Space 才有，按 Ctrl/C 下降时没有
 		# （下降是重力帮忙，不该向下喷火 —— 那是加速坠落，不是推力）。
@@ -2160,11 +2176,14 @@ func _physics_process(delta: float) -> void:
 			# 没有 Space/C 输入时，不保留上一帧的垂直漂移。
 			# 下一帧会把速度重新压回机头前向，避免持续绕圈。
 			var vertical_input := Input.get_axis("thrust_down", "jump")
-			if absf(vertical_input) <= 0.01:
+			if absf(vertical_input) <= 0.01 and not _takeoff_lift_active \
+					and _vertical_thrust_level <= 0.01:
 				var side_axis := global_transform.basis.x.normalized()
 				var vertical_axis := side_axis.cross(nose_dir).normalized()
 				velocity -= vertical_axis * velocity.dot(vertical_axis)
 	var planet_asset_contact := _move_with_station_collision(delta)
+	if _takeoff_lift_active and _vertical_thrust_level >= 0.999:
+		_takeoff_lift_active = false
 	if _apply_black_hole_capture(delta):
 		return
 
@@ -2846,7 +2865,9 @@ func takeoff() -> void:
 	landed = false
 	landed_planet = null
 	global_position += normal * 2.8
-	velocity = normal * 24.0
+	velocity = normal * 4.0
+	_vertical_thrust_level = 0.0
+	_takeoff_lift_active = true
 	autopilot = false
 	game.audio.play_ui(260.0)
 	game.hud.show_toast("已升空 · Space 上升 / Ctrl 或 C 下降", 3.0)
@@ -3165,6 +3186,8 @@ func _finish_landing() -> void:
 	land_phase = LandPhase.NONE
 	landing_normal = normal
 	thrust_level = 0.0
+	_vertical_thrust_level = 0.0
+	_takeoff_lift_active = false
 	game.audio.play_ui(330.0)
 	game.hud.show_toast("已着陆 · " + planet.display_name + " · E 离船", 3.0)
 
