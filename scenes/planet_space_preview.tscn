@@ -1,6 +1,30 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=26 format=3]
 
-[ext_resource type="PackedScene" path="res://assets/models/qinglan-planet-v5/model.glb" id="1_planet"]
+[ext_resource type="PackedScene" path="res://assets/models/qinglan-planet-v5/model.glb" id="1_qinglan"]
+[ext_resource type="PackedScene" path="res://assets/models/zheya-lux3d-v2/model.glb" id="2_zheya"]
+[ext_resource type="PackedScene" path="res://assets/models/cangbo-lux3d-v2/model.glb" id="3_cangbo"]
+[ext_resource type="PackedScene" path="res://assets/models/xuanjing-lux3d-v2/model.glb" id="4_xuanjing"]
+[ext_resource type="PackedScene" path="res://assets/models/xuanyuan-lux3d-v2/model.glb" id="5_xuanyuan"]
+[ext_resource type="PackedScene" path="res://assets/models/baiyao-lux3d-v2/model.glb" id="6_baiyao"]
+[ext_resource type="PackedScene" path="res://assets/models/pansha-lux3d-v2/model.glb" id="7_pansha"]
+[ext_resource type="PackedScene" path="res://assets/models/taiyuan-lux3d-v2/model.glb" id="8_taiyuan"]
+[ext_resource type="PackedScene" path="res://assets/models/liuwu-lux3d-v2/model.glb" id="9_liuwu"]
+[ext_resource type="PackedScene" path="res://assets/models/jianmo-lux3d-v2/model.glb" id="10_jianmo"]
+[ext_resource type="PackedScene" path="res://assets/models/jiangxiao-lux3d/model.glb" id="11_jiangxiao"]
+[ext_resource type="PackedScene" path="res://assets/models/cangwu-lux3d/model.glb" id="12_cangwu"]
+[ext_resource type="PackedScene" path="res://assets/models/jinwu-lux3d/model.glb" id="13_jinwu"]
+[ext_resource type="PackedScene" path="res://assets/models/yuheng-lux3d/model.glb" id="14_yuheng"]
+[ext_resource type="PackedScene" path="res://assets/models/sue-lux3d/model.glb" id="15_sue"]
+[ext_resource type="PackedScene" path="res://assets/models/danxia-lux3d/model.glb" id="16_danxia"]
+[ext_resource type="PackedScene" path="res://assets/models/biluo-lux3d/model.glb" id="17_biluo"]
+[ext_resource type="PackedScene" path="res://assets/models/youdu-lux3d/model.glb" id="18_youdu"]
+[ext_resource type="PackedScene" path="res://assets/models/yaoguang-lux3d/model.glb" id="19_yaoguang"]
+[ext_resource type="PackedScene" path="res://assets/models/xuanpu-lux3d/model.glb" id="20_xuanpu"]
+[ext_resource type="PackedScene" path="res://assets/models/props/ruin-arch/model.glb" id="21_arch"]
+[ext_resource type="PackedScene" path="res://assets/models/props/obelisk/model.glb" id="22_obelisk"]
+[ext_resource type="PackedScene" path="res://assets/models/props/dome-habitat/model.glb" id="23_dome"]
+[ext_resource type="PackedScene" path="res://assets/models/props/rock-cluster/model.glb" id="24_rock"]
+[ext_resource type="PackedScene" path="res://assets/models/props/wind-turbine/model.glb" id="25_turbine"]
 
 [sub_resource type="Environment" id="Environment_space"]
 background_mode = 1
@@ -9,12 +33,6 @@ ambient_light_source = 3
 ambient_light_color = Color(0.12, 0.16, 0.28, 1)
 ambient_light_energy = 0.55
 tonemap_mode = 2
-
-[sub_resource type="StandardMaterial3D" id="Material_ring"]
-albedo_color = Color(0.08, 0.16, 0.3, 1)
-emission_enabled = true
-emission = Color(0.03, 0.08, 0.2, 1)
-emission_energy_multiplier = 1.8
 
 [node name="PlanetSpacePreview" type="Node3D"]
 
@@ -27,15 +45,93 @@ light_color = Color(1, 0.92, 0.78, 1)
 light_energy = 2.2
 shadow_enabled = true
 
-[node name="Planet_Qinglan" parent="." instance=ExtResource("1_planet")]
+[node name="Qinglan_MainPlanet" parent="." instance=ExtResource("1_qinglan")]
+scale = Vector3(4600, 4600, 4600)
 
-[node name="PlanetGlow" type="MeshInstance3D" parent="."]
-visible = false
-mesh = null
-material_override = SubResource("Material_ring")
+[node name="Surface_RuinArch" parent="."]
+position = Vector3(0, 1900, 0)
+scale = Vector3(18, 18, 18)
+
+[node name="Surface_Obelisk" parent="."]
+position = Vector3(620, 1750, 320)
+rotation_degrees = Vector3(0, 28, 0)
+scale = Vector3(22, 22, 22)
+
+[node name="Surface_DomeHabitat" parent="."]
+position = Vector3(-720, 1710, -420)
+rotation_degrees = Vector3(0, -35, 0)
+scale = Vector3(16, 16, 16)
+
+[node name="Surface_RockCluster" parent="."]
+position = Vector3(430, 1840, -760)
+rotation_degrees = Vector3(0, 18, 0)
+scale = Vector3(12, 12, 12)
+
+[node name="Surface_WindTurbine" parent="."]
+position = Vector3(-420, 1820, 680)
+rotation_degrees = Vector3(0, 145, 0)
+scale = Vector3(14, 14, 14)
+
+[node name="Planet_Zheya" parent="." instance=ExtResource("2_zheya")]
+position = Vector3(9000, 0, 0)
+scale = Vector3(3300, 3300, 3300)
+[node name="Planet_Cangbo" parent="." instance=ExtResource("3_cangbo")]
+position = Vector3(-11000, 2000, 2500)
+scale = Vector3(4700, 4700, 4700)
+[node name="Planet_Xuanjing" parent="." instance=ExtResource("4_xuanjing")]
+position = Vector3(0, 3500, 12000)
+scale = Vector3(3100, 3100, 3100)
+[node name="Planet_Xuanyuan" parent="." instance=ExtResource("5_xuanyuan")]
+position = Vector3(-15000, 2000, -7000)
+scale = Vector3(1900, 1900, 1900)
+[node name="Planet_Baiyao" parent="." instance=ExtResource("6_baiyao")]
+position = Vector3(7000, -2500, 9000)
+scale = Vector3(2700, 2700, 2700)
+[node name="Planet_Pansha" parent="." instance=ExtResource("7_pansha")]
+position = Vector3(-9000, -3500, -10000)
+scale = Vector3(3600, 3600, 3600)
+[node name="Planet_Taiyuan" parent="." instance=ExtResource("8_taiyuan")]
+position = Vector3(15000, 3500, 6000)
+scale = Vector3(3200, 3200, 3200)
+[node name="Planet_Liuwu" parent="." instance=ExtResource("9_liuwu")]
+position = Vector3(-18000, -4000, 8000)
+scale = Vector3(3400, 3400, 3400)
+[node name="Planet_Jianmo" parent="." instance=ExtResource("10_jianmo")]
+position = Vector3(20000, 0, -9000)
+scale = Vector3(1700, 1700, 1700)
+[node name="Planet_Jiangxiao" parent="." instance=ExtResource("11_jiangxiao")]
+position = Vector3(-22000, 4000, 0)
+scale = Vector3(2900, 2900, 2900)
+[node name="Planet_Cangwu" parent="." instance=ExtResource("12_cangwu")]
+position = Vector3(25000, -3000, 7000)
+scale = Vector3(3900, 3900, 3900)
+[node name="Planet_Jinwu" parent="." instance=ExtResource("13_jinwu")]
+position = Vector3(-24000, 3000, -8000)
+scale = Vector3(2500, 2500, 2500)
+[node name="Planet_Yuheng" parent="." instance=ExtResource("14_yuheng")]
+position = Vector3(5000, 6000, -18000)
+scale = Vector3(4200, 4200, 4200)
+[node name="Planet_Sue" parent="." instance=ExtResource("15_sue")]
+position = Vector3(-8000, -5000, 18000)
+scale = Vector3(2100, 2100, 2100)
+[node name="Planet_Danxia" parent="." instance=ExtResource("16_danxia")]
+position = Vector3(18000, 5000, 16000)
+scale = Vector3(3800, 3800, 3800)
+[node name="Planet_Biluo" parent="." instance=ExtResource("17_biluo")]
+position = Vector3(-19000, -2000, -17000)
+scale = Vector3(4400, 4400, 4400)
+[node name="Planet_Youdu" parent="." instance=ExtResource("18_youdu")]
+position = Vector3(26000, -2000, -15000)
+scale = Vector3(2300, 2300, 2300)
+[node name="Planet_Yaoguang" parent="." instance=ExtResource("19_yaoguang")]
+position = Vector3(0, 7000, -23000)
+scale = Vector3(2600, 2600, 2600)
+[node name="Planet_Xuanpu" parent="." instance=ExtResource("20_xuanpu")]
+position = Vector3(-28000, 1000, 12000)
+scale = Vector3(3500, 3500, 3500)
 
 [node name="PreviewCamera" type="Camera3D" parent="."]
-position = Vector3(0, 0, 2600)
-rotation_degrees = Vector3(0, 180, 0)
-fov = 45.0
+position = Vector3(0, 8000, 52000)
+rotation_degrees = Vector3(-8, 180, 0)
+fov = 52.0
 current = true
