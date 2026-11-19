@@ -43,6 +43,7 @@ func _run() -> void:
 	await game.await_world_ready()
 	await process_frame
 	game.start_game()
+	game.settings.values["sensitivity"] = 1.0
 	for i in range(8):
 		await physics_frame
 
@@ -180,12 +181,8 @@ func _run() -> void:
 	print("   快速拖动 300px：过冲 %.4f°" % rad_to_deg(over))
 	_check(rad_to_deg(over) < 0.5, "fast drag causes no bounce-back (%.4f deg)" % rad_to_deg(over))
 
-	# ── 5. √ 曲线：**模拟玩家连续推鼠标**，速度应先升后降 ──
-	#
-	# ⚠ 不能用「一次性给出 90 度目标」来测 —— 那样第一帧角差就有 90 度，
-	#   直接满速，测不出「先慢后快」。
-	#   真实操作是玩家**连续推**鼠标，角差随推动逐渐变大，速度才跟着上来。
-	print("\n=== 5. √曲线：连续推鼠标时先慢后快 ===")
+	# ── 5. 持续输入平滑跟随，松开后收敛到目标 ──
+	print("\n=== 5. 鼠标平滑响应与停止后的稳定性 ===")
 	ship.fuel = 100.0
 	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
@@ -193,9 +190,7 @@ func _run() -> void:
 	ship.velocity = Vector3.ZERO
 	ship.global_position = Vector3(80000, 0, 0)
 
-	var per_frame: Array = []
-	# ⚠ 用「两帧之间机头的夹角」而不是 atan2 差值 ——
-	#   后者在 ±180 度处会跳变 360 度，产生假峰值（实测 359.88°/帧）。
+	var per_frame: Array[float] = []
 	var prev_nose: Vector3 = -ship.global_transform.basis.z.normalized()
 	for i in range(20):
 		ship.apply_look(Vector2(15.0, 0.0))
@@ -213,37 +208,26 @@ func _run() -> void:
 		per_frame.append(rad_to_deg(prev_nose.angle_to(now_nose2)))
 		prev_nose = now_nose2
 
-	# 前 5 帧平均 vs 中间最快帧
-	var early: float = 0.0
-	for i in range(5):
-		early += float(per_frame[i])
-	early /= 5.0
-	var peak := 0.0
-	for v in per_frame:
-		peak = maxf(peak, float(v))
-	print("   前 5 帧平均 %.2f°/帧，峰值 %.2f°/帧" % [early, peak])
-	_check(peak > early * 1.5,
-		"turn ramps up (early %.2f vs peak %.2f deg/frame)" % [early, peak])
-
-	# 末尾应该减速。⚠ 不能用「最后 8 帧」——那几帧飞船已经停住了（值接近 0），
-	#   会把平均值拉低到没有意义。要取「到达前的减速段」：
-	#   找到最后一帧仍有明显转动的位置，取它之前 8 帧。
-	var last_moving := 0
-	for i in range(per_frame.size()):
-		if float(per_frame[i]) > 0.02:
-			last_moving = i
-	var late_start: int = maxi(0, last_moving - 7)
-	var late: float = 0.0
-	var n := 0
-	for i in range(late_start, last_moving + 1):
-		late += float(per_frame[i])
-		n += 1
-	if n > 0:
-		late /= float(n)
-	print("   减速段平均 %.2f°/帧（峰值 %.2f，应为峰值的 %.0f%%）" % [
-		late, peak, 100.0 * late / maxf(peak, 0.001)])
-	_check(late < peak * 0.85,
-		"turn ramps down before arriving (%.2f vs peak %.2f)" % [late, peak])
+	var expected_step := rad_to_deg(ship.AIM_SENSITIVITY * 15.0)
+	var late_step_error := 0.0
+	for i in range(15, 20):
+		late_step_error = maxf(late_step_error,
+			absf(per_frame[i] - expected_step))
+	var largest_idle_step := 0.0
+	for i in range(20, per_frame.size()):
+		largest_idle_step = maxf(largest_idle_step, per_frame[i])
+	var target_gap: float = ship.global_transform.basis.orthonormalized().get_rotation_quaternion().angle_to(
+		ship.get_aim_basis().orthonormalized().get_rotation_quaternion())
+	print("   目标每帧 %.3f°，首帧 %.3f°，持续响应误差 %.4f°，松开后最大步长 %.4f°" % [
+		expected_step, per_frame[0], late_step_error, largest_idle_step])
+	_check(per_frame[0] > 0.0 and per_frame[0] < expected_step,
+		"mouse movement ramps in smoothly (%.3f of %.3f deg)" % [per_frame[0], expected_step])
+	_check(late_step_error < 0.02,
+		"sustained mouse input tracks at a steady rate (error %.4f deg)" % late_step_error)
+	_check(largest_idle_step < expected_step,
+		"release does not cause a sharp extra turn (%.4f deg)" % largest_idle_step)
+	_check(rad_to_deg(target_gap) < 0.01,
+		"the ship settles on the final mouse target (%.4f deg remaining)" % rad_to_deg(target_gap))
 
 	print("\nNO OVERSHOOT PROBE: %d failure(s)" % failures)
 	game.queue_free()

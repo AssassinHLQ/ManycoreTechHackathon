@@ -1,11 +1,11 @@
 extends SceneTree
-# 探针：验证新版飞行姿态控制（鼠标推 aim、飞船缓慢追、机头朝屏幕中心）。
+# 探针：验证鼠标低灵敏度、飞船直接对齐鼠标与机头方向推进。
 # 用法：godot --headless --path . --script res://tests/probe_flight_attitude.gd
 #
 # 检查：
-#   1. 鼠标动一下，**飞船当帧不立刻转向**（要慢慢转）—— 这是「不是平移」的关键
-#   2. 持续若干帧后，飞船朝向**收敛到**期望朝向
-#   3. 转向过程中角速度不超过 MAX_TURN_RATE
+#   1. 鼠标转角较小，飞船平滑追踪并最终对齐
+#   2. 停止输入后飞船不继续追赶或过冲
+#   3. 第三人称镜头与机头保持对齐
 #   4. A/D 不再横移（速度矢量在侧向没有增长）
 #   5. 松油门速度不变（纯物理）
 
@@ -40,6 +40,7 @@ func _run() -> void:
 	await game.await_world_ready()
 	await process_frame
 	game.start_game()
+	game.settings.values["sensitivity"] = 1.0
 	for i in range(8):
 		await physics_frame
 
@@ -55,8 +56,8 @@ func _run() -> void:
 	ship.turn_budget = Quaternion.IDENTITY
 	ship._turn_velocity = Vector3.ZERO
 
-	# ── 1. 鼠标推动 aim，飞船不该当帧就转到位 ──
-	print("\n=== 1. 鼠标只推 aim，不直接转飞船 ===")
+	# ── 1. 鼠标输入较慢，飞船逐步追踪目标 ──
+	print("\n=== 1. 低灵敏度鼠标输入 ===")
 	var before: Basis = ship.global_transform.basis
 	ship.apply_look(Vector2(400.0, 0.0))       # 大幅左右移鼠标
 	var aim_after: Basis = ship.get_aim_basis()
@@ -64,19 +65,38 @@ func _run() -> void:
 	var aim_delta := _angle_between(before, aim_after)
 	var ship_delta := _angle_between(before, ship_after)
 	print("   aim 转了 %.1f°，飞船转了 %.1f°" % [aim_delta, ship_delta])
-	_check(aim_delta > 5.0, "mouse moves the aim direction (%.1f deg)" % aim_delta)
-	_check(ship_delta < 1.0, "the ship does NOT snap-turn instantly (%.2f deg)" % ship_delta)
+	_check(aim_delta > 0.1 and aim_delta < 5.0,
+		"mouse sensitivity stays low (%.2f deg for 400 px)" % aim_delta)
+	_check(ship_delta < 0.01, "the ship applies mouse input on the physics tick (%.2f deg)" % ship_delta)
 
-	# ── 2. 持续若干帧后收敛到 aim ──
-	print("\n=== 2. 飞船缓慢转向并收敛 ===")
-	var first_frame_basis: Basis = ship.global_transform.basis
+	# ── 2. 姿态逐步靠近目标，停止输入后平滑收敛且不反弹 ──
+	print("\n=== 2. 飞船平滑对齐鼠标目标 ===")
 	ship._physics_process(1.0 / 60.0)
-	var after_one := _angle_between(first_frame_basis, ship.global_transform.basis)
-	print("   一帧内转了 %.2f°（有角速度上限）" % after_one)
-	_check(after_one < 10.0, "one frame turns only a little (%.2f deg)" % after_one)
+	var after_one := _angle_between(before, ship.global_transform.basis)
+	var first_gap := _angle_between(ship.global_transform.basis, ship.get_aim_basis())
+	print("   第一帧转了 %.2f°，目标 %.2f°，剩余 %.2f°" % [after_one, aim_delta, first_gap])
+	_check(after_one > 0.01 and after_one < aim_delta,
+		"mouse rotation begins smoothly instead of snapping (%.2f of %.2f deg)" % [after_one, aim_delta])
+	var previous_gap := first_gap
+	var monotonic := true
+	for i in range(5):
+		ship._physics_process(1.0 / 60.0)
+		var current_gap := _angle_between(ship.global_transform.basis, ship.get_aim_basis())
+		if current_gap > previous_gap + 0.001:
+			monotonic = false
+		previous_gap = current_gap
+	_check(monotonic, "the ship approaches the target without reversing")
 
-	# 跑 2 秒让飞船追上去
-	for i in range(120):
+	# 连续空闲半秒后也不应继续转动。
+	for i in range(24):
+		ship._physics_process(1.0 / 60.0)
+	var half_second_delta := _angle_between(ship.global_transform.basis, ship.get_aim_basis())
+	print("   0.5 秒后 飞船与 aim 差 %.3f°" % half_second_delta)
+	_check(half_second_delta < 0.05,
+		"the ship settles on the mouse target while idle (%.2f deg remaining)" % half_second_delta)
+
+	# 再跑 1.5 秒确认姿态精确收敛。
+	for i in range(91):
 		ship._physics_process(1.0 / 60.0)
 	var final_delta := _angle_between(ship.global_transform.basis, ship.get_aim_basis())
 	print("   2 秒后 飞船与 aim 差 %.3f°" % final_delta)

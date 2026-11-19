@@ -257,12 +257,8 @@ const BH_ESCAPE_FROM := 0.55
 ##          实测（tests/diag_longdrag.gd）：拖动 3200px 时 lead 到 23°，
 ##          姿态本身单调收敛没有过冲，所以问题只可能出在 lead 太大这一侧。
 ##
-##   ✅ 现在改成**本体系待转量**（turn_budget），彻底消除最短路径歧义：
-##     · 鼠标增量**右乘**进来（本体系），和飞船当前姿态无关
-##     · 上限截断在 TURN_BUDGET_MAX（< 180°）→ 轴向永远唯一
-##     · 每帧按 √ 曲线消费一部分，**消费量永远不超过待转量**
-##       → 结构上不可能过冲、不可能回弹
-##     · 待转量排空 = 飞船精确停在鼠标要求的位置，不多不少
+##   鼠标增量按本体系右乘，并由机身平滑追踪目标朝向。
+##   待转量限制在 180° 以内，确保旋转轴始终唯一。
 ##
 ##   为什么局部轴是对的（第 4 版已验证）：
 ##     鼠标横向 → 绕**本体系 UP**；纵向 → 绕**本体系 RIGHT**。
@@ -272,13 +268,10 @@ var turn_budget := Quaternion.IDENTITY
 ## 让滚转也有惯性而不是「一下子就停」。
 var _roll_ramp := 0.0
 var _roll_dir := 0.0
-## 鼠标灵敏度（弧度/像素）。0.0022 约合「推 700 像素转 90°」。
-##
-## ⚠ 2026-11-10 用户两次要求调低（「太灵活了，晕」→「还是太灵活」）：
-##   0.0022 -> 0.0009 -> **0.00045**
-##   当前约合「推 3500 像素转 90°」，视角响应更接近早期手感。
-##   飞船机身仍由 MAX_TURN_RATE 和转向曲线逐步追上视角。
-const AIM_SENSITIVITY := 0.00045
+## 鼠标灵敏度（弧度/像素），约 10472 像素转 90°。
+const AIM_SENSITIVITY := 0.00015
+## 鼠标目标姿态的响应时间常数。指数平滑保持不同帧率下的手感一致。
+const AIM_SMOOTH_TIME := 0.055
 ## 速度矢量向机头方向对齐的角速度（弧度/秒）。
 ##
 ## 用户：「往前飞, 鼠标掉头但不加速, 为什么还是往后飞」——
@@ -329,45 +322,14 @@ func _quat_axis(q: Quaternion) -> Vector3:
 	return v.normalized()
 
 
-## 最大角速度（弧度/秒）。待转量足够大时的转速上限。
-## 0.35 rad/s ≈ 20°/秒，让大幅转向明显沉稳。
-const MAX_TURN_RATE := 0.35
-
-## 「满速待转量」（弧度）。待转量达到这个值时速度封顶，更小则按 √ 曲线衰减。
-##
-## 这个值同时决定「起转的柔和度」：
-##   · 刚推鼠标时待转量很小 → 速度低 → **先慢**
-##   · 持续拖动待转量变大 → 速度上升 → **后快**
-##   · 松手后待转量被消耗变小 → 速度下降 → **缓停**
-## 正是用户要的「先慢后快再慢」。
-##
-## 取 0.35 rad（约 20°）：常见的小幅微调就已经接近满速，
-## 跟手但两端仍有平滑过渡。调大 → 更柔更慢。
-const TURN_FULL_ANGLE := 0.35
-
-## 待转量上限（弧度）。**必须小于 180°** —— 否则四元数「最短路径」会出现
-## 方向歧义，飞船就会突然往回弹（这正是第 4 版的 bug）。
-## 120° 既留足余量，又能在快速拖动时不过度堆积。
+## 待转量上限（弧度），小于 180° 以确保旋转轴唯一。
 const TURN_BUDGET_MAX := deg_to_rad(120.0)
-## 第三人称/座舱镜头允许领先机身的最大角度。
-## 鼠标输入仍可继续累积给飞船姿态，但镜头不会被甩到看不见船的位置。
-const CAMERA_LEAD_MAX := deg_to_rad(26.0)
 
-## 当前角速度（世界空间轴向量，长度 = 弧度/秒）。
+## 兼容现有诊断探针，直接转向不使用角速度缓存。
 var _turn_velocity := Vector3.ZERO
-## 上一帧的待转量（弧度）。用来判断这一帧是「起转/维持」（待转量在涨）
-## 还是「收尾」（待转量在跌）—— 两段走不同曲线，见 _apply_attitude。
-var _attitude_prev_budget := 0.0
 ## 本帧的前进输入（0..1）。S 现在走 brake，不再是倒车。
 var forward_input := 0.0
 
-
-func _camera_lead_quaternion() -> Quaternion:
-	var angle := turn_budget.get_angle()
-	if angle <= CAMERA_LEAD_MAX:
-		return turn_budget
-	var axis := _quat_axis(turn_budget)
-	return Quaternion(axis, CAMERA_LEAD_MAX) if axis != Vector3.ZERO else Quaternion.IDENTITY
 
 ## 滚转速率（弧度/秒），A/D 控制。这是**包络满值**时的峰值转速。
 ## ⚠ A/D 转动继续放慢，峰值约 18°/秒。
@@ -1600,64 +1562,28 @@ func _build_model() -> void:
 	_finalize_procedural_model_metrics()
 
 
-## 姿态控制：让飞船**平滑地**转向 `aim_basis`（鼠标想看的方向）。
-##
-## 为什么不用 `basis.slerp(aim, delta * k)`：
-##   那会让转向速度跟「当前差角」成正比 —— 差角大时瞬间甩过去，
-##   差角小时磨磨蹭蹭，既不像飞机，也没法做「转得慢」的体感。
-##   玩家看到的就是「鼠标一动船就歪过去了」。
-##
-## ⚠ 2026-11-11 用户：「现在还是太灵活了，一开始说的根号 x 改成 y=x 的平方看看，
-##   衰减还是按照根号 x」。
-##
-##   所以现在**起转用平方、收尾用根号**，两段不同曲线：
-##
-##   · 起转段（待转量在增长 / 玩家正在推鼠标）→ `u²`
-##       小输入几乎不动，推到位才猛起来 —— 治「太灵活」。
-##       这正好是用户要的 `y = x²`：x 小时 y 极小。
-##   · 收尾段（待转量在减少 / 玩家已松手）→ `√u`
-##       尾部靠 0 时仍保有一定转速，干脆利落地停住，不拖泥带水。
-##
-##   判据用「待转量这一帧是涨还是跌」：_attitude_prev_budget 记住上一帧的量，
-##   比较即得。第一帧没有历史时按起转处理（保守，偏慢）。
-##
-##   rate = MAX_TURN_RATE * curve(u)
-##   step = min(rate * delta, budget)
-##   · step 永远 ≤ budget → **结构上不可能过冲或回弹**
+## 将本物理帧积累的鼠标转角平滑应用到机身。
 ##
 ## ⚠ 这是姿态控制（喷口在做功），不是凭空改速度 —— 速度矢量完全不受影响。
 ##
 ## 返回本帧实际转过的角度（弧度），供调用方按「转了多少」扣 RCS 燃料。
 func _apply_attitude(delta: float) -> float:
-	var budget := turn_budget.get_angle()
-	if budget < 0.0002:
-		# 待转量排空：飞船精确停在鼠标要求的位置，没有任何余速
+	var angle := turn_budget.get_angle()
+	if angle < 0.000001:
 		turn_budget = Quaternion.IDENTITY
 		_turn_velocity = Vector3.ZERO
-		_attitude_prev_budget = 0.0
 		return 0.0
 
 	var axis := _quat_axis(turn_budget)
-	if axis == Vector3.ZERO:
-		turn_budget = Quaternion.IDENTITY
-		return 0.0
-	var u := clampf(budget / TURN_FULL_ANGLE, 0.0, 1.0)
-	# 待转量在减少 = 收尾阶段 → 用根号（尾部有力，停得干脆）
-	# 否则 = 起转 / 维持阶段 → 用平方（小输入几乎不动，治「太灵活」）
-	var winding_down := budget < _attitude_prev_budget - 0.0000001
-	var curve := sqrt(u) if winding_down else u * u
-	var speed := MAX_TURN_RATE * curve
-	var step_angle := minf(speed * delta, budget)
-
-	_turn_velocity = axis * speed
-	_attitude_prev_budget = budget
-
-	# 绕**本体系**轴右乘 —— 与 turn_budget 的累积方式一致。
-	# 因为旋转轴就是待转量自己的轴，两者可交换，所以消费时直接缩短角度即可。
+	var response := 1.0 - exp(-delta / AIM_SMOOTH_TIME)
+	var step_angle := minf(angle, angle * response)
+	var remaining_angle := angle - step_angle
 	var t := global_transform
 	t.basis = (t.basis.orthonormalized() * Basis(axis, step_angle)).orthonormalized()
 	global_transform = t
-	turn_budget = Quaternion(axis, maxf(0.0, budget - step_angle))
+	turn_budget = Quaternion.IDENTITY if remaining_angle < 0.000001 \
+		else Quaternion(axis, remaining_angle).normalized()
+	_turn_velocity = Vector3.ZERO
 	return step_angle
 
 
@@ -1766,8 +1692,7 @@ func apply_look(relative: Vector2) -> void:
 	# ⚠ 上限截断：待转量绝不允许达到 180°。
 	#   否则四元数的「最短路径」会出现方向歧义 —— 飞船会突然朝反方向转，
 	#   表现就是「拖动很长一大段会突然回弹」（第 4 版的 bug）。
-	#   截断会丢弃超出部分的鼠标输入，但因为有 MAX_TURN_RATE 追赶，
-	#   正常拖动下待转量很难堆到 120°，所以实际几乎不会丢输入。
+	#   截断保护单帧积压过多的输入，避免物理帧停顿后机身一次转过大角度。
 	var budget_angle := turn_budget.get_angle()
 	if budget_angle > TURN_BUDGET_MAX:
 		turn_budget = Quaternion(_quat_axis(turn_budget), TURN_BUDGET_MAX)
@@ -1807,17 +1732,8 @@ func _update_third_person_camera(_delta: float) -> void:
 	var base_y := ship_model_height * 0.55
 	# 相机位置：沿机头反方向后退
 	camera.position = Vector3(0.0, base_y, orbit_distance)
-	# 相机朝向：看向机头前方远处（局部 -Z 方向），不是看船身
-	# 用一个很远的点保证视线几乎水平且沿机头方向
-	var look_target := Vector3(0.0, base_y * 0.6, -orbit_distance * 4.0)
-	var dir := (look_target - camera.position).normalized()
-	if dir.length_squared() > 0.0001:
-		var up := Vector3.UP
-		if absf(dir.dot(up)) > 0.98:
-			up = Vector3.FORWARD
-		# 相机先响应鼠标目标，机身再通过 _apply_attitude 逐步追上。
-		# turn_budget 是飞船局部坐标里的剩余待转量，直接叠加在跟随机头的视角上。
-		camera.basis = (Basis.looking_at(dir, up) * Basis(_camera_lead_quaternion())).orthonormalized()
+	# 镜头不领先，准星视线与飞船机头保持一致。
+	camera.basis = Basis.IDENTITY
 	camera.fov = 62.0
 
 
@@ -1856,12 +1772,11 @@ func _reset_cockpit_camera() -> void:
 	camera.fov = 72.0
 
 
-## 座舱视角先跟随鼠标，飞船机身随后追上目标朝向。
-## turn_budget 越大，镜头领先角越大；姿态控制每帧消耗它后，镜头自然回到机头轴线上。
+## 座舱视角与飞船机头保持一致，鼠标转角由机身直接执行。
 func _update_cockpit_camera_view() -> void:
 	if third_person or camera == null:
 		return
-	camera.basis = Basis(_camera_lead_quaternion()).orthonormalized()
+	camera.basis = Basis.IDENTITY
 
 
 ## 手动飞行时只保留机头前向和机体竖向速度。
@@ -2061,7 +1976,7 @@ func _physics_process(delta: float) -> void:
 		thrusting = false
 		thrust_level = 0.0
 	else:
-		# ── 姿态：飞船缓慢转向期望朝向，机头始终对着屏幕中心 ──
+		# ── 姿态：飞船平滑对齐鼠标目标，推进沿当前机头方向 ──
 		#
 		# ⚠ 转向要烧 RCS 推进剂（用户：「我没有施力，无法转动飞船」）。
 		#   没有燃料时 _apply_attitude 不会被调用，飞船姿态锁死 ——
